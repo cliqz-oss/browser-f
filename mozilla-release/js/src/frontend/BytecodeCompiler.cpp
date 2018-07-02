@@ -10,6 +10,9 @@
 #include "mozilla/Maybe.h"
 
 #include "builtin/ModuleObject.h"
+#if defined(JS_BUILD_BINAST)
+# include "frontend/BinSource.h"
+#endif // JS_BUILD_BINAST
 #include "frontend/BytecodeEmitter.h"
 #include "frontend/ErrorReporter.h"
 #include "frontend/FoldConstants.h"
@@ -65,8 +68,10 @@ class MOZ_STACK_CLASS BytecodeCompiler
     bool createScript();
     bool createScript(uint32_t toStringStart, uint32_t toStringEnd);
 
+    using TokenStreamPosition = frontend::TokenStreamPosition<char16_t>;
+
     bool emplaceEmitter(Maybe<BytecodeEmitter>& emitter, SharedContext* sharedContext);
-    bool handleParseFailure(const Directives& newDirectives);
+    bool handleParseFailure(const Directives& newDirectives, TokenStreamPosition& startPosition);
     bool deoptimizeArgumentsInEnclosingScripts(JSContext* cx, HandleObject environment);
 
     AutoKeepAtoms keepAtoms;
@@ -86,7 +91,6 @@ class MOZ_STACK_CLASS BytecodeCompiler
     Maybe<Parser<FullParseHandler, char16_t>> parser;
 
     Directives directives;
-    TokenStream::Position startPosition;
 
     RootedScript script;
 };
@@ -157,7 +161,6 @@ BytecodeCompiler::BytecodeCompiler(JSContext* cx,
     sourceObject(cx),
     scriptSource(nullptr),
     directives(options.strictOption),
-    startPosition(keepAtoms),
     script(cx)
 {
     MOZ_ASSERT(sourceBuffer.get());
@@ -229,11 +232,7 @@ BytecodeCompiler::createParser()
     parser.emplace(cx, alloc, options, sourceBuffer.get(), sourceBuffer.length(),
                    /* foldConstants = */ true, *usedNames, syntaxParser.ptrOr(nullptr), nullptr);
     parser->ss = scriptSource;
-    if (!parser->checkOptions())
-        return false;
-
-    parser->tokenStream.tell(&startPosition);
-    return true;
+    return parser->checkOptions();
 }
 
 bool
@@ -269,7 +268,8 @@ BytecodeCompiler::emplaceEmitter(Maybe<BytecodeEmitter>& emitter, SharedContext*
 }
 
 bool
-BytecodeCompiler::handleParseFailure(const Directives& newDirectives)
+BytecodeCompiler::handleParseFailure(const Directives& newDirectives,
+                                     TokenStreamPosition& startPosition)
 {
     if (parser->hadAbortedSyntaxParse()) {
         // Hit some unrecoverable ambiguity during an inner syntax parse.
@@ -316,6 +316,8 @@ BytecodeCompiler::compileScript(HandleObject environment, SharedContext* sc)
     if (!createSourceAndParser())
         return nullptr;
 
+    TokenStreamPosition startPosition(keepAtoms, parser->tokenStream);
+
     if (!createScript())
         return nullptr;
 
@@ -344,13 +346,12 @@ BytecodeCompiler::compileScript(HandleObject environment, SharedContext* sc)
                 return nullptr;
             if (!NameFunctions(cx, pn))
                 return nullptr;
-            parser->handler.freeTree(pn);
 
             break;
         }
 
         // Maybe we aborted a syntax parse. See if we can try again.
-        if (!handleParseFailure(directives))
+        if (!handleParseFailure(directives, startPosition))
             return nullptr;
 
         // Reset UsedNameTracker state before trying again.
@@ -418,8 +419,6 @@ BytecodeCompiler::compileModule()
     if (!NameFunctions(cx, pn))
         return nullptr;
 
-    parser->handler.freeTree(pn);
-
     if (!builder.initModule())
         return nullptr;
 
@@ -452,6 +451,8 @@ BytecodeCompiler::compileStandaloneFunction(MutableHandleFunction fun,
     if (!createSourceAndParser(parameterListEnd))
         return false;
 
+    TokenStreamPosition startPosition(keepAtoms, parser->tokenStream);
+
     // Speculatively parse using the default directives implied by the context.
     // If a directive is encountered (e.g., "use strict") that changes how the
     // function should have been parsed, we backup and reparse with the new set
@@ -462,7 +463,7 @@ BytecodeCompiler::compileStandaloneFunction(MutableHandleFunction fun,
         Directives newDirectives = directives;
         fn = parser->standaloneFunction(fun, enclosingScope, parameterListEnd, generatorKind,
                                         asyncKind, directives, &newDirectives);
-        if (!fn && !handleParseFailure(newDirectives))
+        if (!fn && !handleParseFailure(newDirectives, startPosition))
             return false;
     } while (!fn);
 
@@ -563,6 +564,43 @@ class MOZ_STACK_CLASS AutoInitializeSourceObject
     }
 };
 
+// RAII class to check the frontend reports an exception when it fails to
+// compile a script.
+class MOZ_RAII AutoAssertReportedException
+{
+#ifdef DEBUG
+    JSContext* cx_;
+    bool check_;
+
+  public:
+    explicit AutoAssertReportedException(JSContext* cx)
+      : cx_(cx),
+        check_(true)
+    {}
+    void reset() {
+        check_ = false;
+    }
+    ~AutoAssertReportedException() {
+        if (!check_)
+            return;
+
+        if (!cx_->helperThread()) {
+            MOZ_ASSERT(cx_->isExceptionPending());
+            return;
+        }
+
+        ParseTask* task = cx_->helperThread()->parseTask();
+        MOZ_ASSERT(task->outOfMemory ||
+                   task->overRecursed ||
+                   !task->errors.empty());
+    }
+#else
+  public:
+    explicit AutoAssertReportedException(JSContext*) {}
+    void reset() {}
+#endif
+};
+
 JSScript*
 frontend::CompileGlobalScript(JSContext* cx, LifoAlloc& alloc, ScopeKind scopeKind,
                               const ReadOnlyCompileOptions& options,
@@ -570,10 +608,64 @@ frontend::CompileGlobalScript(JSContext* cx, LifoAlloc& alloc, ScopeKind scopeKi
                               ScriptSourceObject** sourceObjectOut)
 {
     MOZ_ASSERT(scopeKind == ScopeKind::Global || scopeKind == ScopeKind::NonSyntactic);
+    AutoAssertReportedException assertException(cx);
     BytecodeCompiler compiler(cx, alloc, options, srcBuf, /* enclosingScope = */ nullptr);
     AutoInitializeSourceObject autoSSO(compiler, sourceObjectOut);
-    return compiler.compileGlobalScript(scopeKind);
+    JSScript* script = compiler.compileGlobalScript(scopeKind);
+    if (!script)
+        return nullptr;
+    assertException.reset();
+    return script;
 }
+
+#if defined(JS_BUILD_BINAST)
+
+JSScript*
+frontend::CompileGlobalBinASTScript(JSContext* cx, LifoAlloc& alloc, const ReadOnlyCompileOptions& options,
+                                    const uint8_t* src, size_t len)
+{
+    AutoAssertReportedException assertException(cx);
+
+    frontend::UsedNameTracker usedNames(cx);
+    if (!usedNames.init())
+        return nullptr;
+
+    RootedObject sourceObj(cx, CreateScriptSourceObject(cx, options));
+
+    if (!sourceObj)
+        return nullptr;
+
+    RootedScript script(cx, JSScript::Create(cx, options, sourceObj, 0, len, 0, len));
+
+    if (!script)
+        return nullptr;
+
+    frontend::BinASTParser<BinTokenReaderMultipart> parser(cx, alloc, usedNames, options);
+
+    auto parsed = parser.parse(src, len);
+
+    if (parsed.isErr())
+        return nullptr;
+
+    Directives dir(false);
+    GlobalSharedContext sc(cx, ScopeKind::Global, dir, false);
+    BytecodeEmitter bce(nullptr, &parser, &sc, script, nullptr, 0);
+
+    if (!bce.init())
+        return nullptr;
+
+    ParseNode *pn = parsed.unwrap();
+    if (!bce.emitScript(pn))
+        return nullptr;
+
+    if (!NameFunctions(cx, pn))
+        return nullptr;
+
+    assertException.reset();
+    return script;
+}
+
+#endif // JS_BUILD_BINAST
 
 JSScript*
 frontend::CompileEvalScript(JSContext* cx, LifoAlloc& alloc,
@@ -582,9 +674,15 @@ frontend::CompileEvalScript(JSContext* cx, LifoAlloc& alloc,
                             SourceBufferHolder& srcBuf,
                             ScriptSourceObject** sourceObjectOut)
 {
+    AutoAssertReportedException assertException(cx);
     BytecodeCompiler compiler(cx, alloc, options, srcBuf, enclosingScope);
     AutoInitializeSourceObject autoSSO(compiler, sourceObjectOut);
-    return compiler.compileEvalScript(environment, enclosingScope);
+    JSScript* script = compiler.compileEvalScript(environment, enclosingScope);
+    if (!script)
+        return nullptr;
+    assertException.reset();
+    return script;
+
 }
 
 ModuleObject*
@@ -595,6 +693,8 @@ frontend::CompileModule(JSContext* cx, const ReadOnlyCompileOptions& optionsInpu
     MOZ_ASSERT(srcBuf.get());
     MOZ_ASSERT_IF(sourceObjectOut, *sourceObjectOut == nullptr);
 
+    AutoAssertReportedException assertException(cx);
+
     CompileOptions options(cx, optionsInput);
     options.maybeMakeStrictMode(true); // ES6 10.2.1 Module code is always strict mode code.
     options.setIsRunOnce(true);
@@ -603,13 +703,20 @@ frontend::CompileModule(JSContext* cx, const ReadOnlyCompileOptions& optionsInpu
     RootedScope emptyGlobalScope(cx, &cx->global()->emptyGlobalScope());
     BytecodeCompiler compiler(cx, alloc, options, srcBuf, emptyGlobalScope);
     AutoInitializeSourceObject autoSSO(compiler, sourceObjectOut);
-    return compiler.compileModule();
+    ModuleObject* module = compiler.compileModule();
+    if (!module)
+        return nullptr;
+
+    assertException.reset();
+    return module;
 }
 
 ModuleObject*
 frontend::CompileModule(JSContext* cx, const ReadOnlyCompileOptions& options,
                         SourceBufferHolder& srcBuf)
 {
+    AutoAssertReportedException assertException(cx);
+
     if (!GlobalObject::ensureModulePrototypesCreated(cx, cx->global()))
         return nullptr;
 
@@ -623,6 +730,7 @@ frontend::CompileModule(JSContext* cx, const ReadOnlyCompileOptions& options,
     if (!ModuleObject::Freeze(cx, module))
         return nullptr;
 
+    assertException.reset();
     return module;
 }
 
@@ -631,11 +739,13 @@ frontend::CompileLazyFunction(JSContext* cx, Handle<LazyScript*> lazy, const cha
 {
     MOZ_ASSERT(cx->compartment() == lazy->functionNonDelazifying()->compartment());
 
+    AutoAssertReportedException assertException(cx);
+
     CompileOptions options(cx);
     options.setMutedErrors(lazy->mutedErrors())
            .setFileAndLine(lazy->filename(), lazy->lineno())
            .setColumn(lazy->column())
-           .setScriptSourceOffset(lazy->begin())
+           .setScriptSourceOffset(lazy->sourceStart())
            .setNoScriptRval(false)
            .setSelfHostingMode(false);
 
@@ -677,7 +787,7 @@ frontend::CompileLazyFunction(JSContext* cx, Handle<LazyScript*> lazy, const cha
     MOZ_ASSERT(sourceObject);
 
     Rooted<JSScript*> script(cx, JSScript::Create(cx, options, sourceObject,
-                                                  lazy->begin(), lazy->end(),
+                                                  lazy->sourceStart(), lazy->sourceEnd(),
                                                   lazy->toStringStart(), lazy->toStringEnd()));
     if (!script)
         return false;
@@ -698,6 +808,7 @@ frontend::CompileLazyFunction(JSContext* cx, Handle<LazyScript*> lazy, const cha
     if (!NameFunctions(cx, pn))
         return false;
 
+    assertException.reset();
     return true;
 }
 
@@ -708,14 +819,22 @@ frontend::CompileStandaloneFunction(JSContext* cx, MutableHandleFunction fun,
                                     const Maybe<uint32_t>& parameterListEnd,
                                     HandleScope enclosingScope /* = nullptr */)
 {
+    AutoAssertReportedException assertException(cx);
+
     RootedScope scope(cx, enclosingScope);
     if (!scope)
         scope = &cx->global()->emptyGlobalScope();
 
     BytecodeCompiler compiler(cx, cx->tempLifoAlloc(), options, srcBuf, scope);
-    return compiler.compileStandaloneFunction(fun, GeneratorKind::NotGenerator,
-                                              FunctionAsyncKind::SyncFunction,
-                                              parameterListEnd);
+    if (!compiler.compileStandaloneFunction(fun, GeneratorKind::NotGenerator,
+                                            FunctionAsyncKind::SyncFunction,
+                                            parameterListEnd))
+    {
+        return false;
+    }
+
+    assertException.reset();
+    return true;
 }
 
 bool
@@ -724,12 +843,20 @@ frontend::CompileStandaloneGenerator(JSContext* cx, MutableHandleFunction fun,
                                      JS::SourceBufferHolder& srcBuf,
                                      const Maybe<uint32_t>& parameterListEnd)
 {
+    AutoAssertReportedException assertException(cx);
+
     RootedScope emptyGlobalScope(cx, &cx->global()->emptyGlobalScope());
 
     BytecodeCompiler compiler(cx, cx->tempLifoAlloc(), options, srcBuf, emptyGlobalScope);
-    return compiler.compileStandaloneFunction(fun, GeneratorKind::Generator,
-                                              FunctionAsyncKind::SyncFunction,
-                                              parameterListEnd);
+    if (!compiler.compileStandaloneFunction(fun, GeneratorKind::Generator,
+                                            FunctionAsyncKind::SyncFunction,
+                                            parameterListEnd))
+    {
+        return false;
+    }
+
+    assertException.reset();
+    return true;
 }
 
 bool
@@ -738,12 +865,20 @@ frontend::CompileStandaloneAsyncFunction(JSContext* cx, MutableHandleFunction fu
                                          JS::SourceBufferHolder& srcBuf,
                                          const Maybe<uint32_t>& parameterListEnd)
 {
+    AutoAssertReportedException assertException(cx);
+
     RootedScope emptyGlobalScope(cx, &cx->global()->emptyGlobalScope());
 
     BytecodeCompiler compiler(cx, cx->tempLifoAlloc(), options, srcBuf, emptyGlobalScope);
-    return compiler.compileStandaloneFunction(fun, GeneratorKind::NotGenerator,
-                                              FunctionAsyncKind::AsyncFunction,
-                                              parameterListEnd);
+    if (!compiler.compileStandaloneFunction(fun, GeneratorKind::NotGenerator,
+                                            FunctionAsyncKind::AsyncFunction,
+                                            parameterListEnd))
+    {
+        return false;
+    }
+
+    assertException.reset();
+    return true;
 }
 
 bool
@@ -752,10 +887,18 @@ frontend::CompileStandaloneAsyncGenerator(JSContext* cx, MutableHandleFunction f
                                           JS::SourceBufferHolder& srcBuf,
                                           const Maybe<uint32_t>& parameterListEnd)
 {
+    AutoAssertReportedException assertException(cx);
+
     RootedScope emptyGlobalScope(cx, &cx->global()->emptyGlobalScope());
 
     BytecodeCompiler compiler(cx, cx->tempLifoAlloc(), options, srcBuf, emptyGlobalScope);
-    return compiler.compileStandaloneFunction(fun, GeneratorKind::Generator,
-                                              FunctionAsyncKind::AsyncFunction,
-                                              parameterListEnd);
+    if (!compiler.compileStandaloneFunction(fun, GeneratorKind::Generator,
+                                            FunctionAsyncKind::AsyncFunction,
+                                            parameterListEnd))
+    {
+        return false;
+    }
+
+    assertException.reset();
+    return true;
 }

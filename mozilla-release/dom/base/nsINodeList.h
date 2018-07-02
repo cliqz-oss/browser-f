@@ -7,7 +7,6 @@
 #ifndef nsINodeList_h___
 #define nsINodeList_h___
 
-#include "nsIDOMNodeList.h"
 #include "nsWrapperCache.h"
 #include "nsIContent.h"
 
@@ -22,7 +21,7 @@ class nsINode;
 /**
  * An internal interface for a reasonably fast indexOf.
  */
-class nsINodeList : public nsIDOMNodeList,
+class nsINodeList : public nsISupports,
                     public nsWrapperCache
 {
 public:
@@ -39,14 +38,7 @@ public:
    */
   virtual nsINode* GetParentObject() = 0;
 
-  using nsIDOMNodeList::Item;
-
-  uint32_t Length()
-  {
-    uint32_t length;
-    GetLength(&length);
-    return length;
-  }
+  virtual uint32_t Length() = 0;
   virtual nsIContent* Item(uint32_t aIndex) = 0;
   nsIContent* IndexedGetter(uint32_t aIndex, bool& aFound)
   {
@@ -54,10 +46,8 @@ public:
     aFound = !!item;
     return item;
   }
-};
 
-#define NS_NODELIST_OFFSET_AND_INTERFACE_TABLE_BEGIN(_class)                  \
-  NS_OFFSET_AND_INTERFACE_TABLE_BEGIN_AMBIGUOUS(_class, nsINodeList)
+};
 
 NS_DEFINE_STATIC_IID_ACCESSOR(nsINodeList, NS_INODELIST_IID)
 

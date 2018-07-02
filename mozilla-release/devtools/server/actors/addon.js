@@ -15,7 +15,6 @@ var { assert, update } = DevToolsUtils;
 
 loader.lazyRequireGetter(this, "AddonThreadActor", "devtools/server/actors/thread", true);
 loader.lazyRequireGetter(this, "unwrapDebuggerObjectGlobal", "devtools/server/actors/thread", true);
-loader.lazyRequireGetter(this, "mapURIToAddonID", "devtools/server/actors/utils/map-uri-to-addon-id");
 loader.lazyRequireGetter(this, "WebConsoleActor", "devtools/server/actors/webconsole", true);
 
 loader.lazyImporter(this, "AddonManager", "resource://gre/modules/AddonManager.jsm");
@@ -179,7 +178,7 @@ BrowserAddonActor.prototype = {
       });
   },
 
-  preNest: function () {
+  preNest: function() {
     let e = Services.wm.getEnumerator(null);
     while (e.hasMoreElements()) {
       let win = e.getNext();
@@ -190,7 +189,7 @@ BrowserAddonActor.prototype = {
     }
   },
 
-  postNest: function () {
+  postNest: function() {
     let e = Services.wm.getEnumerator(null);
     while (e.hasMoreElements()) {
       let win = e.getNext();
@@ -205,7 +204,7 @@ BrowserAddonActor.prototype = {
    * Return true if the given global is associated with this addon and should be
    * added as a debuggee, false otherwise.
    */
-  _shouldAddNewGlobalAsDebuggee: function (givenGlobal) {
+  _shouldAddNewGlobalAsDebuggee: function(givenGlobal) {
     const global = unwrapDebuggerObjectGlobal(givenGlobal);
     try {
       // This will fail for non-Sandbox objects, hence the try-catch block.
@@ -218,27 +217,7 @@ BrowserAddonActor.prototype = {
     }
 
     if (global instanceof Ci.nsIDOMWindow) {
-      return mapURIToAddonID(global.document.documentURIObject) == this.id;
-    }
-
-    // Check the global for a __URI__ property and then try to map that to an
-    // add-on
-    let uridescriptor = givenGlobal.getOwnPropertyDescriptor("__URI__");
-    if (uridescriptor && "value" in uridescriptor && uridescriptor.value) {
-      let uri;
-      try {
-        uri = Services.io.newURI(uridescriptor.value);
-      } catch (e) {
-        DevToolsUtils.reportException(
-          "BrowserAddonActor.prototype._shouldAddNewGlobalAsDebuggee",
-          new Error("Invalid URI: " + uridescriptor.value)
-        );
-        return false;
-      }
-
-      if (mapURIToAddonID(uri) == this.id) {
-        return true;
-      }
+      return global.document.nodePrincipal.addonId == this.id;
     }
 
     return false;
@@ -249,7 +228,7 @@ BrowserAddonActor.prototype = {
    * sure every script and source with a URL is stored when debugging
    * add-ons.
    */
-  _allowSource: function (source) {
+  _allowSource: function(source) {
     // XPIProvider.jsm evals some code in every add-on's bootstrap.js. Hide it.
     if (source.url === "resource://gre/modules/addons/XPIProvider.jsm") {
       return false;
@@ -262,7 +241,7 @@ BrowserAddonActor.prototype = {
    * Yield the current set of globals associated with this addon that should be
    * added as debuggees.
    */
-  _findDebuggees: function (dbg) {
+  _findDebuggees: function(dbg) {
     return dbg.findAllGlobals().filter(this._shouldAddNewGlobalAsDebuggee);
   }
 };

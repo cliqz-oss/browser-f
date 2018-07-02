@@ -33,13 +33,13 @@ const testCases = [
     ]
   ],
   [["localStorage", "http://test1.example.org"],
-   ["ls1", "ls2"]],
+   ["key", "ls1", "ls2"]],
   [["localStorage", "http://sectest1.example.org"],
    ["iframe-u-ls1"]],
   [["localStorage", "https://sectest1.example.org"],
    ["iframe-s-ls1"]],
   [["sessionStorage", "http://test1.example.org"],
-   ["ss1"]],
+   ["key", "ss1"]],
   [["sessionStorage", "http://sectest1.example.org"],
    ["iframe-u-ss1", "iframe-u-ss2"]],
   [["sessionStorage", "https://sectest1.example.org"],
@@ -80,14 +80,14 @@ function testTree(tests) {
   let doc = gPanelWindow.document;
   for (let [item] of tests) {
     ok(doc.querySelector("[data-id='" + JSON.stringify(item) + "']"),
-       "Tree item " + item[0] + " should be present in the storage tree");
+      `Tree item ${item.toSource()} should be present in the storage tree`);
   }
 }
 
 /**
  * Test that correct table entries are shown for each of the tree item
  */
-function* testTables(tests) {
+async function testTables(tests) {
   let doc = gPanelWindow.document;
   // Expand all nodes so that the synthesized click event actually works
   gUI.tree.expandAll();
@@ -100,7 +100,7 @@ function* testTables(tests) {
 
   // Click rest of the tree items and wait for the table to be updated
   for (let [treeItem, items] of tests.slice(1)) {
-    yield selectTreeItem(treeItem);
+    await selectTreeItem(treeItem);
 
     // Check whether correct number of items are present in the table
     is(doc.querySelectorAll(
@@ -115,11 +115,11 @@ function* testTables(tests) {
   }
 }
 
-add_task(function* () {
-  yield openTabAndSetupStorage(MAIN_DOMAIN + "storage-listings.html");
+add_task(async function() {
+  await openTabAndSetupStorage(MAIN_DOMAIN + "storage-listings.html");
 
   testTree(testCases);
-  yield testTables(testCases);
+  await testTables(testCases);
 
-  yield finishTests();
+  await finishTests();
 });

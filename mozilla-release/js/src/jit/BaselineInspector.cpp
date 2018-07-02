@@ -64,9 +64,12 @@ AddReceiver(const ReceiverGuard& receiver,
             BaselineInspector::ReceiverVector& receivers,
             BaselineInspector::ObjectGroupVector& convertUnboxedGroups)
 {
-    if (receiver.group && receiver.group->maybeUnboxedLayout()) {
-        if (receiver.group->unboxedLayout().nativeGroup())
-            return VectorAppendNoDuplicate(convertUnboxedGroups, receiver.group);
+    if (receiver.group) {
+        AutoSweepObjectGroup sweep(receiver.group);
+        if (auto* layout = receiver.group->maybeUnboxedLayout(sweep)) {
+            if (layout->nativeGroup())
+                return VectorAppendNoDuplicate(convertUnboxedGroups, receiver.group);
+        }
     }
     return VectorAppendNoDuplicate(receivers, receiver);
 }
@@ -334,11 +337,9 @@ BaselineInspector::expectedResultType(jsbytecode* pc)
             return MIRType::Double;
         return MIRType::Int32;
       case ICStub::BinaryArith_BooleanWithInt32:
-      case ICStub::UnaryArith_Int32:
       case ICStub::BinaryArith_DoubleWithInt32:
         return MIRType::Int32;
       case ICStub::BinaryArith_Double:
-      case ICStub::UnaryArith_Double:
         return MIRType::Double;
       case ICStub::BinaryArith_StringConcat:
       case ICStub::BinaryArith_StringObjectConcat:
@@ -771,6 +772,9 @@ AddCacheIRGlobalGetter(ICCacheIR_Monitored* stub, bool innerized,
     //   <holderId = LoadObject <holder>>
     //   <GuardShape holderId>
     //   CallNativeGetterResult globalId
+
+    if (innerized)
+        return false;
 
     CacheIRReader reader(stub->stubInfo());
 

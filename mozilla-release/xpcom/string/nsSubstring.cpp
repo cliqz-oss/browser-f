@@ -23,7 +23,6 @@
 #include "nsPrintfCString.h"
 #include "nsMemory.h"
 #include "prprf.h"
-#include "nsStaticAtom.h"
 #include "nsCOMPtr.h"
 
 #include "mozilla/IntegerPrintfMacros.h"
@@ -123,7 +122,7 @@ static nsStringStats gStringStats;
 void
 ReleaseData(void* aData, nsAString::DataFlags aFlags)
 {
-  if (aFlags & nsAString::DataFlags::SHARED) {
+  if (aFlags & nsAString::DataFlags::REFCOUNTED) {
     nsStringBuffer::FromData(aData)->Release();
   } else if (aFlags & nsAString::DataFlags::OWNED) {
     free(aData);
@@ -302,7 +301,7 @@ nsStringBuffer::FromString(const nsAString& aStr)
   const nsAStringAccessor* accessor =
     static_cast<const nsAStringAccessor*>(&aStr);
 
-  if (!(accessor->flags() & nsAString::DataFlags::SHARED)) {
+  if (!(accessor->flags() & nsAString::DataFlags::REFCOUNTED)) {
     return nullptr;
   }
 
@@ -315,7 +314,7 @@ nsStringBuffer::FromString(const nsACString& aStr)
   const nsACStringAccessor* accessor =
     static_cast<const nsACStringAccessor*>(&aStr);
 
-  if (!(accessor->flags() & nsACString::DataFlags::SHARED)) {
+  if (!(accessor->flags() & nsACString::DataFlags::REFCOUNTED)) {
     return nullptr;
   }
 
@@ -333,7 +332,7 @@ nsStringBuffer::ToString(uint32_t aLen, nsAString& aStr,
                         "data should be null terminated");
 
   nsAString::DataFlags flags =
-    nsAString::DataFlags::SHARED | nsAString::DataFlags::TERMINATED;
+    nsAString::DataFlags::REFCOUNTED | nsAString::DataFlags::TERMINATED;
 
   if (!aMoveOwnership) {
     AddRef();
@@ -352,7 +351,7 @@ nsStringBuffer::ToString(uint32_t aLen, nsACString& aStr,
                         "data should be null terminated");
 
   nsACString::DataFlags flags =
-    nsACString::DataFlags::SHARED | nsACString::DataFlags::TERMINATED;
+    nsACString::DataFlags::REFCOUNTED | nsACString::DataFlags::TERMINATED;
 
   if (!aMoveOwnership) {
     AddRef();

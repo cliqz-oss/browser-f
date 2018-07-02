@@ -331,6 +331,8 @@ private:
         void RecordIPFamilyPreference(uint16_t family);
         // Resets all flags to their default values
         void ResetIPFamilyPreference();
+        // True iff there is currently an established IP family preference
+        bool PreferenceKnown() const;
 
         // Return the count of pending transactions for all window ids.
         size_t PendingQLength() const;
@@ -506,7 +508,7 @@ private:
     };
     friend class nsHalfOpenSocket;
 
-    class PendingTransactionInfo : public ARefBase
+    class PendingTransactionInfo final : public ARefBase
     {
     public:
         explicit PendingTransactionInfo(nsHttpTransaction * trans)
@@ -522,7 +524,7 @@ private:
         nsWeakPtr mActiveConn;
 
     private:
-        virtual ~PendingTransactionInfo() {}
+        virtual ~PendingTransactionInfo() = default;
     };
     friend class PendingTransactionInfo;
 

@@ -15,8 +15,6 @@ import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mozilla.apache.commons.codec.binary.Base64;
 import org.mozilla.gecko.background.fxa.FxAccountUtils;
-import org.mozilla.gecko.background.testhelpers.TestRunner;
-import org.mozilla.gecko.background.testhelpers.WaitHelper;
 import org.mozilla.gecko.push.RegisterUserAgentResponse;
 import org.mozilla.gecko.push.SubscribeChannelResponse;
 import org.mozilla.gecko.push.autopush.AutopushClient;
@@ -24,6 +22,7 @@ import org.mozilla.gecko.push.autopush.AutopushClient.RequestDelegate;
 import org.mozilla.gecko.push.autopush.AutopushClientException;
 import org.mozilla.gecko.sync.Utils;
 import org.mozilla.gecko.sync.net.BaseResource;
+import org.robolectric.RobolectricTestRunner;
 
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.instanceOf;
@@ -38,7 +37,7 @@ import static org.mockito.Mockito.verify;
  * endpoint.  That's why it's a <b>live</b> test: most of its value is checking that the client
  * implementation and the upstream server implementation are corresponding correctly.
  */
-@RunWith(TestRunner.class)
+@RunWith(RobolectricTestRunner.class)
 @Ignore("Live test that requires network connection -- remove this line to run this test.")
 public class TestLiveAutopushClient {
     final String serverURL = "https://updates-autopush.stage.mozaws.net/v1/gcm/829133274407";
@@ -73,6 +72,7 @@ public class TestLiveAutopushClient {
 
     @Test
     public void testUserAgent() throws Exception {
+        @SuppressWarnings("unchecked")
         final RequestDelegate<RegisterUserAgentResponse> registerDelegate = mock(RequestDelegate.class);
         client.registerUserAgent(Utils.generateGuid(), registerDelegate);
 
@@ -82,18 +82,21 @@ public class TestLiveAutopushClient {
         Assert.assertNotNull(registerResponse.secret);
 
         // Reregistering with a new GUID should succeed.
+        @SuppressWarnings("unchecked")
         final RequestDelegate<Void> reregisterDelegate = mock(RequestDelegate.class);
         client.reregisterUserAgent(registerResponse.uaid, registerResponse.secret, Utils.generateGuid(), reregisterDelegate);
 
         Assert.assertNull(assertSuccess(reregisterDelegate, Void.class));
 
         // Unregistering should succeed.
+        @SuppressWarnings("unchecked")
         final RequestDelegate<Void> unregisterDelegate = mock(RequestDelegate.class);
         client.unregisterUserAgent(registerResponse.uaid, registerResponse.secret, unregisterDelegate);
 
         Assert.assertNull(assertSuccess(unregisterDelegate, Void.class));
 
         // Trying to unregister a second time should give a 404.
+        @SuppressWarnings("unchecked")
         final RequestDelegate<Void> reunregisterDelegate = mock(RequestDelegate.class);
         client.unregisterUserAgent(registerResponse.uaid, registerResponse.secret, reunregisterDelegate);
 
@@ -104,6 +107,7 @@ public class TestLiveAutopushClient {
 
     @Test
     public void testChannel() throws Exception {
+        @SuppressWarnings("unchecked")
         final RequestDelegate<RegisterUserAgentResponse> registerDelegate = mock(RequestDelegate.class);
         client.registerUserAgent(Utils.generateGuid(), registerDelegate);
 
@@ -113,6 +117,7 @@ public class TestLiveAutopushClient {
         Assert.assertNotNull(registerResponse.secret);
 
         // We should be able to subscribe to a channel.
+        @SuppressWarnings("unchecked")
         final RequestDelegate<SubscribeChannelResponse> subscribeDelegate = mock(RequestDelegate.class);
         client.subscribeChannel(registerResponse.uaid, registerResponse.secret, null, subscribeDelegate);
 
@@ -124,6 +129,7 @@ public class TestLiveAutopushClient {
         Assert.assertThat(subscribeResponse.endpoint, containsString("/v1/"));
 
         // And we should be able to unsubscribe.
+        @SuppressWarnings("unchecked")
         final RequestDelegate<Void> unsubscribeDelegate = mock(RequestDelegate.class);
         client.unsubscribeChannel(registerResponse.uaid, registerResponse.secret, subscribeResponse.channelID, unsubscribeDelegate);
 
@@ -131,6 +137,7 @@ public class TestLiveAutopushClient {
 
         // We should be able to create a restricted subscription by specifying
         // an ECDSA public key using the P-256 curve.
+        @SuppressWarnings("unchecked")
         final RequestDelegate<SubscribeChannelResponse> subscribeWithKeyDelegate = mock(RequestDelegate.class);
         final KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("ECDSA");
         keyPairGenerator.initialize(256);
@@ -147,12 +154,14 @@ public class TestLiveAutopushClient {
         Assert.assertThat(subscribeWithKeyResponse.endpoint, containsString("/v2/"));
 
         // And we should be able to drop the restricted subscription.
+        @SuppressWarnings("unchecked")
         final RequestDelegate<Void> unsubscribeWithKeyDelegate = mock(RequestDelegate.class);
         client.unsubscribeChannel(registerResponse.uaid, registerResponse.secret, subscribeWithKeyResponse.channelID, unsubscribeWithKeyDelegate);
 
         Assert.assertNull(assertSuccess(unsubscribeWithKeyDelegate, Void.class));
 
         // Trying to unsubscribe a second time should give a 410.
+        @SuppressWarnings("unchecked")
         final RequestDelegate<Void> reunsubscribeDelegate = mock(RequestDelegate.class);
         client.unsubscribeChannel(registerResponse.uaid, registerResponse.secret, subscribeResponse.channelID, reunsubscribeDelegate);
 
@@ -161,6 +170,7 @@ public class TestLiveAutopushClient {
         Assert.assertTrue(((AutopushClientException.AutopushClientRemoteException) reunsubscribeFailureException).isGone());
 
         // Trying to unsubscribe from a non-existent channel should give a 404.  Right now it gives a 401!
+        @SuppressWarnings("unchecked")
         final RequestDelegate<Void> badUnsubscribeDelegate = mock(RequestDelegate.class);
         client.unsubscribeChannel(registerResponse.uaid + "BAD", registerResponse.secret, subscribeResponse.channelID, badUnsubscribeDelegate);
 

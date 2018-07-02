@@ -137,36 +137,6 @@ UnlockScreenOrientation()
 }
 
 void
-AdjustSystemClock(int64_t aDeltaMilliseconds)
-{
-  Hal()->SendAdjustSystemClock(aDeltaMilliseconds);
-}
-
-void
-EnableSystemClockChangeNotifications()
-{
-  Hal()->SendEnableSystemClockChangeNotifications();
-}
-
-void
-DisableSystemClockChangeNotifications()
-{
-  Hal()->SendDisableSystemClockChangeNotifications();
-}
-
-void
-EnableSystemTimezoneChangeNotifications()
-{
-  Hal()->SendEnableSystemTimezoneChangeNotifications();
-}
-
-void
-DisableSystemTimezoneChangeNotifications()
-{
-  Hal()->SendDisableSystemTimezoneChangeNotifications();
-}
-
-void
 EnableSensorNotifications(SensorType aSensor) {
   Hal()->SendEnableSensorNotifications(aSensor);
 }
@@ -204,18 +174,6 @@ GetWakeLockInfo(const nsAString &aTopic, WakeLockInformation *aWakeLockInfo)
   Hal()->SendGetWakeLockInfo(nsString(aTopic), aWakeLockInfo);
 }
 
-void
-EnableSwitchNotifications(SwitchDevice aDevice)
-{
-  Hal()->SendEnableSwitchNotifications(aDevice);
-}
-
-void
-DisableSwitchNotifications(SwitchDevice aDevice)
-{
-  Hal()->SendDisableSwitchNotifications(aDevice);
-}
-
 bool
 EnableAlarm()
 {
@@ -247,19 +205,6 @@ SetProcessPrioritySupported()
 }
 
 void
-SetCurrentThreadPriority(ThreadPriority aThreadPriority)
-{
-  MOZ_CRASH("Setting current thread priority cannot be called from sandboxed contexts.");
-}
-
-void
-SetThreadPriority(PlatformThreadId aThreadId,
-                  ThreadPriority aThreadPriority)
-{
-  MOZ_CRASH("Setting thread priority cannot be called from sandboxed contexts.");
-}
-
-void
 StartDiskSpaceWatcher()
 {
   MOZ_CRASH("StartDiskSpaceWatcher() can't be called from sandboxed contexts.");
@@ -277,9 +222,6 @@ class HalParent : public PHalParent
                 , public ISensorObserver
                 , public WakeLockObserver
                 , public ScreenConfigurationObserver
-                , public SwitchObserver
-                , public SystemClockChangeObserver
-                , public SystemTimezoneChangeObserver
 {
 public:
   virtual void
@@ -295,12 +237,6 @@ public:
       hal::UnregisterSensorObserver(SensorType(sensor), this);
     }
     hal::UnregisterWakeLockObserver(this);
-    hal::UnregisterSystemClockChangeObserver(this);
-    hal::UnregisterSystemTimezoneChangeObserver(this);
-    for (int32_t switchDevice = SWITCH_DEVICE_UNKNOWN + 1;
-         switchDevice < NUM_SWITCH_DEVICE; ++switchDevice) {
-      hal::UnregisterSwitchObserver(SwitchDevice(switchDevice), this);
-    }
   }
 
   virtual mozilla::ipc::IPCResult
@@ -417,41 +353,6 @@ public:
   }
 
   virtual mozilla::ipc::IPCResult
-  RecvAdjustSystemClock(const int64_t &aDeltaMilliseconds) override
-  {
-    hal::AdjustSystemClock(aDeltaMilliseconds);
-    return IPC_OK();
-  }
-
-  virtual mozilla::ipc::IPCResult
-  RecvEnableSystemClockChangeNotifications() override
-  {
-    hal::RegisterSystemClockChangeObserver(this);
-    return IPC_OK();
-  }
-
-  virtual mozilla::ipc::IPCResult
-  RecvDisableSystemClockChangeNotifications() override
-  {
-    hal::UnregisterSystemClockChangeObserver(this);
-    return IPC_OK();
-  }
-
-  virtual mozilla::ipc::IPCResult
-  RecvEnableSystemTimezoneChangeNotifications() override
-  {
-    hal::RegisterSystemTimezoneChangeObserver(this);
-    return IPC_OK();
-  }
-
-  virtual mozilla::ipc::IPCResult
-  RecvDisableSystemTimezoneChangeNotifications() override
-  {
-    hal::UnregisterSystemTimezoneChangeObserver(this);
-    return IPC_OK();
-  }
-
-  virtual mozilla::ipc::IPCResult
   RecvEnableSensorNotifications(const SensorType &aSensor) override {
     // We currently allow any content to register device-sensor
     // listeners.
@@ -508,36 +409,6 @@ public:
   {
     Unused << SendNotifyWakeLockChange(aWakeLockInfo);
   }
-
-  virtual mozilla::ipc::IPCResult
-  RecvEnableSwitchNotifications(const SwitchDevice& aDevice) override
-  {
-    // Content has no reason to listen to switch events currently.
-    hal::RegisterSwitchObserver(aDevice, this);
-    return IPC_OK();
-  }
-
-  virtual mozilla::ipc::IPCResult
-  RecvDisableSwitchNotifications(const SwitchDevice& aDevice) override
-  {
-    hal::UnregisterSwitchObserver(aDevice, this);
-    return IPC_OK();
-  }
-
-  void Notify(const SwitchEvent& aSwitchEvent) override
-  {
-    Unused << SendNotifySwitchChange(aSwitchEvent);
-  }
-
-  void Notify(const int64_t& aClockDeltaMS) override
-  {
-    Unused << SendNotifySystemClockChange(aClockDeltaMS);
-  }
-
-  void Notify(const SystemTimezoneChangeInformation& aSystemTimezoneChangeInfo) override
-  {
-    Unused << SendNotifySystemTimezoneChange(aSystemTimezoneChangeInfo);
-  }
 };
 
 class HalChild : public PHalChild {
@@ -572,25 +443,6 @@ public:
   virtual mozilla::ipc::IPCResult
   RecvNotifyScreenConfigurationChange(const ScreenConfiguration& aScreenConfiguration) override {
     hal::NotifyScreenConfigurationChange(aScreenConfiguration);
-    return IPC_OK();
-  }
-
-  virtual mozilla::ipc::IPCResult
-  RecvNotifySwitchChange(const mozilla::hal::SwitchEvent& aEvent) override {
-    hal::NotifySwitchChange(aEvent);
-    return IPC_OK();
-  }
-
-  virtual mozilla::ipc::IPCResult
-  RecvNotifySystemClockChange(const int64_t& aClockDeltaMS) override {
-    hal::NotifySystemClockChange(aClockDeltaMS);
-    return IPC_OK();
-  }
-
-  virtual mozilla::ipc::IPCResult
-  RecvNotifySystemTimezoneChange(
-    const SystemTimezoneChangeInformation& aSystemTimezoneChangeInfo) override {
-    hal::NotifySystemTimezoneChange(aSystemTimezoneChangeInfo);
     return IPC_OK();
   }
 };

@@ -449,6 +449,46 @@
 #  define MOZ_FALLTHROUGH /* FALLTHROUGH */
 #endif
 
+/**
+ * C++11 lets unions contain members that have non-trivial special member
+ * functions (default/copy/move constructor, copy/move assignment operator,
+ * destructor) if the user defines the corresponding functions on the union.
+ * (Such user-defined functions must rely on external knowledge about which arm
+ * is active to be safe.  Be extra-careful defining these functions!)
+ *
+ * MSVC unfortunately warns/errors for this bog-standard C++11 pattern.  Use
+ * these macro-guards around such member functions to disable the warnings:
+ *
+ *   union U
+ *   {
+ *     std::string s;
+ *     int x;
+ *
+ *     MOZ_PUSH_DISABLE_NONTRIVIAL_UNION_WARNINGS
+ *
+ *     // |U| must have a user-defined default constructor because |std::string|
+ *     // has a non-trivial default constructor.
+ *     U() ... { ... }
+ *
+ *     // |U| must have a user-defined destructor because |std::string| has a
+ *     // non-trivial destructor.
+ *     ~U() { ... }
+ *
+ *     MOZ_POP_DISABLE_NONTRIVIAL_UNION_WARNINGS
+ *   };
+ */
+#if defined(_MSC_VER)
+#  define MOZ_PUSH_DISABLE_NONTRIVIAL_UNION_WARNINGS \
+     __pragma(warning(push)) \
+     __pragma(warning(disable:4582)) \
+     __pragma(warning(disable:4583))
+#  define MOZ_POP_DISABLE_NONTRIVIAL_UNION_WARNINGS \
+     __pragma(warning(pop))
+#else
+#  define MOZ_PUSH_DISABLE_NONTRIVIAL_UNION_WARNINGS /* nothing */
+#  define MOZ_POP_DISABLE_NONTRIVIAL_UNION_WARNINGS /* nothing */
+#endif
+
 /*
  * The following macros are attributes that support the static analysis plugin
  * included with Mozilla, and will be implemented (when such support is enabled)
@@ -507,6 +547,14 @@
  *   attribute is not limited to virtual methods, so if it is applied to a
  *   nonvirtual method and the subclass does not provide an equivalent
  *   definition, the compiler will emit an error.
+ * MOZ_STATIC_CLASS: Applies to all classes. Any class with this annotation is
+ *   expected to live in static memory, so it is a compile-time error to use
+ *   it, or an array of such objects, as the type of a variable declaration, or
+ *   as a temporary object, or as the type of a new expression (unless
+ *   placement new is being used). If a member of another class uses this
+ *   class, or if another class inherits from this class, then it is considered
+ *   to be a static class as well, although this attribute need not be provided
+ *   in such cases.
  * MOZ_STACK_CLASS: Applies to all classes. Any class with this annotation is
  *   expected to live on the stack, so it is a compile-time error to use it, or
  *   an array of such objects, as a global or static variable, or as the type of
@@ -666,6 +714,7 @@
 #  define MOZ_CAN_RUN_SCRIPT __attribute__((annotate("moz_can_run_script")))
 #  define MOZ_CAN_RUN_SCRIPT_BOUNDARY __attribute__((annotate("moz_can_run_script_boundary")))
 #  define MOZ_MUST_OVERRIDE __attribute__((annotate("moz_must_override")))
+#  define MOZ_STATIC_CLASS __attribute__((annotate("moz_global_class")))
 #  define MOZ_STACK_CLASS __attribute__((annotate("moz_stack_class")))
 #  define MOZ_NONHEAP_CLASS __attribute__((annotate("moz_nonheap_class")))
 #  define MOZ_HEAP_CLASS __attribute__((annotate("moz_heap_class")))
@@ -723,6 +772,7 @@
 #  define MOZ_CAN_RUN_SCRIPT /* nothing */
 #  define MOZ_CAN_RUN_SCRIPT_BOUNDARY /* nothing */
 #  define MOZ_MUST_OVERRIDE /* nothing */
+#  define MOZ_STATIC_CLASS /* nothing */
 #  define MOZ_STACK_CLASS /* nothing */
 #  define MOZ_NONHEAP_CLASS /* nothing */
 #  define MOZ_HEAP_CLASS /* nothing */

@@ -104,13 +104,7 @@ this.EventManager.prototype = {
       case "resize":
       {
         // the target could be an element, document or window
-        let window = null;
-        if (aEvent.target instanceof Ci.nsIDOMWindow)
-          window = aEvent.target;
-        else if (aEvent.target instanceof Ci.nsIDOMDocument)
-          window = aEvent.target.defaultView;
-        else if (aEvent.target instanceof Ci.nsIDOMElement)
-          window = aEvent.target.ownerGlobal;
+        let window = aEvent.target.ownerGlobal;
         this.present(Presentation.viewportChanged(window));
         break;
       }
@@ -562,10 +556,7 @@ this.EventManager.prototype = {
     this.present(Presentation.tabStateChanged(docAcc, "newdoc"));
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIWebProgressListener,
-                                         Ci.nsISupportsWeakReference,
-                                         Ci.nsISupports,
-                                         Ci.nsIObserver])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIWebProgressListener, Ci.nsISupportsWeakReference, Ci.nsIObserver])
 };
 
 const AccessibilityEventObserver = {

@@ -6,12 +6,11 @@
 /* global XPCNativeWrapper */
 
 ChromeUtils.import("resource://gre/modules/Log.jsm");
-ChromeUtils.import("resource://gre/modules/Preferences.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 ChromeUtils.import("chrome://marionette/content/accessibility.js");
-ChromeUtils.import("chrome://marionette/content/addon.js");
+const {Addon} = ChromeUtils.import("chrome://marionette/content/addon.js", {});
 ChromeUtils.import("chrome://marionette/content/assert.js");
 ChromeUtils.import("chrome://marionette/content/atom.js");
 const {
@@ -20,7 +19,10 @@ const {
   WindowState,
 } = ChromeUtils.import("chrome://marionette/content/browser.js", {});
 ChromeUtils.import("chrome://marionette/content/capture.js");
-ChromeUtils.import("chrome://marionette/content/cert.js");
+const {
+  CertificateOverrideManager,
+  InsecureSweepingOverride,
+} = ChromeUtils.import("chrome://marionette/content/cert.js", {});
 ChromeUtils.import("chrome://marionette/content/cookie.js");
 const {
   ChromeWebElement,
@@ -46,6 +48,7 @@ ChromeUtils.import("chrome://marionette/content/interaction.js");
 ChromeUtils.import("chrome://marionette/content/l10n.js");
 ChromeUtils.import("chrome://marionette/content/legacyaction.js");
 ChromeUtils.import("chrome://marionette/content/modal.js");
+const {MarionettePrefs} = ChromeUtils.import("chrome://marionette/content/prefs.js", {});
 ChromeUtils.import("chrome://marionette/content/proxy.js");
 ChromeUtils.import("chrome://marionette/content/reftest.js");
 ChromeUtils.import("chrome://marionette/content/session.js");
@@ -63,9 +66,6 @@ const APP_ID_FIREFOX = "{ec8030f7-c20a-464f-9b0e-13a3a9e97384}";
 const FRAME_SCRIPT = "chrome://marionette/content/listener.js";
 const XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 
-const CLICK_TO_START_PREF = "marionette.debugging.clicktostart";
-const CONTENT_LISTENER_PREF = "marionette.contentListener";
-
 const SUPPORTED_STRATEGIES = new Set([
   element.Strategy.ClassName,
   element.Strategy.Selector,
@@ -77,8 +77,7 @@ const SUPPORTED_STRATEGIES = new Set([
 ]);
 
 const logger = Log.repository.getLogger("Marionette");
-const globalMessageManager = Cc["@mozilla.org/globalmessagemanager;1"]
-    .getService(Ci.nsIMessageBroadcaster);
+const globalMessageManager = Services.mm;
 
 /**
  * The Marionette WebDriver services provides a standard conforming
@@ -270,8 +269,7 @@ Object.defineProperty(GeckoDriver.prototype, "chromeWindowHandles", {
   },
 });
 
-GeckoDriver.prototype.QueryInterface = XPCOMUtils.generateQI([
-  Ci.nsIMessageListener,
+GeckoDriver.prototype.QueryInterface = ChromeUtils.generateQI([
   Ci.nsIObserver,
   Ci.nsISupportsWeakReference,
 ]);
@@ -476,12 +474,12 @@ GeckoDriver.prototype.whenBrowserStarted = function(window, isNewSession) {
       }
     }
 
-    if (!Preferences.get(CONTENT_LISTENER_PREF) || !isNewSession) {
+    if (!MarionettePrefs.contentListener || !isNewSession) {
       // load listener into the remote frame
       // and any applicable new frames
       // opened after this call
       mm.loadFrameScript(FRAME_SCRIPT, true);
-      Preferences.set(CONTENT_LISTENER_PREF, true);
+      MarionettePrefs.contentListener = true;
     }
   } else {
     logger.error("Unable to load content frame script");
@@ -694,8 +692,8 @@ GeckoDriver.prototype.newSession = async function(cmd) {
 
     if (!this.secureTLS) {
       logger.warn("TLS certificate errors will be ignored for this session");
-      let acceptAllCerts = new cert.InsecureSweepingOverride();
-      cert.installOverride(acceptAllCerts);
+      let acceptAllCerts = new InsecureSweepingOverride();
+      CertificateOverrideManager.install(acceptAllCerts);
     }
 
     if (this.proxy.init()) {
@@ -735,15 +733,14 @@ GeckoDriver.prototype.newSession = async function(cmd) {
       };
       win.addEventListener("load", listener, true);
     } else {
-      let clickToStart = Preferences.get(CLICK_TO_START_PREF);
-      if (clickToStart) {
+      if (MarionettePrefs.clickToStart) {
         Services.prompt.alert(win, "", "Click to start execution of marionette tests");
       }
       this.startBrowser(win, true);
     }
   };
 
-  if (!Preferences.get(CONTENT_LISTENER_PREF)) {
+  if (!MarionettePrefs.contentListener) {
     waitForWindow.call(this);
   } else if (this.appId != APP_ID_FIREFOX && this.curBrowser === null) {
     // if there is a content listener, then we just wake it up
@@ -856,11 +853,6 @@ GeckoDriver.prototype.getContext = function() {
  *     Filename of the client's program where this script is evaluated.
  * @param {number=} line
  *     Line in the client's program where this script is evaluated.
- * @param {boolean=} debug_script
- *     Attach an <code>onerror</code> event handler on the {@link Window}
- *     object.  It does not differentiate content errors from chrome errors.
- * @param {boolean=} directInject
- *     Evaluate the script without wrapping it in a function.
  *
  * @return {(string|boolean|number|object|WebElement)}
  *     Return value from the script, or null which signifies either the
@@ -882,7 +874,6 @@ GeckoDriver.prototype.executeScript = async function(cmd, resp) {
     newSandbox: cmd.parameters.newSandbox,
     file: cmd.parameters.filename,
     line: cmd.parameters.line,
-    debug: cmd.parameters.debug_script,
   };
   resp.body.value = await this.execute_(script, args, opts);
 };
@@ -930,11 +921,6 @@ GeckoDriver.prototype.executeScript = async function(cmd, resp) {
  *     Filename of the client's program where this script is evaluated.
  * @param {number=} line
  *     Line in the client's program where this script is evaluated.
- * @param {boolean=} debug_script
- *     Attach an <code>onerror</code> event handler on the {@link Window}
- *     object.  It does not differentiate content errors from chrome errors.
- * @param {boolean=} directInject
- *     Evaluate the script without wrapping it in a function.
  *
  * @return {(string|boolean|number|object|WebElement)}
  *     Return value from the script, or null which signifies either the
@@ -956,7 +942,6 @@ GeckoDriver.prototype.executeAsyncScript = async function(cmd, resp) {
     newSandbox: cmd.parameters.newSandbox,
     file: cmd.parameters.filename,
     line: cmd.parameters.line,
-    debug: cmd.parameters.debug_script,
     async: true,
   };
   resp.body.value = await this.execute_(script, args, opts);
@@ -971,7 +956,6 @@ GeckoDriver.prototype.execute_ = async function(
       newSandbox = false,
       file = "",
       line = 0,
-      debug = false,
       async = false,
     } = {}) {
 
@@ -990,7 +974,6 @@ GeckoDriver.prototype.execute_ = async function(
   assert.boolean(newSandbox, pprint`Expected newSandbox to be boolean: ${newSandbox}`);
   assert.string(file, pprint`Expected file to be a string: ${file}`);
   assert.number(line, pprint`Expected line to be a number: ${line}`);
-  assert.boolean(debug, pprint`Expected debug_script to be boolean: ${debug}`);
 
   let opts = {
     timeout,
@@ -998,7 +981,6 @@ GeckoDriver.prototype.execute_ = async function(
     newSandbox,
     file,
     line,
-    debug,
     async,
   };
 
@@ -2797,7 +2779,7 @@ GeckoDriver.prototype.closeChromeWindow = async function() {
 GeckoDriver.prototype.deleteSession = function() {
   if (this.curBrowser !== null) {
     // frame scripts can be safely reused
-    Preferences.set(CONTENT_LISTENER_PREF, false);
+    MarionettePrefs.contentListener = false;
 
     globalMessageManager.broadcastAsyncMessage("Marionette:Session:Delete");
     globalMessageManager.broadcastAsyncMessage("Marionette:Deregister");
@@ -2832,7 +2814,7 @@ GeckoDriver.prototype.deleteSession = function() {
   modal.removeHandler(this.dialogHandler);
 
   this.sandboxes.clear();
-  cert.uninstallOverride();
+  CertificateOverrideManager.uninstall();
 
   this.sessionID = null;
   this.capabilities = new session.Capabilities();
@@ -3313,7 +3295,7 @@ GeckoDriver.prototype.installAddon = function(cmd) {
     throw new InvalidArgumentError();
   }
 
-  return addon.install(path, temp);
+  return Addon.install(path, temp);
 };
 
 GeckoDriver.prototype.uninstallAddon = function(cmd) {
@@ -3324,7 +3306,7 @@ GeckoDriver.prototype.uninstallAddon = function(cmd) {
     throw new InvalidArgumentError();
   }
 
-  return addon.uninstall(id);
+  return Addon.uninstall(id);
 };
 
 /** Receives all messages from content messageManager. */
@@ -3636,9 +3618,7 @@ GeckoDriver.prototype.commands = {
   "getTitle": GeckoDriver.prototype.getTitle,
   "getWindowHandle": GeckoDriver.prototype.getWindowHandle,
   "getWindowHandles": GeckoDriver.prototype.getWindowHandles,
-  "getWindowPosition": GeckoDriver.prototype.getWindowRect, // redirect for compatibility
   "getWindowRect": GeckoDriver.prototype.getWindowRect,
-  "getWindowSize": GeckoDriver.prototype.getWindowRect, // redirect for compatibility
   "goBack": GeckoDriver.prototype.goBack,
   "goForward": GeckoDriver.prototype.goForward,
   "isElementDisplayed": GeckoDriver.prototype.isElementDisplayed,
@@ -3652,9 +3632,7 @@ GeckoDriver.prototype.commands = {
   "sendKeysToDialog": GeckoDriver.prototype.sendKeysToDialog,
   "sendKeysToElement": GeckoDriver.prototype.sendKeysToElement,
   "setTimeouts": GeckoDriver.prototype.setTimeouts,
-  "setWindowPosition": GeckoDriver.prototype.setWindowRect, // redirect for compatibility
   "setWindowRect": GeckoDriver.prototype.setWindowRect,
-  "setWindowSize": GeckoDriver.prototype.setWindowRect, // redirect for compatibility
   "switchToFrame": GeckoDriver.prototype.switchToFrame,
   "switchToParentFrame": GeckoDriver.prototype.switchToParentFrame,
   "switchToShadowRoot": GeckoDriver.prototype.switchToShadowRoot,

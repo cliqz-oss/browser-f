@@ -25,13 +25,13 @@ const principal =
  * @return {Object} Wrapper object that implements IDBFactory methods, but for a devtools
  *         specific principal.
  */
-exports.createDevToolsIndexedDB = function (indexedDB) {
+exports.createDevToolsIndexedDB = function(indexedDB) {
   return Object.freeze({
     /**
      * Only the standard version of indexedDB.open is supported.
      */
     open(name, version) {
-      let options = { storage: "persistent" };
+      let options = {};
       if (typeof version === "number") {
         options.version = version;
       }
@@ -41,7 +41,7 @@ exports.createDevToolsIndexedDB = function (indexedDB) {
      * Only the standard version of indexedDB.deleteDatabase is supported.
      */
     deleteDatabase(name) {
-      return indexedDB.deleteForPrincipal(principal, name, { storage: "persistent" });
+      return indexedDB.deleteForPrincipal(principal, name);
     },
     cmp: indexedDB.cmp.bind(indexedDB),
   });

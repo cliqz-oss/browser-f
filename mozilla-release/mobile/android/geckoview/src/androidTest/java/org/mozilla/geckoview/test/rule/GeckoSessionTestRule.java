@@ -1,14 +1,22 @@
-/* Any copyright is dedicated to the Public Domain.
-   http://creativecommons.org/publicdomain/zero/1.0/ */
+/* -*- Mode: Java; c-basic-offset: 4; tab-width: 4; indent-tabs-mode: nil; -*-
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 package org.mozilla.geckoview.test.rule;
 
 import org.mozilla.gecko.gfx.GeckoDisplay;
+import org.mozilla.geckoview.BuildConfig;
+import org.mozilla.geckoview.GeckoRuntime;
+import org.mozilla.geckoview.GeckoRuntimeSettings;
 import org.mozilla.geckoview.GeckoSession;
 import org.mozilla.geckoview.GeckoSessionSettings;
+import org.mozilla.geckoview.test.rdp.RDPConnection;
+import org.mozilla.geckoview.test.rdp.Tab;
 import org.mozilla.geckoview.test.util.Callbacks;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
 
 import org.hamcrest.Matcher;
@@ -20,6 +28,8 @@ import org.junit.runners.model.Statement;
 import android.app.Instrumentation;
 import android.graphics.Point;
 import android.graphics.SurfaceTexture;
+import android.net.LocalSocketAddress;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Debug;
 import android.os.Handler;
@@ -31,6 +41,7 @@ import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.test.InstrumentationRegistry;
 import android.support.test.rule.UiThreadTestRule;
+import android.util.Log;
 import android.util.Pair;
 import android.view.MotionEvent;
 import android.view.Surface;
@@ -66,9 +77,15 @@ import kotlin.reflect.KClass;
  * callbacks are called in the proper order.
  */
 public class GeckoSessionTestRule extends UiThreadTestRule {
+    private static final String LOGTAG = "GeckoSessionTestRule";
 
     private static final long DEFAULT_TIMEOUT_MILLIS = 10000;
-    private static final long DEFAULT_DEBUG_TIMEOUT_MILLIS = 86400000;
+    private static final long DEFAULT_ARM_DEVICE_TIMEOUT_MILLIS = 30000;
+    private static final long DEFAULT_ARM_EMULATOR_TIMEOUT_MILLIS = 120000;
+    private static final long DEFAULT_X86_DEVICE_TIMEOUT_MILLIS = 30000;
+    private static final long DEFAULT_X86_EMULATOR_TIMEOUT_MILLIS = 5000;
+    private static final long DEFAULT_IDE_DEBUG_TIMEOUT_MILLIS = 86400000;
+
     public static final String APK_URI_PREFIX = "resource://android/";
 
     private static final Method sOnLocationChange;
@@ -86,8 +103,10 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
     }
 
     /**
-     * Specify the timeout for any of the wait methods, in milliseconds. Can be used
-     * on classes or methods.
+     * Specify the timeout for any of the wait methods, in milliseconds, relative to
+     * {@link #DEFAULT_TIMEOUT_MILLIS}. When the default timeout scales to account
+     * for differences in the device under test, the timeout value here will be
+     * scaled as well. Can be used on classes or methods.
      */
     @Target({ElementType.METHOD, ElementType.TYPE})
     @Retention(RetentionPolicy.RUNTIME)
@@ -111,6 +130,32 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
     @Target({ElementType.METHOD, ElementType.TYPE})
     @Retention(RetentionPolicy.RUNTIME)
     public @interface ClosedSessionAtStart {
+        boolean value() default true;
+    }
+
+    /**
+     * Specify that the test will set a delegate to null when creating a session, rather
+     * than setting the delegate to a proxy. The test cannot wait on any delegates that
+     * are set to null.
+     */
+    @Target({ElementType.METHOD, ElementType.TYPE})
+    @Retention(RetentionPolicy.RUNTIME)
+    public @interface NullDelegate {
+        Class<?> value();
+
+        @Target({ElementType.METHOD, ElementType.TYPE})
+        @Retention(RetentionPolicy.RUNTIME)
+        @interface List {
+            NullDelegate[] value();
+        }
+    }
+
+    /**
+     * Specify that the test uses DevTools-enabled APIs, such as {@link #evaluateJS}.
+     */
+    @Target({ElementType.METHOD, ElementType.TYPE})
+    @Retention(RetentionPolicy.RUNTIME)
+    public @interface WithDevToolsAPI {
         boolean value() default true;
     }
 
@@ -143,7 +188,6 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
             SCREEN_ID,
             USE_MULTIPROCESS,
             USE_PRIVATE_MODE,
-            USE_REMOTE_DEBUGGER,
             USE_TRACKING_PROTECTION;
 
             private final GeckoSessionSettings.Key<?> mKey;
@@ -172,12 +216,11 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
                         settings.setInt((GeckoSessionSettings.Key<Integer>) mKey,
                                 (Integer) GeckoSessionSettings.class.getField(value)
                                         .get(null));
-                        return;
                     } catch (final NoSuchFieldException | IllegalAccessException |
                             ClassCastException e) {
+                        settings.setInt((GeckoSessionSettings.Key<Integer>) mKey,
+                                        Integer.valueOf(value));
                     }
-                    settings.setInt((GeckoSessionSettings.Key<Integer>) mKey,
-                            Integer.valueOf(value));
                 } else if (String.class.equals(mType)) {
                     settings.setString((GeckoSessionSettings.Key<String>) mKey, value);
                 } else {
@@ -226,15 +269,16 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
     @Retention(RetentionPolicy.RUNTIME)
     public @interface AssertCalled {
         /**
-         * @return True if the method must be called,
+         * @return True if the method must be called if count != 0,
          *         or false if the method must not be called.
          */
         boolean value() default true;
 
         /**
-         * @return If called, the number of calls called, or 0 to allow any number > 0.
+         * @return The number of calls allowed. Specify -1 to allow any number > 0. Specify 0 to
+         *         assert the method is not called, even if value() is true.
          */
-        int count() default 0;
+        int count() default -1;
 
         /**
          * @return If called, the order number for each call, or 0 to allow arbitrary
@@ -242,6 +286,12 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
          *         if order's length is less than count, the last element is repeated.
          */
         int[] order() default 0;
+    }
+
+    public static class TimeoutException extends RuntimeException {
+        public TimeoutException(final String detailMessage) {
+            super(detailMessage);
+        }
     }
 
     public static class CallRequirement {
@@ -312,6 +362,11 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
             return false;
         }
 
+        @Override
+        public int hashCode() {
+            return method.hashCode();
+        }
+
         /* package */ int getOrder() {
             if (requirement == null || currentCount == 0) {
                 return 0;
@@ -325,8 +380,8 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
         }
 
         /* package */ int getCount() {
-            return (requirement == null) ? 0 :
-                   !requirement.allowed ? -1 : requirement.count;
+            return (requirement == null) ? -1 :
+                   requirement.allowed ? requirement.count : 0;
         }
 
         /* package */ void incrementCounter() {
@@ -338,12 +393,12 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
         }
 
         /* package */ boolean allowUnlimitedCalls() {
-            return getCount() == 0;
+            return getCount() == -1;
         }
 
         /* package */ boolean allowMoreCalls() {
             final int count = getCount();
-            return count == 0 || count > currentCount;
+            return count == -1 || count > currentCount;
         }
 
         /* package */ CallInfo getInfo() {
@@ -400,13 +455,26 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
             return !getEnvVar("MOZ_IN_AUTOMATION").isEmpty();
         }
 
-        public boolean isE10s() {
-            return mMainSession.getSettings().getBoolean(
-                    GeckoSessionSettings.USE_MULTIPROCESS);
+        public boolean isMultiprocess() {
+            return Boolean.valueOf(InstrumentationRegistry.getArguments()
+                                                          .getString("use_multiprocess",
+                                                                     "true"));
         }
 
         public boolean isDebugging() {
             return Debug.isDebuggerConnected();
+        }
+
+        public boolean isEmulator() {
+            return "generic".equals(Build.DEVICE) || Build.DEVICE.startsWith("generic_");
+        }
+
+        public boolean isDebugBuild() {
+            return BuildConfig.DEBUG_BUILD;
+        }
+
+        public String getCPUArch() {
+            return BuildConfig.ANDROID_CPU_ARCH;
         }
     }
 
@@ -420,6 +488,9 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
                 if (!ifce.isInstance(callback)) {
                     continue;
                 }
+                assertThat("Cannot delegate null-delegate callbacks",
+                           ifce, not(isIn(mNullDelegates)));
+
                 for (final Method method : ifce.getMethods()) {
                     final Method callbackMethod;
                     try {
@@ -506,6 +577,10 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
 
     private static final List<Class<?>> CALLBACK_CLASSES = Arrays.asList(getCallbackClasses());
 
+    private static GeckoRuntime sRuntime;
+    private static RDPConnection sRDPConnection;
+    private static long sLongestWait;
+
     public final Environment env = new Environment();
 
     protected final Instrumentation mInstrumentation =
@@ -516,6 +591,7 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
     protected ErrorCollector mErrorCollector;
     protected GeckoSession mMainSession;
     protected Object mCallbackProxy;
+    protected Set<Class<?>> mNullDelegates;
     protected List<CallRecord> mCallRecords;
     protected CallRecordHandler mCallRecordHandler;
     protected CallbackDelegates mWaitScopeDelegates;
@@ -529,9 +605,12 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
     protected Surface mDisplaySurface;
     protected GeckoDisplay mDisplay;
     protected boolean mClosedSession;
+    protected boolean mWithDevTools;
+    protected Map<GeckoSession, Tab> mRDPTabs;
 
     public GeckoSessionTestRule() {
         mDefaultSettings = new GeckoSessionSettings();
+        mDefaultSettings.setBoolean(GeckoSessionSettings.USE_MULTIPROCESS, env.isMultiprocess());
     }
 
     /**
@@ -559,27 +638,27 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
      * @param value Value to check
      * @param matcher Matcher for checking the value
      */
-    public <T> void assertThat(final String reason, final T value, final Matcher<T> matcher) {
+    public <T> void checkThat(final String reason, final T value, final Matcher<? super T> matcher) {
         if (mErrorCollector != null) {
             mErrorCollector.checkThat(reason, value, matcher);
         } else {
-            org.junit.Assert.assertThat(reason, value, matcher);
+            assertThat(reason, value, matcher);
         }
     }
 
     private void assertAllowMoreCalls(final MethodCall call) {
         final int count = call.getCount();
-        if (count != 0) {
-            assertThat(call.method.getName() + " call count should be within limit",
-                       call.getCurrentCount() + 1, lessThanOrEqualTo(Math.max(0, count)));
+        if (count != -1) {
+            checkThat(call.method.getName() + " call count should be within limit",
+                      call.getCurrentCount() + 1, lessThanOrEqualTo(count));
         }
     }
 
     private void assertOrder(final MethodCall call, final int order) {
         final int newOrder = call.getOrder();
         if (newOrder != 0) {
-            assertThat(call.method.getName() + " should be in order",
-                       newOrder, greaterThanOrEqualTo(order));
+            checkThat(call.method.getName() + " should be in order",
+                      newOrder, greaterThanOrEqualTo(order));
         }
     }
 
@@ -588,16 +667,15 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
             return;
         }
         final int count = call.getCount();
-        if (count < 0) {
-            assertThat(call.method.getName() + " should not be called",
-                       call.getCurrentCount(), equalTo(0));
-        } else if (count == 0) {
-            assertThat(call.method.getName() + " should be called",
-                       call.getCurrentCount(), greaterThan(0));
+        if (count == 0) {
+            checkThat(call.method.getName() + " should not be called",
+                      call.getCurrentCount(), equalTo(0));
+        } else if (count == -1) {
+            checkThat(call.method.getName() + " should be called",
+                      call.getCurrentCount(), greaterThan(0));
         } else {
-            assertThat(call.method.getName() +
-                       " should be called specified number of times",
-                       call.getCurrentCount(), equalTo(count));
+            checkThat(call.method.getName() + " should be called specified number of times",
+                      call.getCurrentCount(), equalTo(count));
         }
     }
 
@@ -610,6 +688,15 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
         return mMainSession;
     }
 
+    /**
+     * Get the runtime set up for the current test.
+     *
+     * @return GeckoRuntime object.
+     */
+    public @NonNull GeckoRuntime getRuntime() {
+        return sRuntime;
+    }
+
     protected static Method getCallbackSetter(final @NonNull Class<?> cls)
             throws NoSuchMethodException {
         return GeckoSession.class.getMethod("set" + cls.getSimpleName(), cls);
@@ -620,22 +707,45 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
         return GeckoSession.class.getMethod("get" + cls.getSimpleName());
     }
 
+    private void addNullDelegate(final Class<?> delegate) {
+        if (!Callbacks.class.equals(delegate.getDeclaringClass())) {
+            assertThat("Null-delegate must be valid interface class",
+                       delegate, isIn(CALLBACK_CLASSES));
+            mNullDelegates.add(delegate);
+            return;
+        }
+        for (final Class<?> ifce : delegate.getInterfaces()) {
+            addNullDelegate(ifce);
+        }
+    }
+
     protected void applyAnnotations(final Collection<Annotation> annotations,
                                     final GeckoSessionSettings settings) {
         for (final Annotation annotation : annotations) {
             if (TimeoutMillis.class.equals(annotation.annotationType())) {
-                mTimeoutMillis = Math.max(((TimeoutMillis) annotation).value(), 100);
+                // Scale timeout based on the default timeout to account for the device under test.
+                final long value = ((TimeoutMillis) annotation).value();
+                final long timeout = value * getScaledTimeoutMillis() / DEFAULT_TIMEOUT_MILLIS;
+                mTimeoutMillis = Math.max(timeout, 1000);
             } else if (Setting.class.equals(annotation.annotationType())) {
                 ((Setting) annotation).key().set(settings, ((Setting) annotation).value());
             } else if (Setting.List.class.equals(annotation.annotationType())) {
                 for (final Setting setting : ((Setting.List) annotation).value()) {
                     setting.key().set(settings, setting.value());
                 }
+            } else if (NullDelegate.class.equals(annotation.annotationType())) {
+                addNullDelegate(((NullDelegate) annotation).value());
+            } else if (NullDelegate.List.class.equals(annotation.annotationType())) {
+                for (final NullDelegate nullDelegate : ((NullDelegate.List) annotation).value()) {
+                    addNullDelegate(nullDelegate.value());
+                }
             } else if (WithDisplay.class.equals(annotation.annotationType())) {
                 final WithDisplay displaySize = (WithDisplay)annotation;
                 mDisplaySize = new Point(displaySize.width(), displaySize.height());
             } else if (ClosedSessionAtStart.class.equals(annotation.annotationType())) {
                 mClosedSession = ((ClosedSessionAtStart) annotation).value();
+            } else if (WithDevToolsAPI.class.equals(annotation.annotationType())) {
+                mWithDevTools = ((WithDevToolsAPI) annotation).value();
             }
         }
     }
@@ -651,11 +761,26 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
         return new RuntimeException(cause != null ? cause : e);
     }
 
+    private long getScaledTimeoutMillis() {
+        if ("x86".equals(env.getCPUArch())) {
+            return env.isEmulator() ? DEFAULT_X86_EMULATOR_TIMEOUT_MILLIS
+                                    : DEFAULT_X86_DEVICE_TIMEOUT_MILLIS;
+        }
+        return env.isEmulator() ? DEFAULT_ARM_EMULATOR_TIMEOUT_MILLIS
+                                : DEFAULT_ARM_DEVICE_TIMEOUT_MILLIS;
+    }
+
+    private long getDefaultTimeoutMillis() {
+        return env.isDebugging() ? DEFAULT_IDE_DEBUG_TIMEOUT_MILLIS
+                                 : getScaledTimeoutMillis();
+    }
+
     protected void prepareStatement(final Description description) throws Throwable {
         final GeckoSessionSettings settings = new GeckoSessionSettings(mDefaultSettings);
-        mTimeoutMillis = !env.isDebugging() ? DEFAULT_TIMEOUT_MILLIS
-                                            : DEFAULT_DEBUG_TIMEOUT_MILLIS;
+        mTimeoutMillis = getDefaultTimeoutMillis();
+        mNullDelegates = new HashSet<>();
         mClosedSession = false;
+        mWithDevTools = false;
 
         applyAnnotations(Arrays.asList(description.getTestClass().getAnnotations()), settings);
         applyAnnotations(description.getAnnotations(), settings);
@@ -668,6 +793,9 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
         mTestScopeDelegates = testDelegates;
         mLastWaitStart = 0;
         mLastWaitEnd = 0;
+        if (mWithDevTools) {
+            mRDPTabs = new HashMap<>();
+        }
 
         final InvocationHandler recorder = new InvocationHandler() {
             @Override
@@ -685,6 +813,8 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
                 if (!ignore) {
                     assertThat("Callbacks must be on UI thread",
                                Looper.myLooper(), equalTo(Looper.getMainLooper()));
+                    assertThat("Callback first argument must be session object",
+                               args, arrayWithSize(greaterThan(0)));
                     assertThat("Callback first argument must be session object",
                                args[0], instanceOf(GeckoSession.class));
 
@@ -713,6 +843,18 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
         mCallbackProxy = Proxy.newProxyInstance(GeckoSession.class.getClassLoader(),
                                                 classes, recorder);
 
+        if (sRuntime == null) {
+            final GeckoRuntimeSettings.Builder runtimeSettingsBuilder =
+                new GeckoRuntimeSettings.Builder();
+            runtimeSettingsBuilder.arguments(new String[] { "-purgecaches" })
+                                  .extras(InstrumentationRegistry.getArguments());
+            sRuntime = GeckoRuntime.create(
+                InstrumentationRegistry.getTargetContext(),
+                runtimeSettingsBuilder.build());
+        }
+
+        sRuntime.getSettings().setRemoteDebuggingEnabled(mWithDevTools);
+
         mMainSession = new GeckoSession(settings);
         prepareSession(mMainSession);
 
@@ -730,7 +872,7 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
 
     protected void prepareSession(final GeckoSession session) throws Throwable {
         for (final Class<?> cls : CALLBACK_CLASSES) {
-            if (cls != null) {
+            if (!mNullDelegates.contains(cls)) {
                 getCallbackSetter(cls).invoke(session, mCallbackProxy);
             }
         }
@@ -743,33 +885,48 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
      * @param session Session to open.
      */
     public void openSession(final GeckoSession session) {
-        final boolean e10s = session.getSettings().getBoolean(
-                GeckoSessionSettings.USE_MULTIPROCESS);
+        session.open(sRuntime);
+        waitForInitialLoad(session);
 
-        if (e10s) {
-            // Give any pending calls a chance to catch up.
-            loopUntilIdle(/* timeout */ 0);
+        if (mWithDevTools) {
+            if (sRDPConnection == null) {
+                final String dataDir = InstrumentationRegistry.getTargetContext()
+                                                              .getApplicationInfo().dataDir;
+                final LocalSocketAddress address = new LocalSocketAddress(
+                        dataDir + "/firefox-debugger-socket",
+                        LocalSocketAddress.Namespace.FILESYSTEM);
+                sRDPConnection = new RDPConnection(address);
+                sRDPConnection.setTimeout((int) mTimeoutMillis);
+            }
+            final Tab tab = sRDPConnection.getMostRecentTab();
+            tab.attach();
+            mRDPTabs.put(session, tab);
         }
+    }
 
-        session.open(mInstrumentation.getTargetContext());
-
-        if (!e10s) {
-            return;
-        }
-
-        // Under e10s, we receive an initial about:blank load; don't expose that to the test.
+    private void waitForInitialLoad(final GeckoSession session) {
+        // We receive an initial about:blank load; don't expose that to the test.
         // The about:blank load is bounded by onLocationChange and onPageStop calls,
         // so find the first about:blank onLocationChange, then the next onPageStop,
         // and ignore everything in-between from that session.
 
         try {
+            // We cannot detect initial page load without progress delegate.
+            assertThat("ProgressDelegate cannot be null-delegate when opening session",
+                       GeckoSession.ProgressDelegate.class, not(isIn(mNullDelegates)));
+
+            // If navigation delegate is a null-delegate, instead of looking for
+            // onLocationChange(), start with the first call that targets this session.
+            final boolean nullNavigation = mNullDelegates.contains(
+                    GeckoSession.NavigationDelegate.class);
+
             mCallRecordHandler = new CallRecordHandler() {
                 private boolean mFoundStart = false;
 
                 @Override
                 public boolean handleCall(final Method method, final Object[] args) {
-                    if (!mFoundStart && sOnLocationChange.equals(method) &&
-                            session.equals(args[0]) && "about:blank".equals(args[1])) {
+                    if (!mFoundStart && session.equals(args[0]) && (nullNavigation ||
+                            (sOnLocationChange.equals(method) && "about:blank".equals(args[1])))) {
                         mFoundStart = true;
                         return true;
                     } else if (mFoundStart && session.equals(args[0])) {
@@ -783,7 +940,7 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
             };
 
             do {
-                loopUntilIdle(mTimeoutMillis);
+                loopUntilIdle(getDefaultTimeoutMillis());
             } while (mCallRecordHandler != null);
 
         } finally {
@@ -800,6 +957,11 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
     }
 
     protected void cleanupSession(final GeckoSession session) {
+        final Tab tab = (mRDPTabs != null) ? mRDPTabs.get(session) : null;
+        if (tab != null) {
+            tab.detach();
+            mRDPTabs.remove(session);
+        }
         if (session.isOpen()) {
             session.close();
         }
@@ -823,12 +985,14 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
 
         mMainSession = null;
         mCallbackProxy = null;
+        mNullDelegates = null;
         mCallRecords = null;
         mWaitScopeDelegates = null;
         mTestScopeDelegates = null;
         mLastWaitStart = 0;
         mLastWaitEnd = 0;
         mTimeoutMillis = 0;
+        mRDPTabs = null;
     }
 
     @Override
@@ -886,7 +1050,7 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
         final Runnable timeoutRunnable = new Runnable() {
             @Override
             public void run() {
-                fail("Timed out after " + timeout + "ms");
+                throw new TimeoutException("Timed out after " + timeout + "ms");
             }
         };
         if (timeout > 0) {
@@ -895,6 +1059,7 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
             queue.addIdleHandler(idleHandler);
         }
 
+        final long startTime = SystemClock.uptimeMillis();
         try {
             while (true) {
                 final Message msg;
@@ -908,7 +1073,7 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
                     break;
                 } else if (msg.getTarget() == null) {
                     looper.quit();
-                    break;
+                    return;
                 }
                 msg.getTarget().dispatchMessage(msg);
 
@@ -916,6 +1081,12 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
                     handler.removeCallbacks(timeoutRunnable);
                     queue.addIdleHandler(idleHandler);
                 }
+            }
+
+            final long waitDuration = SystemClock.uptimeMillis() - startTime;
+            if (waitDuration > sLongestWait) {
+                sLongestWait = waitDuration;
+                Log.i(LOGTAG, "New longest wait: " + waitDuration + "ms");
             }
         } finally {
             if (timeout > 0) {
@@ -1093,7 +1264,7 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
                 }
                 final AssertCalled ac = getAssertCalled(callbackMethod, callback);
                 if (ac != null && ac.value()) {
-                    methodCalls.add(new MethodCall(session, callbackMethod,
+                    methodCalls.add(new MethodCall(session, method,
                                                    ac, /* target */ null));
                 }
             }
@@ -1115,15 +1286,33 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
         // instead of through GeckoSession directly, so that we can still record calls even with
         // custom handlers set.
         for (final Class<?> ifce : CALLBACK_CLASSES) {
+            final Object callback;
             try {
-                assertThat("Callbacks should be set through" +
-                           " GeckoSessionTestRule delegate methods",
-                           getCallbackGetter(ifce).invoke(session == null ? mMainSession
-                                                                          : session),
-                           sameInstance(mCallbackProxy));
+                callback = getCallbackGetter(ifce).invoke(session == null ? mMainSession : session);
             } catch (final NoSuchMethodException | IllegalAccessException |
-                           InvocationTargetException e) {
+                    InvocationTargetException e) {
                 throw unwrapRuntimeException(e);
+            }
+            if (mNullDelegates.contains(ifce)) {
+                // Null-delegates are initially null but are allowed to be any value.
+                continue;
+            }
+            assertThat(ifce.getSimpleName() + " callbacks should be " +
+                       "accessed through GeckoSessionTestRule delegate methods",
+                       callback, sameInstance(mCallbackProxy));
+        }
+
+        if (methodCalls.isEmpty()) {
+            // Waiting for any call on `delegate`; make sure it doesn't contain any null-delegates.
+            for (final Class<?> ifce : mNullDelegates) {
+                assertThat("Cannot wait on null-delegate callbacks",
+                           delegate, not(typeCompatibleWith(ifce)));
+            }
+        } else {
+            // Waiting for particular calls; make sure those calls aren't from a null-delegate.
+            for (final MethodCall call : methodCalls) {
+                assertThat("Cannot wait on null-delegate callbacks",
+                           call.method.getDeclaringClass(), not(isIn(mNullDelegates)));
             }
         }
 
@@ -1184,9 +1373,15 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
                                        final @NonNull Object callback) {
         final Method[] declaredMethods = callback.getClass().getDeclaredMethods();
         final List<MethodCall> methodCalls = new ArrayList<>(declaredMethods.length);
+        boolean assertingAnyCall = true;
+        Class<?> foundNullDelegate = null;
+
         for (final Class<?> ifce : CALLBACK_CLASSES) {
             if (!ifce.isInstance(callback)) {
                 continue;
+            }
+            if (mNullDelegates.contains(ifce)) {
+                foundNullDelegate = ifce;
             }
             for (final Method method : ifce.getMethods()) {
                 final Method callbackMethod;
@@ -1196,10 +1391,22 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
                 } catch (final NoSuchMethodException e) {
                     throw new RuntimeException(e);
                 }
-                methodCalls.add(new MethodCall(
+                final MethodCall call = new MethodCall(
                         session, callbackMethod, getAssertCalled(callbackMethod, callback),
-                        /* target */ null));
+                        /* target */ null);
+                methodCalls.add(call);
+
+                if (call.requirement != null) {
+                    if (foundNullDelegate == ifce) {
+                        fail("Cannot assert on null-delegate " + ifce.getSimpleName());
+                    }
+                    assertingAnyCall = false;
+                }
             }
+        }
+
+        if (assertingAnyCall && foundNullDelegate != null) {
+            fail("Cannot assert on null-delegate " + foundNullDelegate.getSimpleName());
         }
 
         int order = 0;
@@ -1213,8 +1420,8 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
             }
 
             final int i = methodCalls.indexOf(record.methodCall);
-            assertThat(record.method.getName() + " should be found",
-                       i, greaterThanOrEqualTo(0));
+            checkThat(record.method.getName() + " should be found",
+                      i, greaterThanOrEqualTo(0));
 
             final MethodCall methodCall = methodCalls.get(i);
             assertAllowMoreCalls(methodCall);
@@ -1240,14 +1447,15 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
             }
         }
 
-        assertThat("Should have called one of " +
-                   Arrays.toString(callback.getClass().getInterfaces()),
-                   calledAny, equalTo(true));
+        checkThat("Should have called one of " +
+                  Arrays.toString(callback.getClass().getInterfaces()),
+                  calledAny, equalTo(true));
     }
 
     /**
-     * Get information about the current call. Only valid during a {@link #forCallbacksDuringWait}
-     * callback.
+     * Get information about the current call. Only valid during a {@link
+     * #forCallbacksDuringWait}, {@link #delegateDuringNextWait}, or {@link
+     * #delegateUntilTestEnd} callback.
      *
      * @return Call information
      */
@@ -1259,7 +1467,7 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
     /**
      * Delegate implemented interfaces to the specified callback object for all sessions,
      * for the rest of the test.  Only GeckoSession callback interfaces are supported.
-     * Delegates for {@link #delegateUntilTestEnd} can be temporarily overridden by
+     * Delegates for {@code delegateUntilTestEnd} can be temporarily overridden by
      * delegates for {@link #delegateDuringNextWait}.
      *
      * @param callback Callback object, or null to clear all previously-set delegates.
@@ -1285,7 +1493,7 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
     /**
      * Delegate implemented interfaces to the specified callback object for all sessions,
      * during the next wait.  Only GeckoSession callback interfaces are supported.
-     * Delegates for {@link #delegateDuringNextWait} can temporarily take precedence over
+     * Delegates for {@code delegateDuringNextWait} can temporarily take precedence over
      * delegates for {@link #delegateUntilTestEnd}.
      *
      * @param callback Callback object, or null to clear all previously-set delegates.
@@ -1390,5 +1598,42 @@ public class GeckoSessionTestRule extends UiThreadTestRule {
      */
     public GeckoSession createClosedSession(final GeckoSessionSettings settings) {
         return createSession(settings, /* open */ false);
+    }
+
+    /**
+     * Return a value from the given array indexed by the current call counter. Only valid
+     * during a {@link #forCallbacksDuringWait}, {@link #delegateDuringNextWait}, or
+     * {@link #delegateUntilTestEnd} callback.
+     * <p><p>
+     * Asserts that {@code foo} is equal to {@code "bar"} during the first call and {@code
+     * "baz"} during the second call:
+     * <pre>{@code assertThat("Foo should match", foo, equalTo(forEachCall("bar",
+     * "baz")));}</pre>
+     *
+     * @param values Input array
+     * @return Value from input array indexed by the current call counter.
+     */
+    @SafeVarargs
+    public final <T> T forEachCall(T... values) {
+        assertThat("Should be in a method call", mCurrentMethodCall, notNullValue());
+        return values[Math.min(mCurrentMethodCall.getCurrentCount(), values.length) - 1];
+    }
+
+    /**
+     * Evaluate a JavaScript expression in the context of the target page and return the result.
+     * RDP must be enabled first using the {@link WithDevToolsAPI} annotation. String, number, and
+     * boolean results are converted to Java values. Undefined and null results are returned as
+     * null. Objects are returned as Map instances. Arrays are returned as Object[] instances.
+     *
+     * @param session Session containing the target page.
+     * @param js JavaScript expression.
+     * @return Result of evaluating the expression.
+     */
+    public Object evaluateJS(final @NonNull GeckoSession session, final @NonNull String js) {
+        assertThat("Must enable RDP using @WithDevToolsAPI", mRDPTabs, notNullValue());
+
+        final Tab tab = mRDPTabs.get(session);
+        assertThat("Session should have tab object", tab, notNullValue());
+        return tab.getConsole().evaluateJS(js);
     }
 }

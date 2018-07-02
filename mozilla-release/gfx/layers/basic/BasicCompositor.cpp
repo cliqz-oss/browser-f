@@ -313,7 +313,7 @@ BasicCompositor::CreateRenderTargetForWindow(const LayoutDeviceIntRect& aRect, c
     }
     rt = new BasicCompositingRenderTarget(mDrawTarget, windowRect);
     if (!aClearRect.IsEmpty()) {
-      IntRect clearRect = aRect.ToUnknownRect();
+      IntRect clearRect = aClearRect.ToUnknownRect();
       mDrawTarget->ClearRect(Rect(clearRect - rt->GetOrigin()));
     }
   }
@@ -557,15 +557,15 @@ AttemptVideoScale(TextureSourceBasic* aSource, const SourceSurface* aSourceMask,
     RefPtr<DataSourceSurface> srcSource = aSource->GetSurface(aDest)->GetDataSurface();
     DataSourceSurface::ScopedMap mapSrc(srcSource, DataSourceSurface::READ);
 
-    ssse3_scale_data((uint32_t*)mapSrc.GetData(), srcSource->GetSize().width, srcSource->GetSize().height,
-                     mapSrc.GetStride()/4,
-                     ((uint32_t*)dstData) + fillRect.X() + (dstStride / 4) * fillRect.Y(), dstRect.Width(), dstRect.Height(),
-                     dstStride / 4,
-                     offset.x, offset.y,
-                     fillRect.Width(), fillRect.Height());
+    bool success = ssse3_scale_data((uint32_t*)mapSrc.GetData(), srcSource->GetSize().width, srcSource->GetSize().height,
+                                    mapSrc.GetStride()/4,
+                                    ((uint32_t*)dstData) + fillRect.X() + (dstStride / 4) * fillRect.Y(), dstRect.Width(), dstRect.Height(),
+                                    dstStride / 4,
+                                    offset.x, offset.y,
+                                    fillRect.Width(), fillRect.Height());
 
     aDest->ReleaseBits(dstData);
-    return true;
+    return success;
   } else
 #endif // MOZILLA_SSE_HAVE_CPUID_DETECTION
     return false;
@@ -1038,13 +1038,7 @@ BasicCompositor::TryToEndRemoteDrawing(bool aForceToEnd)
   if (mRenderTarget->mDrawTarget != mDrawTarget) {
     // Note: Most platforms require us to buffer drawing to the widget surface.
     // That's why we don't draw to mDrawTarget directly.
-    RefPtr<SourceSurface> source;
-    if (mRenderTarget->mDrawTarget != mDrawTarget) {
-      source = mWidget->EndBackBufferDrawing();
-    } else {
-      source = mRenderTarget->mDrawTarget->Snapshot();
-    }
-    RefPtr<DrawTarget> dest(mTarget ? mTarget : mDrawTarget);
+    RefPtr<SourceSurface> source = mWidget->EndBackBufferDrawing();
 
     nsIntPoint offset = mTarget ? mTargetBounds.TopLeft() : nsIntPoint();
 
@@ -1053,9 +1047,9 @@ BasicCompositor::TryToEndRemoteDrawing(bool aForceToEnd)
     // pixels.
     for (auto iter = mInvalidRegion.RectIter(); !iter.Done(); iter.Next()) {
       const LayoutDeviceIntRect& r = iter.Get();
-      dest->CopySurface(source,
-                        IntRect(r.X(), r.Y(), r.Width(), r.Height()) - mRenderTarget->GetOrigin(),
-                        IntPoint(r.X(), r.Y()) - offset);
+      mDrawTarget->CopySurface(source,
+                               r.ToUnknownRect() - mRenderTarget->GetOrigin(),
+                               r.TopLeft().ToUnknownPoint() - offset);
     }
   }
 

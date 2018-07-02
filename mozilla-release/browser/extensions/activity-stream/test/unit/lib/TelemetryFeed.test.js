@@ -1,6 +1,7 @@
 /* global Services */
 import {actionCreators as ac, actionTypes as at} from "common/Actions.jsm";
 import {
+  ASRouterEventPing,
   BasePing,
   ImpressionStatsPing,
   PerfPing,
@@ -63,6 +64,9 @@ describe("TelemetryFeed", () => {
   describe("#init", () => {
     it("should add .pingCentre, a PingCentre instance", () => {
       assert.instanceOf(instance.pingCentre, PingCentre);
+    });
+    it("should add .pingCentreForASRouter, a PingCentre instance", () => {
+      assert.instanceOf(instance.pingCentreForASRouter, PingCentre);
     });
     it("should add .utEvents, a UTEventReporting instance", () => {
       assert.instanceOf(instance.utEvents, UTEventReporting);
@@ -194,6 +198,7 @@ describe("TelemetryFeed", () => {
       const session = instance.addSession(portID, "about:home");
       instance.saveSessionPerfData("foo", {
         topsites_icon_stats: {
+          "custom_screenshot": 0,
           "screenshot_with_icon": 2,
           "screenshot": 1,
           "tippytop": 2,
@@ -255,9 +260,13 @@ describe("TelemetryFeed", () => {
       assert.isFalse(instance.sessions.has("foo"));
     });
     it("should call createSessionSendEvent and sendEvent with the sesssion", () => {
+      FakePrefs.prototype.prefs[TELEMETRY_PREF] = true;
+      FakePrefs.prototype.prefs[EVENTS_TELEMETRY_PREF] = true;
+      instance = new TelemetryFeed();
+
       sandbox.stub(instance, "sendEvent");
-      sandbox.stub(instance, "sendUTEvent");
       sandbox.stub(instance, "createSessionEndEvent");
+      sandbox.stub(instance.utEvents, "sendSessionEndEvent");
       const session = instance.addSession("foo");
 
       instance.endSession("foo");
@@ -267,7 +276,7 @@ describe("TelemetryFeed", () => {
 
       let sessionEndEvent = instance.createSessionEndEvent.firstCall.returnValue;
       assert.calledWith(instance.sendEvent, sessionEndEvent);
-      assert.calledWith(instance.sendUTEvent, sessionEndEvent, instance.utEvents.sendSessionEndEvent);
+      assert.calledWith(instance.utEvents.sendSessionEndEvent, sessionEndEvent);
     });
   });
   describe("ping creators", () => {
@@ -464,6 +473,23 @@ describe("TelemetryFeed", () => {
       assert.propertyVal(ping, "tiles", tiles);
     });
   });
+  describe("#createASRouterEvent", () => {
+    it("should create a valid AS Router event", async () => {
+      const data = {
+        action: "snippet_user_event",
+        source: "SNIPPETS",
+        event: "CLICK",
+        message_id: "snippets_message_01"
+      };
+      const action = ac.ASRouterUserEvent(data);
+      const ping = await instance.createASRouterEvent(action);
+
+      assert.validate(ping, ASRouterEventPing);
+      assert.propertyVal(ping, "client_id", "n/a");
+      assert.propertyVal(ping, "source", "SNIPPETS");
+      assert.propertyVal(ping, "event", "CLICK");
+    });
+  });
   describe("#sendEvent", () => {
     it("should call PingCentre", async () => {
       FakePrefs.prototype.prefs.telemetry = true;
@@ -487,6 +513,18 @@ describe("TelemetryFeed", () => {
       await instance.sendUTEvent(event, instance.utEvents.sendUserEvent);
 
       assert.calledWith(instance.utEvents.sendUserEvent, event);
+    });
+  });
+  describe("#sendASRouterEvent", () => {
+    it("should call PingCentre for AS Router", async () => {
+      FakePrefs.prototype.prefs.telemetry = true;
+      const event = {};
+      instance = new TelemetryFeed();
+      sandbox.stub(instance.pingCentreForASRouter, "sendPing");
+
+      instance.sendASRouterEvent(event);
+
+      assert.calledWith(instance.pingCentreForASRouter.sendPing, event);
     });
   });
 
@@ -567,6 +605,13 @@ describe("TelemetryFeed", () => {
     });
     it("should call .utEvents.uninit", () => {
       const stub = sandbox.stub(instance.utEvents, "uninit");
+
+      instance.uninit();
+
+      assert.calledOnce(stub);
+    });
+    it("should call .pingCentreForASRouter.uninit", () => {
+      const stub = sandbox.stub(instance.pingCentreForASRouter, "uninit");
 
       instance.uninit();
 
@@ -679,8 +724,12 @@ describe("TelemetryFeed", () => {
       assert.calledWith(sendEvent, eventCreator.returnValue);
     });
     it("should send an event on a TELEMETRY_USER_EVENT action", () => {
+      FakePrefs.prototype.prefs[TELEMETRY_PREF] = true;
+      FakePrefs.prototype.prefs[EVENTS_TELEMETRY_PREF] = true;
+      instance = new TelemetryFeed();
+
       const sendEvent = sandbox.stub(instance, "sendEvent");
-      const sendUTEvent = sandbox.stub(instance, "sendUTEvent");
+      const utSendUserEvent = sandbox.stub(instance.utEvents, "sendUserEvent");
       const eventCreator = sandbox.stub(instance, "createUserEvent");
       const action = {type: at.TELEMETRY_USER_EVENT};
 
@@ -688,7 +737,20 @@ describe("TelemetryFeed", () => {
 
       assert.calledWith(eventCreator, action);
       assert.calledWith(sendEvent, eventCreator.returnValue);
-      assert.calledWith(sendUTEvent, eventCreator.returnValue, instance.utEvents.sendUserEvent);
+      assert.calledWith(utSendUserEvent, eventCreator.returnValue);
+    });
+    it("should call handleASRouterUserEvent on TELEMETRY_USER_EVENT action", () => {
+      FakePrefs.prototype.prefs[TELEMETRY_PREF] = true;
+      FakePrefs.prototype.prefs[EVENTS_TELEMETRY_PREF] = true;
+      instance = new TelemetryFeed();
+      instance.store = store;
+
+      const eventHandler = sandbox.spy(instance, "handleASRouterUserEvent");
+      const action = {type: at.AS_ROUTER_TELEMETRY_USER_EVENT, data: {event: "CLICK"}};
+
+      instance.onAction(action);
+
+      assert.calledWith(eventHandler, action);
     });
     it("should send an event on a TELEMETRY_PERFORMANCE_EVENT action", () => {
       const sendEvent = sandbox.stub(instance, "sendEvent");

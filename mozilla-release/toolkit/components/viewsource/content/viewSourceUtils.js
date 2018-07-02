@@ -74,7 +74,7 @@ var gViewSourceUtils = {
         utils.viewSourceInBrowser(aArgs);
       }, { once: true });
     });
-    window.top.openUILinkIn("about:blank", "current");
+    window.top.openWebLinkIn("about:blank", "current");
   },
 
   /**
@@ -270,13 +270,8 @@ var gViewSourceUtils = {
 
     mnsIWebProgressListener: Ci.nsIWebProgressListener,
 
-    QueryInterface(aIID) {
-     if (aIID.equals(this.mnsIWebProgressListener) ||
-         aIID.equals(Ci.nsISupportsWeakReference) ||
-         aIID.equals(Ci.nsISupports))
-       return this;
-     throw Cr.NS_NOINTERFACE;
-    },
+    QueryInterface: ChromeUtils.generateQI(["nsIWebProgressListener",
+                                            "nsISupportsWeakReference"]),
 
     destroy() {
       if (this.webShell) {

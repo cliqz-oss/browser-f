@@ -136,7 +136,7 @@ const EXPECTED_REQUESTS = [
   },
 ];
 
-add_task(async function () {
+add_task(async function() {
   let { monitor } = await initNetMonitor(FILTERING_URL);
   let { document, store, windowRequire } = monitor.panelWin;
   let Actions = windowRequire("devtools/client/netmonitor/src/actions/index");
@@ -257,6 +257,9 @@ add_task(async function () {
   setFreetextFilter("size:34");
   await testContents([0, 0, 1, 1, 0, 0, 0, 0, 0, 0]);
 
+  setFreetextFilter("size:0kb");
+  await testContents([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+
   // Testing the lower bound
   setFreetextFilter("size:9.659k");
   await testContents([0, 0, 0, 0, 0, 0, 0, 0, 1, 0]);
@@ -279,6 +282,9 @@ add_task(async function () {
   setFreetextFilter("transferred:248");
   await testContents([0, 0, 1, 1, 0, 0, 0, 0, 0, 1]);
 
+  setFreetextFilter("transferred:0kb");
+  await testContents([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+
   // Test larger-than
   setFreetextFilter("larger-than:-1");
   await testContents([1, 1, 1, 1, 1, 1, 1, 1, 1, 1]);
@@ -298,6 +304,9 @@ add_task(async function () {
   setFreetextFilter("larger-than:10.732k");
   await testContents([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
 
+  setFreetextFilter("larger-than:0kb");
+  await testContents([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+
   // Test transferred-larger-than
   setFreetextFilter("transferred-larger-than:-1");
   await testContents([1, 1, 1, 1, 1, 1, 1, 1, 1, 1]);
@@ -312,6 +321,9 @@ add_task(async function () {
   await testContents([0, 1, 0, 1, 0, 0, 0, 0, 1, 0]);
 
   setFreetextFilter("transferred-larger-than:10.73k");
+  await testContents([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+
+  setFreetextFilter("transferred-larger-than:0kb");
   await testContents([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
 
   // Test cause
@@ -392,7 +404,7 @@ add_task(async function () {
     let requestItems = document.querySelectorAll(".request-list-item");
     for (let requestItem of requestItems) {
       requestItem.scrollIntoView();
-      let requestsListStatus = requestItem.querySelector(".requests-list-status");
+      let requestsListStatus = requestItem.querySelector(".status-code");
       EventUtils.sendMouseEvent({ type: "mouseover" }, requestsListStatus);
       await waitUntil(() => requestsListStatus.title);
     }

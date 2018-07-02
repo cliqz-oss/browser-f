@@ -103,8 +103,6 @@ var interfaceNamesInGlobalScope =
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "Directory",
 // IMPORTANT: Do not change this list without review from a DOM peer!
-    "DOMCursor",
-// IMPORTANT: Do not change this list without review from a DOM peer!
     "DOMError",
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "DOMException",
@@ -130,8 +128,6 @@ var interfaceNamesInGlobalScope =
     "FileList",
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "FileReader",
-// IMPORTANT: Do not change this list without review from a DOM peer!
-    "FileReaderSync",
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "FormData",
 // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -190,6 +186,8 @@ var interfaceNamesInGlobalScope =
     "PerformanceObserverEntryList",
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "PerformanceResourceTiming",
+// IMPORTANT: Do not change this list without review from a DOM peer!
+    "PerformanceServerTiming",
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "ProgressEvent",
 // IMPORTANT: Do not change this list without review from a DOM peer!

@@ -13,78 +13,26 @@ namespace mozilla {
 namespace layers {
 
 class APZCTreeManager;
+class APZUpdater;
 
 class APZCTreeManagerParent
     : public PAPZCTreeManagerParent
 {
 public:
 
-  explicit APZCTreeManagerParent(uint64_t aLayersId, RefPtr<APZCTreeManager> aAPZCTreeManager);
+  APZCTreeManagerParent(LayersId aLayersId,
+                        RefPtr<APZCTreeManager> aAPZCTreeManager,
+                        RefPtr<APZUpdater> mAPZUpdater);
   virtual ~APZCTreeManagerParent();
 
-  uint64_t LayersId() const { return mLayersId; }
+  LayersId GetLayersId() const { return mLayersId; }
 
   /**
    * Called when the layer tree that this protocol is connected to
    * is adopted by another compositor, and we need to switch APZCTreeManagers.
    */
-  void ChildAdopted(RefPtr<APZCTreeManager> aAPZCTreeManager);
-
-  mozilla::ipc::IPCResult
-  RecvReceiveMultiTouchInputEvent(
-          const MultiTouchInput& aEvent,
-          nsEventStatus* aOutStatus,
-          MultiTouchInput* aOutEvent,
-          ScrollableLayerGuid* aOutTargetGuid,
-          uint64_t* aOutInputBlockId) override;
-
-  mozilla::ipc::IPCResult
-  RecvReceiveMouseInputEvent(
-          const MouseInput& aEvent,
-          nsEventStatus* aOutStatus,
-          MouseInput* aOutEvent,
-          ScrollableLayerGuid* aOutTargetGuid,
-          uint64_t* aOutInputBlockId) override;
-
-  mozilla::ipc::IPCResult
-  RecvReceivePanGestureInputEvent(
-          const PanGestureInput& aEvent,
-          nsEventStatus* aOutStatus,
-          PanGestureInput* aOutEvent,
-          ScrollableLayerGuid* aOutTargetGuid,
-          uint64_t* aOutInputBlockId) override;
-
-  mozilla::ipc::IPCResult
-  RecvReceivePinchGestureInputEvent(
-          const PinchGestureInput& aEvent,
-          nsEventStatus* aOutStatus,
-          PinchGestureInput* aOutEvent,
-          ScrollableLayerGuid* aOutTargetGuid,
-          uint64_t* aOutInputBlockId) override;
-
-  mozilla::ipc::IPCResult
-  RecvReceiveTapGestureInputEvent(
-          const TapGestureInput& aEvent,
-          nsEventStatus* aOutStatus,
-          TapGestureInput* aOutEvent,
-          ScrollableLayerGuid* aOutTargetGuid,
-          uint64_t* aOutInputBlockId) override;
-
-  mozilla::ipc::IPCResult
-  RecvReceiveScrollWheelInputEvent(
-          const ScrollWheelInput& aEvent,
-          nsEventStatus* aOutStatus,
-          ScrollWheelInput* aOutEvent,
-          ScrollableLayerGuid* aOutTargetGuid,
-          uint64_t* aOutInputBlockId) override;
-
-  mozilla::ipc::IPCResult
-  RecvReceiveKeyboardInputEvent(
-          const KeyboardInput& aEvent,
-          nsEventStatus* aOutStatus,
-          KeyboardInput* aOutEvent,
-          ScrollableLayerGuid* aOutTargetGuid,
-          uint64_t* aOutInputBlockId) override;
+  void ChildAdopted(RefPtr<APZCTreeManager> aAPZCTreeManager,
+                    RefPtr<APZUpdater> aAPZUpdater);
 
   mozilla::ipc::IPCResult
   RecvSetKeyboardMap(const KeyboardMap& aKeyboardMap) override;
@@ -134,29 +82,13 @@ public:
   mozilla::ipc::IPCResult
   RecvSetLongTapEnabled(const bool& aTapGestureEnabled) override;
 
-  mozilla::ipc::IPCResult
-  RecvProcessTouchVelocity(
-          const uint32_t& aTimestampMs,
-          const float& aSpeedY) override;
-
-  mozilla::ipc::IPCResult
-  RecvUpdateWheelTransaction(
-          const LayoutDeviceIntPoint& aRefPoint,
-          const EventMessage& aEventMessage) override;
-
-  mozilla::ipc::IPCResult
-  RecvProcessUnhandledEvent(
-          const LayoutDeviceIntPoint& aRefPoint,
-          LayoutDeviceIntPoint* aOutRefPoint,
-          ScrollableLayerGuid*  aOutTargetGuid,
-          uint64_t*             aOutFocusSequenceNumber) override;
-
   void
   ActorDestroy(ActorDestroyReason aWhy) override { }
 
 private:
-  uint64_t mLayersId;
+  LayersId mLayersId;
   RefPtr<APZCTreeManager> mTreeManager;
+  RefPtr<APZUpdater> mUpdater;
 };
 
 } // namespace layers

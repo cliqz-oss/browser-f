@@ -12,6 +12,9 @@ ChromeUtils.import("resource://gre/modules/AddonManager.jsm");
 /* globals AddonManagerPrivate*/
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 
+ChromeUtils.defineModuleGetter(this, "Blocklist",
+                               "resource://gre/modules/Blocklist.jsm");
+
 const URI_EXTENSION_STRINGS  = "chrome://mozapps/locale/extensions/extensions.properties";
 const LIST_UPDATED_TOPIC     = "plugins-list-updated";
 const FLASH_MIME_TYPE        = "application/x-shockwave-flash";
@@ -46,29 +49,28 @@ var PluginProvider = {
     Services.obs.removeObserver(this, LIST_UPDATED_TOPIC);
   },
 
-  observe(aSubject, aTopic, aData) {
+  async observe(aSubject, aTopic, aData) {
     switch (aTopic) {
     case AddonManager.OPTIONS_NOTIFICATION_DISPLAYED:
-      this.getAddonByID(aData, function(plugin) {
-        if (!plugin)
-          return;
+      let plugin = await this.getAddonByID(aData);
+      if (!plugin)
+        return;
 
-        let document = aSubject.getElementById("addon-options").contentDocument;
+      let document = aSubject.getElementById("addon-options").contentDocument;
 
-        let libLabel = document.getElementById("pluginLibraries");
-        libLabel.textContent = plugin.pluginLibraries.join(", ");
+      let libLabel = document.getElementById("pluginLibraries");
+      libLabel.textContent = plugin.pluginLibraries.join(", ");
 
-        let typeLabel = document.getElementById("pluginMimeTypes"), types = [];
-        for (let type of plugin.pluginMimeTypes) {
-          let extras = [type.description.trim(), type.suffixes].
-                       filter(x => x).join(": ");
-          types.push(type.type + (extras ? " (" + extras + ")" : ""));
-        }
-        typeLabel.textContent = types.join(",\n");
-        let showProtectedModePref = canDisableFlashProtectedMode(plugin);
-        document.getElementById("pluginEnableProtectedMode")
-          .setAttribute("collapsed", showProtectedModePref ? "" : "true");
-      });
+      let typeLabel = document.getElementById("pluginMimeTypes"), types = [];
+      for (let type of plugin.pluginMimeTypes) {
+        let extras = [type.description.trim(), type.suffixes].
+                     filter(x => x).join(": ");
+        types.push(type.type + (extras ? " (" + extras + ")" : ""));
+      }
+      typeLabel.textContent = types.join(",\n");
+      let showProtectedModePref = canDisableFlashProtectedMode(plugin);
+      document.getElementById("pluginEnableProtectedMode")
+        .setAttribute("collapsed", showProtectedModePref ? "" : "true");
       break;
     case LIST_UPDATED_TOPIC:
       if (this.plugins)
@@ -92,17 +94,14 @@ var PluginProvider = {
    *
    * @param  aId
    *         The ID of the add-on to retrieve
-   * @param  aCallback
-   *         A callback to pass the Addon to
    */
-  getAddonByID(aId, aCallback) {
+  async getAddonByID(aId) {
     if (!this.plugins)
       this.buildPluginList();
 
     if (aId in this.plugins)
-      aCallback(this.buildWrapper(this.plugins[aId]));
-    else
-      aCallback(null);
+      return this.buildWrapper(this.plugins[aId]);
+    return null;
   },
 
   /**
@@ -110,24 +109,17 @@ var PluginProvider = {
    *
    * @param  aTypes
    *         An array of types to fetch. Can be null to get all types.
-   * @param  callback
-   *         A callback to pass an array of Addons to
    */
-  getAddonsByTypes(aTypes, aCallback) {
+  async getAddonsByTypes(aTypes) {
     if (aTypes && !aTypes.includes("plugin")) {
-      aCallback([]);
-      return;
+      return [];
     }
 
     if (!this.plugins)
       this.buildPluginList();
 
-    let results = [];
-
-    for (let id in this.plugins)
-      this.getAddonByID(id, (addon) => results.push(addon));
-
-    aCallback(results);
+    return Promise.all(Object.keys(this.plugins).map(
+      id => this.getAddonByID(id)));
   },
 
   /**
@@ -135,11 +127,9 @@ var PluginProvider = {
    *
    * @param  aTypes
    *         An array of types to fetch. Can be null to get all types
-   * @param  aCallback
-   *         A callback to pass an array of Addons to
    */
-  getAddonsWithOperationsByTypes(aTypes, aCallback) {
-    aCallback([]);
+  async getAddonsWithOperationsByTypes(aTypes) {
+    return [];
   },
 
   /**
@@ -147,11 +137,9 @@ var PluginProvider = {
    *
    * @param  aTypes
    *         An array of types or null to get all types
-   * @param  aCallback
-   *         A callback to pass the array of AddonInstalls to
    */
-  getInstallsByTypes(aTypes, aCallback) {
-    aCallback([]);
+  getInstallsByTypes(aTypes) {
+    return [];
   },
 
   /**
@@ -380,9 +368,9 @@ PluginWrapper.prototype = {
     return tag.blocklistState;
   },
 
-  get blocklistURL() {
+  async getBlocklistURL() {
     let { tags: [tag] } = pluginFor(this);
-    return Services.blocklist.getPluginBlocklistURL(tag);
+    return Blocklist.getPluginBlockURL(tag);
   },
 
   get size() {

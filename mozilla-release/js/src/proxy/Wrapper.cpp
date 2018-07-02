@@ -35,7 +35,7 @@ Wrapper::finalizeInBackground(const Value& priv) const
     JSObject* wrapped = MaybeForwarded(&priv.toObject());
     gc::AllocKind wrappedKind;
     if (IsInsideNursery(wrapped)) {
-        JSRuntime *rt = wrapped->runtimeFromActiveCooperatingThread();
+        JSRuntime* rt = wrapped->runtimeFromMainThread();
         wrappedKind = wrapped->allocKindForTenure(rt->gc.nursery());
     } else {
         wrappedKind = wrapped->asTenured().getAllocKind();
@@ -429,7 +429,7 @@ js::ReportAccessDenied(JSContext* cx)
 const char Wrapper::family = 0;
 const Wrapper Wrapper::singleton((unsigned)0);
 const Wrapper Wrapper::singletonWithPrototype((unsigned)0, true);
-JSObject* Wrapper::defaultProto = TaggedProto::LazyProto;
+JSObject* const Wrapper::defaultProto = TaggedProto::LazyProto;
 
 /* Compartments. */
 

@@ -1,0 +1,174 @@
+<!DOCTYPE HTML>
+<html>
+<!--
+Test the payment-dialog custom element
+-->
+<head>
+  <meta charset="utf-8">
+  <title>Test the payment-dialog element</title>
+  <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script type="application/javascript" src="/tests/SimpleTest/AddTask.js"></script>
+  <script src="sinon-2.3.2.js"></script>
+  <script src="payments_common.js"></script>
+  <script src="../../res/vendor/custom-elements.min.js"></script>
+  <script src="../../res/unprivileged-fallbacks.js"></script>
+
+  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
+  <link rel="stylesheet" type="text/css" href="../../res/paymentRequest.css"/>
+</head>
+<body>
+  <p id="display">
+    <iframe id="templateFrame" src="../../res/paymentRequest.xhtml" width="0" height="0"></iframe>
+  </p>
+<div id="content" style="display: none">
+
+</div>
+<pre id="test">
+</pre>
+<script type="module">
+/** Test the payment-dialog element **/
+
+/* global sinon */
+/* import-globals-from payments_common.js */
+
+import PaymentDialog from "../../res/containers/payment-dialog.js";
+
+let el1;
+
+let completionStates = [
+    ["processing", "Processing"],
+    ["success", "Done"],
+    ["fail", "Fail"],
+    ["unknown", "Unknown"],
+];
+
+/* test that:
+  the view-all-items button exists
+  that clicking it changes the state on the store
+  that clicking it causes render to be called
+
+  that order details element's hidden state matches the state on the store
+*/
+
+add_task(async function setup_once() {
+  let templateFrame = document.getElementById("templateFrame");
+  await SimpleTest.promiseFocus(templateFrame.contentWindow);
+
+  let displayEl = document.getElementById("display");
+  // Import the templates from the real shipping dialog to avoid duplication.
+  for (let template of templateFrame.contentDocument.querySelectorAll("template")) {
+    let imported = document.importNode(template, true);
+    displayEl.appendChild(imported);
+  }
+
+  el1 = new PaymentDialog();
+  displayEl.appendChild(el1);
+
+  sinon.spy(el1, "render");
+  sinon.spy(el1, "stateChangeCallback");
+});
+
+async function setup() {
+  await el1.requestStore.setState({
+    changesPrevented: false,
+    completionState: "initial",
+    orderDetailsShowing: false,
+  });
+
+  el1.render.reset();
+  el1.stateChangeCallback.reset();
+}
+
+add_task(async function test_initialState() {
+  await setup();
+  let initialState = el1.requestStore.getState();
+  let elDetails = el1._orderDetailsOverlay;
+
+  is(initialState.orderDetailsShowing, false, "orderDetailsShowing is initially false");
+  ok(elDetails.hasAttribute("hidden"), "Check details are hidden");
+  is(initialState.page.id, "payment-summary", "Check initial page");
+});
+
+add_task(async function test_viewAllButton() {
+  await setup();
+
+  let elDetails = el1._orderDetailsOverlay;
+  let button = el1._viewAllButton;
+
+  button.click();
+  await asyncElementRendered();
+
+  ok(el1.stateChangeCallback.calledOnce, "stateChangeCallback called once");
+  ok(el1.render.calledOnce, "render called once");
+
+  let state = el1.requestStore.getState();
+  is(state.orderDetailsShowing, true, "orderDetailsShowing becomes true");
+  ok(!elDetails.hasAttribute("hidden"), "Check details aren't hidden");
+});
+
+add_task(async function test_changesPrevented() {
+  await setup();
+  let state = el1.requestStore.getState();
+  is(state.changesPrevented, false, "changesPrevented is initially false");
+  let disabledOverlay = document.getElementById("disabled-overlay");
+  ok(disabledOverlay.hidden, "Overlay should initially be hidden");
+  await el1.requestStore.setState({changesPrevented: true});
+  await asyncElementRendered();
+  ok(!disabledOverlay.hidden, "Overlay should prevent changes");
+});
+
+add_task(async function test_completionState() {
+  await setup();
+  let state = el1.requestStore.getState();
+  is(state.completionState, "initial", "completionState is initially initial");
+  let payButton = document.getElementById("pay");
+  is(payButton.textContent, "Pay", "Check default label");
+  ok(!payButton.disabled, "Button is enabled");
+  for (let [completionState, label] of completionStates) {
+    await el1.requestStore.setState({completionState});
+    await asyncElementRendered();
+    is(payButton.textContent, label, "Check payButton label");
+    ok(!payButton.disabled, "Button is still enabled");
+  }
+});
+
+add_task(async function test_completionStateChangesPrevented() {
+  await setup();
+  let state = el1.requestStore.getState();
+  is(state.completionState, "initial", "completionState is initially initial");
+  is(state.changesPrevented, false, "changesPrevented is initially false");
+  let payButton = document.getElementById("pay");
+  is(payButton.textContent, "Pay", "Check default label");
+  ok(!payButton.disabled, "Button is enabled");
+
+  for (let [completionState, label] of completionStates) {
+    await el1.requestStore.setState({
+      changesPrevented: true,
+      completionState,
+    });
+    await asyncElementRendered();
+    is(payButton.textContent, label, "Check payButton label");
+    ok(payButton.disabled, "Button is disabled");
+    let rect = payButton.getBoundingClientRect();
+    let visibleElement =
+      document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+    ok(payButton === visibleElement, "Pay button is on top of the overlay");
+  }
+});
+
+add_task(async function test_disconnect() {
+  await setup();
+
+  el1.remove();
+  await el1.requestStore.setState({orderDetailsShowing: true});
+  await asyncElementRendered();
+  ok(el1.stateChangeCallback.notCalled, "stateChangeCallback not called");
+  ok(el1.render.notCalled, "render not called");
+
+  let elDetails = el1._orderDetailsOverlay;
+  ok(elDetails.hasAttribute("hidden"), "details overlay remains hidden");
+});
+</script>
+
+</body>
+</html>

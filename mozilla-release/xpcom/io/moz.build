@@ -83,6 +83,7 @@ EXPORTS += [
 
 EXPORTS.mozilla += [
     'Base64.h',
+    'FilePreferences.h',
     'NonBlockingAsyncInputStream.h',
     'SlicedInputStream.h',
     'SnappyCompressOutputStream.h',
@@ -94,11 +95,11 @@ UNIFIED_SOURCES += [
     'Base64.cpp',
     'crc32c.c',
     'FileDescriptorFile.cpp',
+    'FilePreferences.cpp',
     'NonBlockingAsyncInputStream.cpp',
     'nsAnonymousTemporaryFile.cpp',
     'nsAppFileLocationProvider.cpp',
     'nsBinaryStream.cpp',
-    'nsDirectoryService.cpp',
     'nsEscape.cpp',
     'nsInputStreamTee.cpp',
     'nsIOUtil.cpp',
@@ -121,6 +122,13 @@ UNIFIED_SOURCES += [
     'SnappyUncompressInputStream.cpp',
     'SpecialSystemDirectory.cpp',
 ]
+
+SOURCES += [
+    'nsDirectoryService.cpp',
+]
+if CONFIG['CC_TYPE'] == 'msvc':
+    # Needed for gDirectoryAtoms.
+    SOURCES['nsDirectoryService.cpp'].flags += ['-Zc:externConstexpr']
 
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
     SOURCES += [

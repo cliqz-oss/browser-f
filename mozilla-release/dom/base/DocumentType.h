@@ -5,17 +5,17 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /*
- * Implementation of DOM Core's nsIDOMDocumentType node.
+ * Implementation of DOM Core's DocumentType node.
  */
 
 #ifndef DocumentType_h
 #define DocumentType_h
 
 #include "mozilla/Attributes.h"
+#include "mozilla/dom/CharacterData.h"
 #include "nsCOMPtr.h"
-#include "nsIDOMDocumentType.h"
+#include "nsIDOMNode.h"
 #include "nsIContent.h"
-#include "nsGenericDOMDataNode.h"
 #include "nsString.h"
 
 namespace mozilla {
@@ -26,17 +26,8 @@ namespace dom {
 // data. This is done simply for convenience and should be changed if
 // this restricts what should be done for character data.
 
-class DocumentTypeForward : public nsGenericDOMDataNode,
-                            public nsIDOMDocumentType
-{
-public:
-  explicit DocumentTypeForward(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo)
-    : nsGenericDOMDataNode(aNodeInfo)
-  {
-  }
-};
-
-class DocumentType final : public DocumentTypeForward
+class DocumentType final : public CharacterData,
+                           public nsIDOMNode
 {
 public:
   DocumentType(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo,
@@ -49,9 +40,6 @@ public:
 
   // nsIDOMNode
   // Forwarded by base class
-
-  // nsIDOMDocumentType
-  NS_DECL_NSIDOMDOCUMENTTYPE
 
   // nsINode
   virtual bool IsNodeOfType(uint32_t aFlags) const override;
@@ -67,10 +55,17 @@ public:
   // nsIContent overrides
   virtual const nsTextFragment* GetText() override;
 
-  virtual nsGenericDOMDataNode* CloneDataNode(mozilla::dom::NodeInfo *aNodeInfo,
-                                              bool aCloneText) const override;
+  virtual already_AddRefed<CharacterData>
+    CloneDataNode(mozilla::dom::NodeInfo *aNodeInfo,
+                  bool aCloneText) const override;
 
   virtual nsIDOMNode* AsDOMNode() override { return this; }
+
+  // WebIDL API
+  void GetName(nsAString& aName) const;
+  void GetPublicId(nsAString& aPublicId) const;
+  void GetSystemId(nsAString& aSystemId) const;
+  void GetInternalSubset(nsAString& aInternalSubset) const;
 
 protected:
   virtual ~DocumentType();
@@ -87,15 +82,6 @@ protected:
 
 already_AddRefed<mozilla::dom::DocumentType>
 NS_NewDOMDocumentType(nsNodeInfoManager* aNodeInfoManager,
-                      nsAtom *aName,
-                      const nsAString& aPublicId,
-                      const nsAString& aSystemId,
-                      const nsAString& aInternalSubset,
-                      mozilla::ErrorResult& rv);
-
-nsresult
-NS_NewDOMDocumentType(nsIDOMDocumentType** aDocType,
-                      nsNodeInfoManager* aNodeInfoManager,
                       nsAtom *aName,
                       const nsAString& aPublicId,
                       const nsAString& aSystemId,

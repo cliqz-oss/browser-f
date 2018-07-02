@@ -34,7 +34,8 @@ void CSP_LogLocalizedStr(const char* aName,
                          uint32_t aColumnNumber,
                          uint32_t aFlags,
                          const char* aCategory,
-                         uint64_t aInnerWindowID);
+                         uint64_t aInnerWindowID,
+                         bool aFromPrivateWindow);
 
 void CSP_GetLocalizedStr(const char* aName,
                          const char16_t** aParams,
@@ -50,7 +51,8 @@ void CSP_LogMessage(const nsAString& aMessage,
                     uint32_t aColumnNumber,
                     uint32_t aFlags,
                     const char* aCategory,
-                    uint64_t aInnerWindowID);
+                    uint64_t aInnerWindowID,
+                    bool aFromPrivateWindow);
 
 
 /* =============== Constant and Type Definitions ================== */
@@ -209,6 +211,7 @@ nsresult CSP_AppendCSPFromHeader(nsIContentSecurityPolicy* aCsp,
 class nsCSPHostSrc;
 
 nsCSPHostSrc* CSP_CreateHostSrcFromSelfURI(nsIURI* aSelfURI);
+bool CSP_IsEmptyDirective(const nsAString& aValue, const nsAString& aDir);
 bool CSP_IsValidDirective(const nsAString& aDir);
 bool CSP_IsDirective(const nsAString& aValue, CSPDirective aDir);
 bool CSP_IsKeyword(const nsAString& aValue, enum CSPKeyword aKey);

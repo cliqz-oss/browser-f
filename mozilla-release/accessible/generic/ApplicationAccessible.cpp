@@ -122,6 +122,12 @@ ApplicationAccessible::Bounds() const
   return nsIntRect();
 }
 
+nsRect
+ApplicationAccessible::BoundsInAppUnits() const
+{
+  return nsRect();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Accessible public methods
 

@@ -8,7 +8,7 @@
  * for raw payloads with content-type headers attached to the upload stream.
  */
 
-add_task(async function () {
+add_task(async function() {
   let { L10N } = require("devtools/client/netmonitor/src/utils/l10n");
 
   let { tab, monitor } = await initNetMonitor(POST_RAW_WITH_HEADERS_URL);
@@ -19,16 +19,12 @@ add_task(async function () {
 
   store.dispatch(Actions.batchEnable(false));
 
-  let wait = waitForNetworkEvents(monitor, 1);
-  await ContentTask.spawn(tab.linkedBrowser, {}, async function () {
-    content.wrappedJSObject.performRequests();
-  });
-  await wait;
+  // Execute requests.
+  await performRequests(monitor, tab, 1);
 
   // Wait for all tree view updated by react
   wait = waitForDOM(document, "#headers-panel .tree-section .treeLabel", 3);
-  EventUtils.sendMouseEvent({ type: "click" },
-    document.querySelector(".network-details-panel-toggle"));
+  store.dispatch(Actions.toggleNetworkDetails());
   EventUtils.sendMouseEvent({ type: "click" },
     document.querySelector("#headers-tab"));
   await wait;

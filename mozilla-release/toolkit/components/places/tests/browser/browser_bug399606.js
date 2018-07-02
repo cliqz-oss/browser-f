@@ -33,7 +33,7 @@ add_task(async function() {
     onClearHistory() {},
     onPageChanged() {},
     onDeleteVisits() {},
-    QueryInterface: XPCOMUtils.generateQI([Ci.nsINavHistoryObserver])
+    QueryInterface: ChromeUtils.generateQI([Ci.nsINavHistoryObserver])
   };
 
   async function promiseLoadedThreeTimes(uri) {
@@ -46,7 +46,7 @@ add_task(async function() {
     await BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser, false, uri);
     await BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser, false, uri);
     PlacesUtils.history.removeObserver(historyObserver);
-    await BrowserTestUtils.removeTab(tab);
+    BrowserTestUtils.removeTab(tab);
   }
 
   for (let uri of URIS) {

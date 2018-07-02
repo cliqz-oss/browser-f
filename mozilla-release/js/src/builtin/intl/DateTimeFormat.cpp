@@ -157,7 +157,7 @@ js::intl_DateTimeFormat(JSContext* cx, unsigned argc, Value* vp)
 void
 js::DateTimeFormatObject::finalize(FreeOp* fop, JSObject* obj)
 {
-    MOZ_ASSERT(fop->onActiveCooperatingThread());
+    MOZ_ASSERT(fop->onMainThread());
 
     const Value& slot =
         obj->as<DateTimeFormatObject>().getReservedSlot(DateTimeFormatObject::UDATE_FORMAT_SLOT);
@@ -481,6 +481,8 @@ js::intl_isDefaultTimeZone(JSContext* cx, unsigned argc, Value* vp)
     js::ResyncICUDefaultTimeZone();
 
     Vector<char16_t, INITIAL_CHAR_BUFFER_SIZE> chars(cx);
+    MOZ_ALWAYS_TRUE(chars.resize(INITIAL_CHAR_BUFFER_SIZE));
+
     int32_t size = CallICU(cx, ucal_getDefaultTimeZone, chars);
     if (size < 0)
         return false;

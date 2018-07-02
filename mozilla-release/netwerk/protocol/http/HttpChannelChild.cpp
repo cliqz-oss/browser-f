@@ -161,6 +161,7 @@ InterceptStreamListener::Cleanup()
 HttpChannelChild::HttpChannelChild()
   : HttpAsyncAborter<HttpChannelChild>(this)
   , NeckoTargetHolder(nullptr)
+  , mCacheKey(0)
   , mSynthesizedStreamLength(0)
   , mIsFromCache(false)
   , mCacheEntryAvailable(false)
@@ -226,7 +227,6 @@ HttpChannelChild::ReleaseMainThreadOnlyReferences()
   }
 
   nsTArray<nsCOMPtr<nsISupports>> arrayToRelease;
-  arrayToRelease.AppendElement(mCacheKey.forget());
   arrayToRelease.AppendElement(mRedirectChannelChild.forget());
 
   // To solve multiple inheritence of nsISupports in InterceptStreamListener
@@ -652,20 +652,7 @@ HttpChannelChild::OnStartRequest(const nsresult& channelStatus,
 
   AutoEventEnqueuer ensureSerialDispatch(mEventQ);
 
-  nsresult rv;
-  nsCOMPtr<nsISupportsPRUint32> container =
-    do_CreateInstance(NS_SUPPORTS_PRUINT32_CONTRACTID, &rv);
-  if (NS_FAILED(rv)) {
-    Cancel(rv);
-    return;
-  }
-
-  rv = container->SetData(cacheKey);
-  if (NS_FAILED(rv)) {
-    Cancel(rv);
-    return;
-  }
-  mCacheKey = container;
+  mCacheKey = cacheKey;
 
   // replace our request headers with what actually got sent in the parent
   mRequestHead.SetHeaders(requestHeaders);
@@ -684,9 +671,7 @@ class SyntheticDiversionListener final : public nsIStreamListener
 {
   RefPtr<HttpChannelChild> mChannel;
 
-  ~SyntheticDiversionListener()
-  {
-  }
+  ~SyntheticDiversionListener() = default;
 
 public:
   explicit SyntheticDiversionListener(HttpChannelChild* aChannel)
@@ -1226,10 +1211,7 @@ HttpChannelChild::DoPreOnStopRequest(nsresult aStatus)
 
   MaybeCallSynthesizedCallback();
 
-  PerformanceStorage* performanceStorage = GetPerformanceStorage();
-  if (performanceStorage) {
-      performanceStorage->AddEntry(this, this);
-  }
+  MaybeReportTimingData();
 
   if (!mCanceled && NS_SUCCEEDED(mStatus)) {
     mStatus = aStatus;
@@ -1838,6 +1820,10 @@ HttpChannelChild::BeginNonIPCRedirect(nsIURI* responseURI,
 {
   LOG(("HttpChannelChild::BeginNonIPCRedirect [this=%p]\n", this));
 
+  // This method is only used by child-side service workers.  It should not be
+  // used by new code.  We want to remove it in the future.
+  MOZ_DIAGNOSTIC_ASSERT(mSynthesizedResponse);
+
   // If the response has been redirected, propagate all the URLs to content.
   // Thus, the exact value of the redirect flag does not matter as long as it's
   // not REDIRECT_INTERNAL.
@@ -1861,6 +1847,20 @@ HttpChannelChild::BeginNonIPCRedirect(nsIURI* responseURI,
     if (mSecurityInfo && channelChild) {
       HttpChannelChild* httpChannelChild = static_cast<HttpChannelChild*>(channelChild.get());
       httpChannelChild->OverrideSecurityInfoForNonIPCRedirect(mSecurityInfo);
+    }
+
+    // Normally we don't propagate the LoadInfo's service worker tainting
+    // synthesis flag on redirect.  A real redirect normally will want to allow
+    // normal tainting to proceed from its starting taint.  For this particular
+    // redirect, though, we are performing a redirect to communicate the URL of
+    // the service worker synthetic response itself.  This redirect still represents
+    // the synthetic response, so we must preserve the flag.
+    if (mLoadInfo && mLoadInfo->GetServiceWorkerTaintingSynthesized()) {
+      nsCOMPtr<nsILoadInfo> newChannelLoadInfo;
+      Unused << newChannel->GetLoadInfo(getter_AddRefs(newChannelLoadInfo));
+      if (newChannelLoadInfo) {
+        newChannelLoadInfo->SynthesizeServiceWorkerTainting(mLoadInfo->GetTainting());
+      }
     }
 
     nsCOMPtr<nsIEventTarget> target = GetNeckoTarget();
@@ -2356,6 +2356,8 @@ HttpChannelChild::Cancel(nsresult status)
 {
   LOG(("HttpChannelChild::Cancel [this=%p, status=%" PRIx32 "]\n",
        this, static_cast<uint32_t>(status)));
+  LogCallingScriptLocation(this);
+
   MOZ_ASSERT(NS_IsMainThread());
 
   if (!mCanceled) {
@@ -2467,18 +2469,7 @@ HttpChannelChild::AsyncOpen(nsIStreamListener *listener, nsISupports *aContext)
              "security flags in loadInfo but asyncOpen2() not called");
 
   LOG(("HttpChannelChild::AsyncOpen [this=%p uri=%s]\n", this, mSpec.get()));
-
-  if (LOG4_ENABLED()) {
-    JSContext* cx = nsContentUtils::GetCurrentJSContext();
-    if (cx) {
-      nsAutoCString fileNameString;
-      uint32_t line = 0, col = 0;
-      if (nsJSUtils::GetCallingLocation(cx, fileNameString, &line, &col)) {
-        LOG(("HttpChannelChild %p source script=%s:%u:%u",
-             this, fileNameString.get(), line, col));
-      }
-    }
-  }
+  LogCallingScriptLocation(this);
 
 #ifdef DEBUG
   AssertPrivateBrowsingId();
@@ -2744,19 +2735,7 @@ HttpChannelChild::ContinueAsyncOpen()
   openArgs.tlsFlags() = mTlsFlags;
   openArgs.initialRwin() = mInitialRwin;
 
-  uint32_t cacheKey = 0;
-  if (mCacheKey) {
-    nsCOMPtr<nsISupportsPRUint32> container = do_QueryInterface(mCacheKey);
-    if (!container) {
-      return NS_ERROR_ILLEGAL_VALUE;
-    }
-
-    nsresult rv = container->GetData(&cacheKey);
-    if (NS_FAILED(rv)) {
-      return rv;
-    }
-  }
-  openArgs.cacheKey() = cacheKey;
+  openArgs.cacheKey() = mCacheKey;
 
   openArgs.blockAuthPrompt() = mBlockAuthPrompt;
 
@@ -3057,17 +3036,17 @@ HttpChannelChild::GetCacheEntryId(uint64_t *aCacheEntryId)
 }
 
 NS_IMETHODIMP
-HttpChannelChild::GetCacheKey(nsISupports **cacheKey)
+HttpChannelChild::GetCacheKey(uint32_t *cacheKey)
 {
   if (mSynthesizedCacheInfo) {
     return mSynthesizedCacheInfo->GetCacheKey(cacheKey);
   }
 
-  NS_IF_ADDREF(*cacheKey = mCacheKey);
+  *cacheKey = mCacheKey;
   return NS_OK;
 }
 NS_IMETHODIMP
-HttpChannelChild::SetCacheKey(nsISupports *cacheKey)
+HttpChannelChild::SetCacheKey(uint32_t cacheKey)
 {
   if (mSynthesizedCacheInfo) {
     return mSynthesizedCacheInfo->SetCacheKey(cacheKey);
@@ -3138,12 +3117,12 @@ HttpChannelChild::GetAlternativeDataType(nsACString & aType)
 }
 
 NS_IMETHODIMP
-HttpChannelChild::OpenAlternativeOutputStream(const nsACString & aType, nsIOutputStream * *_retval)
+HttpChannelChild::OpenAlternativeOutputStream(const nsACString & aType, int64_t aPredictedSize, nsIOutputStream * *_retval)
 {
   MOZ_ASSERT(NS_IsMainThread(), "Main thread only");
 
   if (mSynthesizedCacheInfo) {
-    return mSynthesizedCacheInfo->OpenAlternativeOutputStream(aType, _retval);
+    return mSynthesizedCacheInfo->OpenAlternativeOutputStream(aType, aPredictedSize, _retval);
   }
 
   if (!mIPCOpen) {
@@ -3163,6 +3142,7 @@ HttpChannelChild::OpenAlternativeOutputStream(const nsACString & aType, nsIOutpu
 
   if (!gNeckoChild->SendPAltDataOutputStreamConstructor(stream,
                                                         nsCString(aType),
+                                                        aPredictedSize,
                                                         this)) {
     return NS_ERROR_FAILURE;
   }
@@ -3987,7 +3967,9 @@ HttpChannelChild::LogBlockedCORSRequest(const nsAString & aMessage)
 {
   if (mLoadInfo) {
     uint64_t innerWindowID = mLoadInfo->GetInnerWindowID();
-    nsCORSListenerProxy::LogBlockedCORSRequest(innerWindowID, aMessage);
+    bool privateBrowsing = !!mLoadInfo->GetOriginAttributes().mPrivateBrowsingId;
+    nsCORSListenerProxy::LogBlockedCORSRequest(innerWindowID, privateBrowsing,
+                                               aMessage);
   }
   return NS_OK;
 }

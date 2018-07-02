@@ -15,7 +15,6 @@
 
 #include "PLDHashTable.h"
 #include "nsIHttpChannel.h"
-#include "nsHTMLStyleSheet.h"
 #include "nsThreadUtils.h"
 #include "nsICommandManager.h"
 #include "mozilla/dom/HTMLSharedElement.h"
@@ -72,8 +71,6 @@ public:
   }
 
   virtual nsIContent* GetUnfocusedKeyEventTarget() override;
-
-  nsContentList* GetForms();
 
   nsContentList* GetExistingForms() const
   {
@@ -168,20 +165,8 @@ public:
                    JS::MutableHandle<JSObject*> aRetval,
                    mozilla::ErrorResult& rv);
   void GetSupportedNames(nsTArray<nsString>& aNames);
-  mozilla::dom::HTMLSharedElement *GetHead() {
-    return static_cast<mozilla::dom::HTMLSharedElement*>(GetHeadElement());
-  }
-  nsIHTMLCollection* Images();
-  nsIHTMLCollection* Embeds();
-  nsIHTMLCollection* Plugins();
-  nsIHTMLCollection* Links();
-  nsIHTMLCollection* Forms()
-  {
-    return nsHTMLDocument::GetForms();
-  }
-  nsIHTMLCollection* Scripts();
   already_AddRefed<nsIDocument> Open(JSContext* cx,
-                                     const nsAString& aType,
+                                     const mozilla::dom::Optional<nsAString>& /* unused */,
                                      const nsAString& aReplace,
                                      mozilla::ErrorResult& aError);
   already_AddRefed<nsPIDOMWindowOuter>
@@ -227,8 +212,6 @@ public:
   void SetAlinkColor(const nsAString& aAlinkColor);
   void GetBgColor(nsAString& aBgColor);
   void SetBgColor(const nsAString& aBgColor);
-  nsIHTMLCollection* Anchors();
-  nsIHTMLCollection* Applets();
   void Clear() const
   {
     // Deprecated
@@ -240,8 +223,6 @@ public:
   {
     return nsIDocument::GetLocation();
   }
-
-  virtual nsHTMLDocument* AsHTMLDocument() override { return this; }
 
   static bool MatchFormControls(Element* aElement, int32_t aNamespaceID,
                                 nsAtom* aAtom, void* aData);
@@ -255,11 +236,6 @@ protected:
                        int32_t* aHeight);
 
   nsIContent *MatchId(nsIContent *aContent, const nsAString& aId);
-
-  static bool MatchLinks(mozilla::dom::Element* aElement, int32_t aNamespaceID,
-                         nsAtom* aAtom, void* aData);
-  static bool MatchAnchors(mozilla::dom::Element* aElement, int32_t aNamespaceID,
-                           nsAtom* aAtom, void* aData);
 
   static void DocumentWriteTerminationFunc(nsISupports *aRef);
 
@@ -320,14 +296,6 @@ protected:
 
   friend class ContentListHolder;
   ContentListHolder* mContentListHolder;
-
-  RefPtr<nsContentList> mImages;
-  RefPtr<nsEmptyContentList> mApplets;
-  RefPtr<nsContentList> mEmbeds;
-  RefPtr<nsContentList> mLinks;
-  RefPtr<nsContentList> mAnchors;
-  RefPtr<nsContentList> mScripts;
-  RefPtr<nsContentList> mForms;
 
   RefPtr<mozilla::dom::HTMLAllCollection> mAll;
 
@@ -395,6 +363,13 @@ protected:
    */
   bool mPendingMaybeEditingStateChanged;
 };
+
+inline nsHTMLDocument*
+nsIDocument::AsHTMLDocument()
+{
+  MOZ_ASSERT(IsHTMLOrXHTML());
+  return static_cast<nsHTMLDocument*>(this);
+}
 
 #define NS_HTML_DOCUMENT_INTERFACE_TABLE_BEGIN(_class)                        \
     NS_DOCUMENT_INTERFACE_TABLE_BEGIN(_class)                                 \

@@ -3,6 +3,7 @@
 
 ChromeUtils.import("resource://gre/modules/BookmarkHTMLUtils.jsm");
 ChromeUtils.import("resource://gre/modules/BookmarkJSONUtils.jsm");
+ChromeUtils.import("resource://gre/modules/SyncedBookmarksMirror.jsm");
 ChromeUtils.import("resource://gre/modules/Log.jsm");
 ChromeUtils.import("resource://gre/modules/osfile.jsm");
 ChromeUtils.import("resource://services-common/utils.js");
@@ -11,6 +12,16 @@ ChromeUtils.import("resource://services-sync/engines.js");
 ChromeUtils.import("resource://services-sync/engines/bookmarks.js");
 ChromeUtils.import("resource://services-sync/service.js");
 ChromeUtils.import("resource://services-sync/util.js");
+
+var recordedEvents = [];
+
+function checkRecordedEvents(object, expected, message) {
+  // Ignore event telemetry from the merger.
+  let repairEvents = recordedEvents.filter(event => event.object == object);
+  deepEqual(repairEvents, expected, message);
+  // and clear the list so future checks are easier to write.
+  recordedEvents = [];
+}
 
 async function fetchAllRecordIds() {
   let db = await PlacesUtils.promiseDBConnection();
@@ -46,6 +57,10 @@ async function cleanup(engine, server) {
 add_task(async function setup() {
   await generateNewKeys(Service.collectionKeys);
   await Service.engineManager.unregister("bookmarks");
+
+  Service.recordTelemetryEvent = (object, method, value, extra = undefined) => {
+    recordedEvents.push({ object, method, value, extra });
+  };
 });
 
 function add_bookmark_test(task) {
@@ -69,6 +84,73 @@ function add_bookmark_test(task) {
     }
   });
 }
+
+add_bookmark_test(async function test_maintenance_after_failure(engine) {
+  _("Ensure we try to run maintenance if the engine fails to sync");
+
+  let server = await serverForFoo(engine);
+  await SyncTestingInfrastructure(server);
+
+  try {
+    let syncStartup = engine._syncStartup;
+    let syncError = new Error("Something is rotten in the state of Places");
+    engine._syncStartup = function() {
+      throw syncError;
+    };
+
+    Services.prefs.clearUserPref("places.database.lastMaintenance");
+
+    _("Ensure the sync fails and we run maintenance");
+    await Assert.rejects(
+      sync_engine_and_validate_telem(engine, true),
+      ex => ex == syncError
+    );
+    checkRecordedEvents("maintenance", [{
+      object: "maintenance",
+      method: "run",
+      value: "bookmarks",
+      extra: undefined,
+    }], "Should record event for first maintenance run");
+
+    _("Sync again, but ensure maintenance doesn't run");
+    await Assert.rejects(
+      sync_engine_and_validate_telem(engine, true),
+      ex => ex == syncError
+    );
+    checkRecordedEvents("maintenance", [],
+      "Should not record event if maintenance didn't run");
+
+    _("Fast-forward last maintenance pref; ensure maintenance runs");
+    Services.prefs.setIntPref("places.database.lastMaintenance",
+      Date.now() / 1000 - 14400);
+    await Assert.rejects(
+      sync_engine_and_validate_telem(engine, true),
+      ex => ex == syncError
+    );
+    checkRecordedEvents("maintenance", [{
+      object: "maintenance",
+      method: "run",
+      value: "bookmarks",
+      extra: undefined,
+    }], "Should record event for second maintenance run");
+
+    _("Fix sync failure; ensure we report success after maintenance");
+    engine._syncStartup = syncStartup;
+    await sync_engine_and_validate_telem(engine, false);
+    checkRecordedEvents("maintenance", [{
+      object: "maintenance",
+      method: "fix",
+      value: "bookmarks",
+      extra: undefined,
+    }], "Should record event for successful sync after second maintenance");
+
+    await sync_engine_and_validate_telem(engine, false);
+    checkRecordedEvents("maintenance", [],
+      "Should not record maintenance events after successful sync");
+  } finally {
+    await cleanup(engine, server);
+  }
+});
 
 add_bookmark_test(async function test_delete_invalid_roots_from_server(engine) {
   _("Ensure that we delete the Places and Reading List roots from the server.");
@@ -307,17 +389,12 @@ async function test_restoreOrImport(engine, { replace }) {
     Assert.equal(wbos[0], bmk2.guid);
 
     _(`Now ${verb} from a backup.`);
-    await bookmarkUtils.importFromFile(backupFilePath, replace);
-    await engine._tracker.asyncObserver.promiseObserversComplete();
+    await bookmarkUtils.importFromFile(backupFilePath, { replace });
 
+    // If `replace` is `true`, we'll wipe the server on the next sync.
     let bookmarksCollection = server.user("foo").collection("bookmarks");
-    if (replace) {
-      _("Verify that we wiped the server.");
-      Assert.ok(!bookmarksCollection);
-    } else {
-      _("Verify that we didn't wipe the server.");
-      Assert.ok(!!bookmarksCollection);
-    }
+    _("Verify that we didn't wipe the server.");
+    Assert.ok(!!bookmarksCollection);
 
     _("Ensure we have the bookmarks we expect locally.");
     let recordIds = await fetchAllRecordIds();
@@ -434,6 +511,7 @@ function FakeRecord(constructor, r) {
   }
   // Borrow the constructor's conversion functions.
   this.toSyncBookmark = constructor.prototype.toSyncBookmark;
+  this.cleartextToString = constructor.prototype.cleartextToString;
 }
 
 // Bug 632287.
@@ -1022,4 +1100,185 @@ add_task(async function test_resume_buffer() {
   } finally {
     await cleanup(engine, server);
   }
+});
+
+add_task(async function test_legacy_migrate_sync_metadata() {
+  let legacyEngine = new BookmarksEngine(Service);
+  await legacyEngine.initialize();
+  await legacyEngine.resetClient();
+
+  let syncID = Utils.makeGUID();
+  let lastSync = Date.now() / 1000;
+
+  Svc.Prefs.set(`${legacyEngine.name}.syncID`, syncID);
+  Svc.Prefs.set(`${legacyEngine.name}.lastSync`, lastSync.toString());
+
+  strictEqual(await legacyEngine.getSyncID(), "",
+    "Legacy engine should start with empty sync ID");
+  strictEqual(await legacyEngine.getLastSync(), 0,
+    "Legacy engine should start with empty last sync");
+
+  info("Migrate Sync metadata prefs");
+  await legacyEngine._migrateSyncMetadata();
+
+  equal(await legacyEngine.getSyncID(), syncID,
+    "Initializing legacy engine should migrate sync ID");
+  equal(await legacyEngine.getLastSync(), lastSync,
+    "Initializing legacy engine should migrate last sync time");
+
+  let newSyncID = Utils.makeGUID();
+  await legacyEngine.ensureCurrentSyncID(newSyncID);
+
+  equal(await legacyEngine.getSyncID(), newSyncID,
+    "Changing legacy engine sync ID should update Places");
+  strictEqual(await legacyEngine.getLastSync(), 0,
+    "Changing legacy engine sync ID should clear last sync in Places");
+
+  equal(Svc.Prefs.get(`${legacyEngine.name}.syncID`), newSyncID,
+    "Changing legacy engine sync ID should update prefs");
+  strictEqual(Svc.Prefs.get(`${legacyEngine.name}.lastSync`), "0",
+    "Changing legacy engine sync ID should clear last sync pref");
+
+  await legacyEngine.wipeClient();
+});
+
+add_task(async function test_buffered_migate_sync_metadata() {
+  let bufferedEngine = new BufferedBookmarksEngine(Service);
+  await bufferedEngine.initialize();
+  await bufferedEngine.resetClient();
+
+  let syncID = Utils.makeGUID();
+  let lastSync = Date.now() / 1000;
+
+  Svc.Prefs.set(`${bufferedEngine.name}.syncID`, syncID);
+  Svc.Prefs.set(`${bufferedEngine.name}.lastSync`, lastSync.toString());
+
+  strictEqual(await bufferedEngine.getSyncID(), "",
+    "Buffered engine should start with empty sync ID");
+  strictEqual(await bufferedEngine.getLastSync(), 0,
+    "Buffered engine should start with empty last sync");
+
+  info("Migrate Sync metadata prefs");
+  await bufferedEngine._migrateSyncMetadata({
+    migrateLastSync: false,
+  });
+
+  equal(await bufferedEngine.getSyncID(), syncID,
+    "Initializing buffered engine should migrate sync ID");
+  strictEqual(await bufferedEngine.getLastSync(), 0,
+    "Initializing buffered engine should not migrate last sync time");
+
+  let newSyncID = Utils.makeGUID();
+  await bufferedEngine.ensureCurrentSyncID(newSyncID);
+
+  equal(await bufferedEngine.getSyncID(), newSyncID,
+    "Changing buffered engine sync ID should update Places");
+
+  equal(Svc.Prefs.get(`${bufferedEngine.name}.syncID`), newSyncID,
+    "Changing buffered engine sync ID should update prefs");
+  strictEqual(Svc.Prefs.get(`${bufferedEngine.name}.lastSync`), "0",
+    "Changing buffered engine sync ID should clear last sync pref");
+
+  await bufferedEngine.wipeClient();
+});
+
+// The buffered engine stores the sync ID and last sync time in three places:
+// prefs, Places, and the mirror. We can remove the prefs entirely in bug
+// 1443021, and drop the last sync time from Places once we remove the legacy
+// engine. This test ensures we keep them in sync (^_^), and handle mismatches
+// in case the user copies Places or the mirror between accounts. See
+// bug 1199077, comment 84 for the gory details.
+add_task(async function test_mirror_syncID() {
+  let bufferedEngine = new BufferedBookmarksEngine(Service);
+  await bufferedEngine.initialize();
+  let buf = await bufferedEngine._store.ensureOpenMirror();
+
+  info("Places and mirror don't have sync IDs");
+
+  let syncID = await bufferedEngine.resetLocalSyncID();
+
+  equal(Svc.Prefs.get(`${bufferedEngine.name}.syncID`), syncID,
+    "Should reset sync ID in prefs");
+  strictEqual(Svc.Prefs.get(`${bufferedEngine.name}.lastSync`), "0",
+    "Should reset last sync in prefs");
+
+  equal(await PlacesSyncUtils.bookmarks.getSyncId(), syncID,
+    "Should reset sync ID in Places");
+  strictEqual(await PlacesSyncUtils.bookmarks.getLastSync(), 0,
+    "Should reset last sync in Places");
+
+  equal(await buf.getSyncId(), syncID, "Should reset sync ID in mirror");
+  strictEqual(await buf.getCollectionHighWaterMark(), 0,
+    "Should reset high water mark in mirror");
+
+  info("Places and mirror have matching sync ID");
+
+  await bufferedEngine.setLastSync(123.45);
+  await bufferedEngine.ensureCurrentSyncID(syncID);
+
+  equal(Svc.Prefs.get(`${bufferedEngine.name}.syncID`), syncID,
+    "Should keep sync ID in prefs if Places and mirror match");
+  strictEqual(Svc.Prefs.get(`${bufferedEngine.name}.lastSync`), "123.45",
+    "Should keep last sync in prefs if Places and mirror match");
+
+  equal(await PlacesSyncUtils.bookmarks.getSyncId(), syncID,
+    "Should keep sync ID in Places if Places and mirror match");
+  strictEqual(await PlacesSyncUtils.bookmarks.getLastSync(), 123.45,
+    "Should keep last sync in Places if Places and mirror match");
+
+  equal(await buf.getSyncId(), syncID, "Should keep sync ID in mirror");
+  equal(await buf.getCollectionHighWaterMark(), 123.45,
+    "Should keep high water mark in mirror");
+
+  info("Places and mirror have different sync IDs");
+
+  // Directly update the sync ID in the mirror, without resetting.
+  await buf.db.execute(`UPDATE meta SET value = :value WHERE key = :key`,
+                       { key: SyncedBookmarksMirror.META_KEY.SYNC_ID,
+                         value: "syncIdAAAAAA" });
+  await bufferedEngine.ensureCurrentSyncID(syncID);
+
+  equal(Svc.Prefs.get(`${bufferedEngine.name}.syncID`), syncID,
+    "Should keep sync ID in prefs if Places and mirror don't match");
+  strictEqual(Svc.Prefs.get(`${bufferedEngine.name}.lastSync`), "123.45",
+    "Should keep last sync in prefs if Places and mirror don't match");
+
+  equal(await PlacesSyncUtils.bookmarks.getSyncId(), syncID,
+    "Should keep existing sync ID in Places on mirror sync ID mismatch");
+  strictEqual(await PlacesSyncUtils.bookmarks.getLastSync(), 123.45,
+    "Should keep existing last sync in Places on mirror sync ID mismatch");
+
+  equal(await buf.getSyncId(), syncID,
+    "Should reset mismatched sync ID in mirror");
+  strictEqual(await buf.getCollectionHighWaterMark(), 0,
+    "Should reset high water mark on mirror sync ID mismatch");
+
+  info("Places has sync ID; mirror missing sync ID");
+  await buf.reset();
+
+  equal(await bufferedEngine.ensureCurrentSyncID(syncID), syncID,
+    "Should not assign new sync ID if Places has sync ID; mirror missing");
+  equal(await buf.getSyncId(), syncID,
+    "Should set sync ID in mirror to match Places");
+
+  info("Places missing sync ID; mirror has sync ID");
+
+  await buf.setCollectionLastModified(123.45);
+  await PlacesSyncUtils.bookmarks.reset();
+  let newSyncID = await bufferedEngine.ensureCurrentSyncID("syncIdBBBBBB");
+
+  equal(Svc.Prefs.get(`${bufferedEngine.name}.syncID`), newSyncID,
+    "Should set new sync ID in prefs");
+  strictEqual(Svc.Prefs.get(`${bufferedEngine.name}.lastSync`), "0",
+    "Should reset last sync in prefs on sync ID change");
+
+  equal(await PlacesSyncUtils.bookmarks.getSyncId(), newSyncID,
+    "Should set new sync ID in Places");
+  equal(await buf.getSyncId(), newSyncID,
+    "Should update new sync ID in mirror");
+
+  strictEqual(await buf.getCollectionHighWaterMark(), 0,
+    "Should reset high water mark on sync ID change in Places");
+
+  await bufferedEngine.wipeClient();
 });

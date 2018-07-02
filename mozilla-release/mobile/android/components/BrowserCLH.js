@@ -72,7 +72,7 @@ BrowserCLH.prototype = {
           module: "resource://gre/modules/FormAssistant.jsm",
         });
         Services.obs.addObserver({
-          QueryInterface: XPCOMUtils.generateQI([
+          QueryInterface: ChromeUtils.generateQI([
             Ci.nsIObserver, Ci.nsIFormSubmitObserver,
           ]),
           notifyInvalidSubmit: (form, element) => {
@@ -198,7 +198,7 @@ BrowserCLH.prototype = {
     }, options);
 
     aWindow.addEventListener("blur", event => {
-      if (event.target instanceof Ci.nsIDOMHTMLInputElement) {
+      if (ChromeUtils.getClassName(event.target) === "HTMLInputElement") {
         this.LoginManagerContent.onUsernameInput(event);
       }
     }, options);
@@ -212,7 +212,7 @@ BrowserCLH.prototype = {
   },
 
   // QI
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver]),
 
   // XPCOMUtils factory
   classID: Components.ID("{be623d20-d305-11de-8a39-0800200c9a66}")

@@ -10,6 +10,7 @@ PYTHON_UNITTEST_MANIFESTS += [
     '/layout/tools/reftest/selftest/python.ini',
     '/testing/marionette/harness/marionette_harness/tests/harness_unit/python.ini',
     '/testing/mochitest/tests/python/python.ini',
+    '/testing/raptor/test/python.ini',
     '/testing/talos/talos/unittests/python.ini'
 ]
 
@@ -41,8 +42,7 @@ if CONFIG['MOZ_SANDBOX']:
     DIRS += ['/security/sandbox']
 
 DIRS += [
-    # Depends on NSS and NSPR, and must be built after sandbox or else B2G emulator
-    # builds fail.
+    # Depends on NSS and NSPR
     '/security/certverifier',
     # Depends on certverifier
     '/security/apps',

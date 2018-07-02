@@ -45,11 +45,10 @@ var gEnabled, gAutofillForms, gStoreWhenAutocompleteOff;
 var gLastRightClickTimeStamp = Number.NEGATIVE_INFINITY;
 
 var observer = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver,
-                                          Ci.nsIFormSubmitObserver,
-                                          Ci.nsIWebProgressListener,
-                                          Ci.nsIDOMEventListener,
-                                          Ci.nsISupportsWeakReference]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver,
+                                           Ci.nsIFormSubmitObserver,
+                                           Ci.nsIWebProgressListener,
+                                           Ci.nsISupportsWeakReference]),
 
   // nsIFormSubmitObserver
   notify(formElement, aWindow, actionURI) {
@@ -384,7 +383,7 @@ var LoginManagerContent = {
       return;
     }
 
-    let pwField = event.target;
+    let pwField = event.originalTarget;
     if (pwField.form) {
       // Fill is handled by onDOMFormHasPassword which is already throttled.
       return;
@@ -439,8 +438,14 @@ var LoginManagerContent = {
   _fetchLoginsFromParentAndFillForm(form, window) {
     this._detectInsecureFormLikes(window);
 
+    const isPrivateWindow = PrivateBrowsingUtils.isContentWindowPrivate(window);
+
     let messageManager = messageManagerFromWindow(window);
-    messageManager.sendAsyncMessage("LoginStats:LoginEncountered");
+    messageManager.sendAsyncMessage("LoginStats:LoginEncountered",
+                                    {
+                                      isPrivateWindow,
+                                      isPwmgrEnabled: gEnabled,
+                                    });
 
     if (!gEnabled) {
       return;
@@ -678,7 +683,7 @@ var LoginManagerContent = {
     let pwFields = [];
     for (let i = 0; i < form.elements.length; i++) {
       let element = form.elements[i];
-      if (!(element instanceof Ci.nsIDOMHTMLInputElement) ||
+      if (ChromeUtils.getClassName(element) !== "HTMLInputElement" ||
           element.type != "password") {
         continue;
       }
@@ -892,7 +897,7 @@ var LoginManagerContent = {
         continue;
       }
 
-      if (formRoot instanceof Ci.nsIDOMHTMLFormElement) {
+      if (ChromeUtils.getClassName(formRoot) === "HTMLFormElement") {
         // For now only perform capture upon navigation for FormLike's without
         // a <form> to avoid capture from both an earlyformsubmit and
         // navigation for the same "form".
@@ -1017,7 +1022,7 @@ var LoginManagerContent = {
     clobberPassword = false,
     userTriggered = false,
   } = {}) {
-    if (form instanceof Ci.nsIDOMHTMLFormElement) {
+    if (ChromeUtils.getClassName(form) === "HTMLFormElement") {
       throw new Error("_fillForm should only be called with FormLike objects");
     }
 
@@ -1345,7 +1350,7 @@ var LoginManagerContent = {
    */
   getFieldContext(aField) {
     // If the element is not a proper form field, return null.
-    if (!(aField instanceof Ci.nsIDOMHTMLInputElement) ||
+    if (ChromeUtils.getClassName(aField) !== "HTMLInputElement" ||
         (aField.type != "password" && !LoginHelper.isUsernameFieldType(aField)) ||
         !aField.ownerDocument) {
       return null;
@@ -1460,8 +1465,8 @@ function UserAutoCompleteResult(aSearchString, matchingLogins, {isSecure, messag
 }
 
 UserAutoCompleteResult.prototype = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIAutoCompleteResult,
-                                          Ci.nsISupportsWeakReference]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIAutoCompleteResult,
+                                           Ci.nsISupportsWeakReference]),
 
   // private
   logins: null,
@@ -1617,7 +1622,7 @@ var LoginFormFactory = {
    * @throws Error if aField isn't a password or username field in a document
    */
   createFromField(aField) {
-    if (!(aField instanceof Ci.nsIDOMHTMLInputElement) ||
+    if (ChromeUtils.getClassName(aField) !== "HTMLInputElement" ||
         (aField.type != "password" && !LoginHelper.isUsernameFieldType(aField)) ||
         !aField.ownerDocument) {
       throw new Error("createFromField requires a password or username field in a document");

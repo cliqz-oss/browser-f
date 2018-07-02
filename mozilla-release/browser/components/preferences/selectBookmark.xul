@@ -9,21 +9,39 @@
 <?xml-stylesheet href="chrome://global/skin/"?>
 <?xml-stylesheet href="chrome://browser/skin/places/places.css"?>
 
-<?xul-overlay href="chrome://browser/content/places/placesOverlay.xul"?>
-
-<!DOCTYPE dialog SYSTEM "chrome://browser/locale/preferences/selectBookmark.dtd">
-
 <dialog id="selectBookmarkDialog"
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
-        title="&selectBookmark.title;" style="width: 32em;"
+        data-l10n-id="select-bookmark-window"
+        data-l10n-attrs="title, style"
         persist="screenX screenY width height" screenX="24" screenY="24"
         onload="SelectBookmarkDialog.init();"
         ondialogaccept="SelectBookmarkDialog.accept();">
 
+  <link rel="localization" href="browser/preferences/selectBookmark.ftl"/>
+  <script type="application/javascript" src="chrome://global/content/l10n.js"></script>
+
   <script type="application/javascript"
           src="chrome://browser/content/preferences/selectBookmark.js"/>
+  <script type="application/javascript"
+          src="chrome://global/content/globalOverlay.js"/>
+  <script type="application/javascript"
+          src="chrome://browser/content/utilityOverlay.js"/>
+  <script type="application/javascript"><![CDATA[
+    ChromeUtils.defineModuleGetter(window,
+      "PlacesUtils", "resource://gre/modules/PlacesUtils.jsm");
+    ChromeUtils.defineModuleGetter(window,
+      "PlacesUIUtils", "resource:///modules/PlacesUIUtils.jsm");
+    ChromeUtils.defineModuleGetter(window,
+      "PlacesTransactions", "resource://gre/modules/PlacesTransactions.jsm");
 
-  <description>&selectBookmark.label;</description>
+    ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+    XPCOMUtils.defineLazyScriptGetter(window, "PlacesTreeView",
+      "chrome://browser/content/places/treeView.js");
+    XPCOMUtils.defineLazyScriptGetter(window,
+      ["PlacesInsertionPoint", "PlacesController", "PlacesControllerDragHelper"],
+       "chrome://browser/content/places/controller.js");
+  ]]></script>
+  <description data-l10n-id="select-bookmark-desc"/>
 
   <separator class="thin"/>
 

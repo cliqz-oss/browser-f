@@ -18,13 +18,14 @@
 #include "nsIDocShell.h"
 #include "nsIDocument.h"
 #include "nsIDOMDocument.h"
-#include "nsIFrameLoader.h"
+#include "nsIFrameLoaderOwner.h"
 #include "nsIInterfaceRequestorUtils.h"
 #include "nsISupportsImpl.h"
 #include "nsISupportsUtils.h"
 #include "nsContentUtils.h"
 #include "nsDocShell.h"
 #include "nsGlobalWindow.h"
+#include "nsMixedContentBlocker.h"
 #include "NullPrincipal.h"
 #include "nsRedirectHistoryEntry.h"
 #include "LoadInfo.h"
@@ -65,11 +66,13 @@ LoadInfo::LoadInfo(nsIPrincipal* aLoadingPrincipal,
   , mTainting(LoadTainting::Basic)
   , mUpgradeInsecureRequests(false)
   , mBrowserUpgradeInsecureRequests(false)
+  , mBrowserWouldUpgradeInsecureRequests(false)
   , mVerifySignedContent(false)
   , mEnforceSRI(false)
   , mAllowDocumentToBeAgnosticToCSP(false)
   , mForceAllowDataURI(false)
   , mAllowInsecureRedirectToDataURI(false)
+  , mSkipContentPolicyCheckForWebRequest(false)
   , mOriginalFrameSrcLoad(false)
   , mForceInheritPrincipalDropped(false)
   , mInnerWindowID(0)
@@ -99,7 +102,7 @@ LoadInfo::LoadInfo(nsIPrincipal* aLoadingPrincipal,
 
   // This constructor shouldn't be used for TYPE_DOCUMENT loads that don't
   // have a loadingPrincipal
-  MOZ_ASSERT(skipContentTypeCheck ||
+  MOZ_ASSERT(skipContentTypeCheck || mLoadingPrincipal ||
              mInternalContentPolicyType != nsIContentPolicy::TYPE_DOCUMENT);
 
   // We should only get an explicit controller for subresource requests.
@@ -165,11 +168,11 @@ LoadInfo::LoadInfo(nsIPrincipal* aLoadingPrincipal,
     // any other non-document-loading element.
     nsCOMPtr<nsIFrameLoaderOwner> frameLoaderOwner =
       do_QueryInterface(aLoadingContext);
-    nsCOMPtr<nsIFrameLoader> fl = frameLoaderOwner ?
+    RefPtr<nsFrameLoader> fl = frameLoaderOwner ?
       frameLoaderOwner->GetFrameLoader() : nullptr;
     if (fl) {
-      nsCOMPtr<nsIDocShell> docShell;
-      if (NS_SUCCEEDED(fl->GetDocShell(getter_AddRefs(docShell))) && docShell) {
+      nsCOMPtr<nsIDocShell> docShell = fl->GetDocShell(IgnoreErrors());
+      if (docShell) {
         nsCOMPtr<nsPIDOMWindowOuter> outerWindow = do_GetInterface(docShell);
         if (outerWindow) {
           mFrameOuterWindowID = outerWindow->WindowID();
@@ -195,7 +198,11 @@ LoadInfo::LoadInfo(nsIPrincipal* aLoadingPrincipal,
         bool isHttpsScheme;
         nsresult rv = uri->SchemeIs("https", &isHttpsScheme);
         if (NS_SUCCEEDED(rv) && isHttpsScheme) {
-          mBrowserUpgradeInsecureRequests = true;
+          if (nsMixedContentBlocker::ShouldUpgradeMixedDisplayContent()) {
+            mBrowserUpgradeInsecureRequests = true;
+          } else {
+            mBrowserWouldUpgradeInsecureRequests = true;
+          }
         }
       }
     }
@@ -286,11 +293,13 @@ LoadInfo::LoadInfo(nsPIDOMWindowOuter* aOuterWindow,
   , mTainting(LoadTainting::Basic)
   , mUpgradeInsecureRequests(false)
   , mBrowserUpgradeInsecureRequests(false)
+  , mBrowserWouldUpgradeInsecureRequests(false)
   , mVerifySignedContent(false)
   , mEnforceSRI(false)
   , mAllowDocumentToBeAgnosticToCSP(false)
   , mForceAllowDataURI(false)
   , mAllowInsecureRedirectToDataURI(false)
+  , mSkipContentPolicyCheckForWebRequest(false)
   , mOriginalFrameSrcLoad(false)
   , mForceInheritPrincipalDropped(false)
   , mInnerWindowID(0)
@@ -363,11 +372,13 @@ LoadInfo::LoadInfo(const LoadInfo& rhs)
   , mTainting(rhs.mTainting)
   , mUpgradeInsecureRequests(rhs.mUpgradeInsecureRequests)
   , mBrowserUpgradeInsecureRequests(rhs.mBrowserUpgradeInsecureRequests)
+  , mBrowserWouldUpgradeInsecureRequests(rhs.mBrowserWouldUpgradeInsecureRequests)
   , mVerifySignedContent(rhs.mVerifySignedContent)
   , mEnforceSRI(rhs.mEnforceSRI)
   , mAllowDocumentToBeAgnosticToCSP(rhs.mAllowDocumentToBeAgnosticToCSP)
   , mForceAllowDataURI(rhs.mForceAllowDataURI)
   , mAllowInsecureRedirectToDataURI(rhs.mAllowInsecureRedirectToDataURI)
+  , mSkipContentPolicyCheckForWebRequest(rhs.mSkipContentPolicyCheckForWebRequest)
   , mOriginalFrameSrcLoad(rhs.mOriginalFrameSrcLoad)
   , mForceInheritPrincipalDropped(rhs.mForceInheritPrincipalDropped)
   , mInnerWindowID(rhs.mInnerWindowID)
@@ -389,7 +400,8 @@ LoadInfo::LoadInfo(const LoadInfo& rhs)
   , mForcePreflight(rhs.mForcePreflight)
   , mIsPreflight(rhs.mIsPreflight)
   , mLoadTriggeredFromExternal(rhs.mLoadTriggeredFromExternal)
-  , mServiceWorkerTaintingSynthesized(rhs.mServiceWorkerTaintingSynthesized)
+  // mServiceWorkerTaintingSynthesized must be handled specially during redirect
+  , mServiceWorkerTaintingSynthesized(false)
 {
 }
 
@@ -407,11 +419,13 @@ LoadInfo::LoadInfo(nsIPrincipal* aLoadingPrincipal,
                    LoadTainting aTainting,
                    bool aUpgradeInsecureRequests,
                    bool aBrowserUpgradeInsecureRequests,
+                   bool aBrowserWouldUpgradeInsecureRequests,
                    bool aVerifySignedContent,
                    bool aEnforceSRI,
                    bool aAllowDocumentToBeAgnosticToCSP,
                    bool aForceAllowDataURI,
                    bool aAllowInsecureRedirectToDataURI,
+                   bool aSkipContentPolicyCheckForWebRequest,
                    bool aForceInheritPrincipalDropped,
                    uint64_t aInnerWindowID,
                    uint64_t aOuterWindowID,
@@ -445,11 +459,13 @@ LoadInfo::LoadInfo(nsIPrincipal* aLoadingPrincipal,
   , mTainting(aTainting)
   , mUpgradeInsecureRequests(aUpgradeInsecureRequests)
   , mBrowserUpgradeInsecureRequests(aBrowserUpgradeInsecureRequests)
+  , mBrowserWouldUpgradeInsecureRequests(aBrowserWouldUpgradeInsecureRequests)
   , mVerifySignedContent(aVerifySignedContent)
   , mEnforceSRI(aEnforceSRI)
   , mAllowDocumentToBeAgnosticToCSP(aAllowDocumentToBeAgnosticToCSP)
   , mForceAllowDataURI(aForceAllowDataURI)
   , mAllowInsecureRedirectToDataURI(aAllowInsecureRedirectToDataURI)
+  , mSkipContentPolicyCheckForWebRequest(aSkipContentPolicyCheckForWebRequest)
   , mOriginalFrameSrcLoad(false)
   , mForceInheritPrincipalDropped(aForceInheritPrincipalDropped)
   , mInnerWindowID(aInnerWindowID)
@@ -478,10 +494,6 @@ LoadInfo::LoadInfo(nsIPrincipal* aLoadingPrincipal,
     aRedirectChainIncludingInternalRedirects);
 
   mRedirectChain.SwapElements(aRedirectChain);
-}
-
-LoadInfo::~LoadInfo()
-{
 }
 
 void
@@ -648,6 +660,27 @@ LoadInfo::ContextForTopLevelLoad()
   return context;
 }
 
+already_AddRefed<nsISupports>
+LoadInfo::GetLoadingContext()
+{
+  nsCOMPtr<nsISupports> context;
+  if (mInternalContentPolicyType == nsIContentPolicy::TYPE_DOCUMENT) {
+    context = ContextForTopLevelLoad();
+  }
+  else {
+    context = LoadingNode();
+  }
+  return context.forget();
+}
+
+NS_IMETHODIMP
+LoadInfo::GetLoadingContextXPCOM(nsISupports** aResult)
+{
+  nsCOMPtr<nsISupports> context = GetLoadingContext();
+  context.forget(aResult);
+  return NS_OK;
+}
+
 NS_IMETHODIMP
 LoadInfo::GetSecurityFlags(nsSecurityFlags* aResult)
 {
@@ -810,6 +843,13 @@ LoadInfo::GetBrowserUpgradeInsecureRequests(bool* aResult)
 }
 
 NS_IMETHODIMP
+LoadInfo::GetBrowserWouldUpgradeInsecureRequests(bool* aResult)
+{
+  *aResult = mBrowserWouldUpgradeInsecureRequests;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 LoadInfo::SetVerifySignedContent(bool aVerifySignedContent)
 {
   MOZ_ASSERT(mInternalContentPolicyType == nsIContentPolicy::TYPE_DOCUMENT,
@@ -867,6 +907,20 @@ NS_IMETHODIMP
 LoadInfo::GetAllowInsecureRedirectToDataURI(bool* aAllowInsecureRedirectToDataURI)
 {
   *aAllowInsecureRedirectToDataURI = mAllowInsecureRedirectToDataURI;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+LoadInfo::SetSkipContentPolicyCheckForWebRequest(bool aSkip)
+{
+  mSkipContentPolicyCheckForWebRequest = aSkip;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+LoadInfo::GetSkipContentPolicyCheckForWebRequest(bool* aSkip)
+{
+  *aSkip = mSkipContentPolicyCheckForWebRequest;
   return NS_OK;
 }
 
@@ -1157,6 +1211,12 @@ void
 LoadInfo::SetBrowserUpgradeInsecureRequests()
 {
   mBrowserUpgradeInsecureRequests = true;
+}
+
+void
+LoadInfo::SetBrowserWouldUpgradeInsecureRequests()
+{
+  mBrowserWouldUpgradeInsecureRequests = true;
 }
 
 NS_IMETHODIMP

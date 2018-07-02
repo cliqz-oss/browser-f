@@ -9,7 +9,8 @@ const TEST_ENGINE_BASENAME = "searchSuggestionEngine.xml";
 const ONEOFF_PREF = "browser.urlbar.oneOffSearches";
 
 add_task(async function prepare() {
-  let engine = await promiseNewSearchEngine(TEST_ENGINE_BASENAME);
+  let engine = await SearchTestUtils.promiseNewSearchEngine(
+    getRootDirectory(gTestPath) + TEST_ENGINE_BASENAME);
   let oldCurrentEngine = Services.search.currentEngine;
   Services.search.currentEngine = engine;
   let suggestionsEnabled = Services.prefs.getBoolPref(SUGGEST_URLBAR_PREF);
@@ -95,7 +96,7 @@ add_task(async function new_tab() {
   await BrowserTestUtils.synthesizeKey("t", { accelKey: true }, gBrowser.selectedBrowser);
   await new Promise(resolve => setTimeout(resolve, 500));
   Assert.ok(!gURLBar.popup.popupOpen, "popup should be closed");
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
 });
 
 add_task(async function privateWindow() {

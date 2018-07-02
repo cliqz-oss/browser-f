@@ -326,10 +326,9 @@ DataTransferItem::GetAsEntry(nsIPrincipal& aSubjectPrincipal,
   if (target) {
     global = target->GetOwnerGlobal();
   } else {
-    nsCOMPtr<nsIDOMEvent> event =
-      do_QueryInterface(mDataTransfer->GetParentObject());
+    RefPtr<Event> event = do_QueryObject(mDataTransfer->GetParentObject());
     if (event) {
-      global = event->InternalDOMEvent()->GetParentObject();
+      global = event->GetParentObject();
     }
   }
 
@@ -469,8 +468,8 @@ DataTransferItem::GetAsString(FunctionStringCallback* aCallback,
   if (parent && !global) {
     if (nsCOMPtr<dom::EventTarget> target = do_QueryInterface(parent)) {
       global = target->GetOwnerGlobal();
-    } else if (nsCOMPtr<nsIDOMEvent> event = do_QueryInterface(parent)) {
-      global = event->InternalDOMEvent()->GetParentObject();
+    } else if (RefPtr<Event> event = do_QueryObject(parent)) {
+      global = event->GetParentObject();
     }
   }
   if (global) {
@@ -548,12 +547,7 @@ DataTransferItem::Data(nsIPrincipal* aPrincipal, ErrorResult& aRv)
   if (NS_SUCCEEDED(rv) && data) {
     nsCOMPtr<EventTarget> pt = do_QueryInterface(data);
     if (pt) {
-      nsIScriptContext* c = pt->GetContextForEventHandlers(&rv);
-      if (NS_WARN_IF(NS_FAILED(rv) || !c)) {
-        return nullptr;
-      }
-
-      nsIGlobalObject* go = c->GetGlobalObject();
+      nsIGlobalObject* go = pt->GetOwnerGlobal();
       if (NS_WARN_IF(!go)) {
         return nullptr;
       }

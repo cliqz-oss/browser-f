@@ -29,6 +29,7 @@ EXPORTS.mozilla.dom += [
 UNIFIED_SOURCES += [
     'ServiceWorker.cpp',
     'ServiceWorkerContainer.cpp',
+    'ServiceWorkerContainerImpl.cpp',
     'ServiceWorkerDescriptor.cpp',
     'ServiceWorkerEvents.cpp',
     'ServiceWorkerInfo.cpp',
@@ -82,3 +83,5 @@ BROWSER_CHROME_MANIFESTS += [
     'test/browser.ini',
     'test/isolated/multi-e10s-update/browser.ini',
 ]
+
+TEST_DIRS += ['test/gtest']

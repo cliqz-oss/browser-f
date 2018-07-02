@@ -1,3 +1,5 @@
+/* eslint-env mozilla/frame-script */
+
 "use strict";
 
 var Cm = Components.manager;
@@ -16,7 +18,7 @@ function AboutPage(aboutHost, chromeURL, uriFlags) {
 }
 
 AboutPage.prototype = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIAboutModule]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIAboutModule]),
   getURIFlags(aURI) { // eslint-disable-line no-unused-vars
     return this.uriFlags;
   },

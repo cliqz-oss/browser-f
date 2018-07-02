@@ -67,6 +67,16 @@
   --toolbar-bgimage: none;
 
   --toolbox-border-bottom-color: rgba(0,0,0,.3);
+
+  --panel-separator-color: hsla(210,4%,10%,.14);
+}
+
+:root[lwt-popup-brighttext] {
+  --panel-separator-color: rgba(249,249,250,.1);
+
+  --arrowpanel-dimmed: rgba(249,249,250,.1);
+  --arrowpanel-dimmed-further: rgba(249,249,250,.15);
+  --arrowpanel-dimmed-even-further: rgba(249,249,250,.2);
 }
 
 #navigator-toolbox:-moz-lwtheme {
@@ -368,7 +378,6 @@ menuitem.bookmark-item {
 }
 
 
-%include ../shared/bookmarked-notification.inc.css
 %include ../shared/toolbarbuttons.inc.css
 %include ../shared/toolbarbutton-icons.inc.css
 %include ../shared/menupanel.inc.css
@@ -523,11 +532,6 @@ menuitem.bookmark-item {
   }
 }
 
-#urlbar[focused="true"],
-.searchbar-textbox[focused="true"] {
-  border-color: Highlight;
-}
-
 html|*.urlbar-input:-moz-lwtheme::placeholder,
 .searchbar-textbox:-moz-lwtheme > .urlbar-textbox-container > .textbox-input-box > html|*.textbox-input::placeholder {
   opacity: 1.0;
@@ -680,6 +684,11 @@ html|*.urlbar-input:-moz-lwtheme::placeholder,
   background-color: -moz-dialog;
   color: -moz-DialogText;
   text-shadow: none;
+}
+
+.browserContainer > findbar:-moz-lwtheme {
+  background-color: var(--toolbar-bgcolor);
+  color: var(--toolbar-color, -moz-DialogText);
 }
 
 /* Tabstrip */
@@ -912,7 +921,7 @@ notification[value="translation"] {
 
 /* Status panel */
 
-.statuspanel-label {
+#statuspanel-label {
   margin: 0;
   padding: 2px 4px;
   background-color: -moz-dialog;
@@ -923,14 +932,14 @@ notification[value="translation"] {
 }
 
 @media (-moz-windows-default-theme) {
-  .statuspanel-label {
+  #statuspanel-label {
     background-color: #f9f9fa;
     color: #444;
   }
 }
 
-.statuspanel-label:-moz-locale-dir(ltr):not([mirror]),
-.statuspanel-label:-moz-locale-dir(rtl)[mirror] {
+#statuspanel:not([mirror]) > #statuspanel-inner > #statuspanel-label:-moz-locale-dir(ltr),
+#statuspanel[mirror] > #statuspanel-inner > #statuspanel-label:-moz-locale-dir(rtl) {
   border-right-style: solid;
   /* disabled for triggering grayscale AA (bug 659213)
   border-top-right-radius: .3em;
@@ -938,8 +947,8 @@ notification[value="translation"] {
   margin-right: 1em;
 }
 
-.statuspanel-label:-moz-locale-dir(rtl):not([mirror]),
-.statuspanel-label:-moz-locale-dir(ltr)[mirror] {
+#statuspanel:not([mirror]) > #statuspanel-inner > #statuspanel-label:-moz-locale-dir(rtl),
+#statuspanel[mirror] > #statuspanel-inner > #statuspanel-label:-moz-locale-dir(ltr) {
   border-left-style: solid;
   /* disabled for triggering grayscale AA (bug 659213)
   border-top-left-radius: .3em;
@@ -1115,7 +1124,3 @@ panel[touchmode] .PanelUI-subView #appMenu-zoom-controls > .subviewbutton-iconic
   padding-bottom: .9167em;
 }
 
-/* Prevent movement in the restore-tabs-button when it's clicked. */
-.restore-tabs-button:hover:active:not([disabled="true"]) {
-  padding: 3px;
-}

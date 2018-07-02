@@ -13,7 +13,6 @@
 #include "nsEscape.h"
 #include "nsXBLPrototypeBinding.h"
 #include "nsIDOMNode.h"
-#include "nsIDOMElement.h"
 #include "nsCycleCollectionParticipant.h"
 
 namespace mozilla {
@@ -83,8 +82,7 @@ IDTracker::Reset(nsIContent* aFromContent, nsIURI* aURI,
           doc->BindingManager()->GetAnonymousNodesFor(bindingParent);
 
         if (anonymousChildren) {
-          uint32_t length;
-          anonymousChildren->GetLength(&length);
+          uint32_t length = anonymousChildren->Length();
           for (uint32_t i = 0; i < length && !mElement; ++i) {
             mElement =
               nsContentUtils::MatchElementId(anonymousChildren->Item(i), ref);

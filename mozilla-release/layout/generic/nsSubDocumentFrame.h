@@ -23,7 +23,7 @@ class nsSubDocumentFrame final
 public:
   NS_DECL_FRAMEARENA_HELPERS(nsSubDocumentFrame)
 
-  explicit nsSubDocumentFrame(nsStyleContext* aContext);
+  explicit nsSubDocumentFrame(ComputedStyle* aStyle);
 
 #ifdef DEBUG_FRAME_DUMP
   void List(FILE* out = stderr, const char* aPrefix = "", uint32_t aFlags = 0) const override;
@@ -94,7 +94,7 @@ public:
   mozilla::a11y::AccType AccessibleType() override;
 #endif
 
-  nsresult GetDocShell(nsIDocShell **aDocShell);
+  nsIDocShell* GetDocShell();
   nsresult BeginSwapDocShells(nsIFrame* aOther);
   void EndSwapDocShells(nsIFrame* aOther);
   nsView* EnsureInnerView();
@@ -168,7 +168,6 @@ protected:
   RefPtr<nsFrameLoader> mFrameLoader;
   nsView* mOuterView;
   nsView* mInnerView;
-  Maybe<bool> mPreviouslyNeededLayer;
   bool mIsInline;
   bool mPostedReflowCallback;
   bool mDidCreateDoc;

@@ -1,6 +1,7 @@
 #include "mozilla/Assertions.h"
 
 #include <stdio.h>
+#include <map>
 
 #include "nscore.h"
 #include "mozilla/Unused.h"
@@ -45,7 +46,7 @@ void PureVirtualCall()
 }
 
 extern "C" {
-#if XP_WIN && HAVE_64BIT_BUILD
+#if XP_WIN && HAVE_64BIT_BUILD && !defined(__MINGW32__)
   // Implementation in win64unwindInfoTests.asm
   uint64_t x64CrashCFITest_NO_MANS_LAND(uint64_t returnpfn, void*);
   uint64_t x64CrashCFITest_Launcher(uint64_t returnpfn, void* testProc);
@@ -59,7 +60,7 @@ extern "C" {
   uint64_t x64CrashCFITest_SAVE_XMM128_FAR(uint64_t returnpfn, void*);
   uint64_t x64CrashCFITest_EPILOG(uint64_t returnpfn, void*);
   uint64_t x64CrashCFITest_EOF(uint64_t returnpfn, void*);
-#endif // XP_WIN && HAVE_64BIT_BUILD
+#endif // XP_WIN && HAVE_64BIT_BUILD && !defined(__MINGW32__)
 }
 
 // Keep these in sync with CrashTestUtils.jsm!
@@ -82,7 +83,7 @@ const int16_t CRASH_X64CFI_SAVE_XMM128_FAR = 18;
 const int16_t CRASH_X64CFI_EPILOG         = 19;
 const int16_t CRASH_X64CFI_EOF            = 20;
 
-#if XP_WIN && HAVE_64BIT_BUILD
+#if XP_WIN && HAVE_64BIT_BUILD && !defined(__MINGW32__)
 
 typedef decltype(&x64CrashCFITest_UnknownOpcode) win64CFITestFnPtr_t;
 
@@ -110,12 +111,18 @@ GetWin64CFITestMap() {
   return ret;
 }
 
-void ReserveStack() {
-  // This ensures our tests have enough reserved stack space.
-  uint8_t* p = (uint8_t*)alloca(1024000);
-  // This ensures we don't optimized away this meaningless code at build time.
-  mozilla::Unused << (int)(uint64_t)p;
-}
+// This ensures tests have enough committed stack space.
+// Must not be inlined, or the stack space would not be freed for the caller
+// to use.
+void MOZ_NEVER_INLINE ReserveStack() {
+  // We must actually use the memory in some way that the compiler can't
+  // optimize away.
+  static const size_t elements = (1024000 / sizeof(FILETIME)) + 1;
+  FILETIME stackmem[elements];
+  ::GetSystemTimeAsFileTime(&stackmem[0]);
+  ::GetSystemTimeAsFileTime(&stackmem[elements - 1]);
+ }
+
 
 #endif // XP_WIN && HAVE_64BIT_BUILD
 
@@ -152,7 +159,7 @@ void Crash(int16_t how)
     ThrowException();
     break;
   }
-#if XP_WIN && HAVE_64BIT_BUILD
+#if XP_WIN && HAVE_64BIT_BUILD && !defined(__MINGW32__)
   case CRASH_X64CFI_UNKNOWN_OPCODE:
   case CRASH_X64CFI_PUSH_NONVOL:
   case CRASH_X64CFI_ALLOC_SMALL:
@@ -162,17 +169,17 @@ void Crash(int16_t how)
   case CRASH_X64CFI_SAVE_XMM128:
   case CRASH_X64CFI_SAVE_XMM128_FAR:
   case CRASH_X64CFI_EPILOG: {
-    ReserveStack();
     auto m = GetWin64CFITestMap();
     if (m.find(how) == m.end()) {
       break;
     }
     auto pfnTest = m[how];
     auto pfnLauncher = m[CRASH_X64CFI_LAUNCHER];
+    ReserveStack();
     pfnLauncher(0, pfnTest);
     break;
   }
-#endif // XP_WIN && HAVE_64BIT_BUILD
+#endif // XP_WIN && HAVE_64BIT_BUILD && !defined(__MINGW32__)
   default:
     break;
   }
@@ -211,7 +218,7 @@ void TryOverrideExceptionHandler()
 
 extern "C" NS_EXPORT uint32_t
 GetWin64CFITestFnAddrOffset(int16_t fnid) {
-#if XP_WIN && HAVE_64BIT_BUILD
+#if XP_WIN && HAVE_64BIT_BUILD && !defined(__MINGW32__)
   // fnid uses the same constants as Crash().
   // Returns the RVA of the requested function.
   // Returns 0 on failure.
@@ -223,5 +230,5 @@ GetWin64CFITestFnAddrOffset(int16_t fnid) {
   return ((uint64_t)m[fnid]) - moduleBase;
 #else
   return 0;
-#endif // XP_WIN && HAVE_64BIT_BUILD
+#endif // XP_WIN && HAVE_64BIT_BUILD && !defined(__MINGW32__)
 }

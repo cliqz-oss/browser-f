@@ -182,8 +182,6 @@ with Files('tests/unit/**'):
 
 with Files('tests/widgets/*audiocontrols*'):
     BUG_COMPONENT = ('Toolkit', 'Video/Audio Controls')
-with Files('tests/widgets/*1319301*'):
-    BUG_COMPONENT = ('Toolkit', 'Video/Audio Controls')
 with Files('tests/widgets/*898940*'):
     BUG_COMPONENT = ('Toolkit', 'Video/Audio Controls')
 
@@ -241,7 +239,7 @@ with Files('browser-*.js'):
     BUG_COMPONENT = ('Toolkit', 'General')
 
 with Files('buildconfig.html'):
-    BUG_COMPONENT = ('Toolkit', 'Build Config')
+    BUG_COMPONENT = ('Firefox Build System', 'General')
 
 with Files('contentAreaUtils.js'):
     BUG_COMPONENT = ('Toolkit', 'General')
@@ -257,9 +255,6 @@ with Files('edit*'):
 
 with Files('globalOverlay.*'):
     BUG_COMPONENT = ('Toolkit', 'General')
-
-with Files('menulist.css'):
-    BUG_COMPONENT = ('Toolkit', 'XUL Widgets')
 
 with Files('minimal-xul.css'):
     BUG_COMPONENT = ('Toolkit', 'XUL Widgets')

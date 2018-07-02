@@ -24,6 +24,7 @@
 #include "mozilla/Maybe.h"
 #include "mozilla/TypeTraits.h"
 #include "mozilla/dom/Element.h"
+#include "mozilla/dom/Event.h"
 #include "mozilla/dom/PermissionMessageUtils.h"
 #include "mozilla/dom/TabChild.h"
 #include "mozilla/dom/indexedDB/PBackgroundIDBDatabaseFileChild.h"
@@ -40,7 +41,6 @@
 #include "nsIAsyncInputStream.h"
 #include "nsIBFCacheEntry.h"
 #include "nsIDocument.h"
-#include "nsIDOMEvent.h"
 #include "nsIEventTarget.h"
 #include "nsIFileStreams.h"
 #include "nsNetCID.h"
@@ -724,7 +724,7 @@ void
 DispatchErrorEvent(IDBRequest* aRequest,
                    nsresult aErrorCode,
                    IDBTransaction* aTransaction = nullptr,
-                   nsIDOMEvent* aEvent = nullptr)
+                   Event* aEvent = nullptr)
 {
   MOZ_ASSERT(aRequest);
   aRequest->AssertIsOnOwningThread();
@@ -738,7 +738,7 @@ DispatchErrorEvent(IDBRequest* aRequest,
 
   request->SetError(aErrorCode);
 
-  nsCOMPtr<nsIDOMEvent> errorEvent;
+  RefPtr<Event> errorEvent;
   if (!aEvent) {
     // Make an error event and fire it at the target.
     errorEvent = CreateGenericEvent(request,
@@ -774,9 +774,9 @@ DispatchErrorEvent(IDBRequest* aRequest,
                  aErrorCode);
   }
 
-  bool doDefault;
-  nsresult rv = request->DispatchEvent(aEvent, &doDefault);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
+  IgnoredErrorResult rv;
+  bool doDefault = request->DispatchEvent(*aEvent, CallerType::System, rv);
+  if (NS_WARN_IF(rv.Failed())) {
     return;
   }
 
@@ -800,7 +800,7 @@ DispatchErrorEvent(IDBRequest* aRequest,
 
 void
 DispatchSuccessEvent(ResultHelper* aResultHelper,
-                     nsIDOMEvent* aEvent = nullptr)
+                     Event* aEvent = nullptr)
 {
   MOZ_ASSERT(aResultHelper);
 
@@ -817,7 +817,7 @@ DispatchSuccessEvent(ResultHelper* aResultHelper,
     return;
   }
 
-  nsCOMPtr<nsIDOMEvent> successEvent;
+  RefPtr<Event> successEvent;
   if (!aEvent) {
     successEvent = CreateGenericEvent(request,
                                       nsDependentString(kSuccessEventType),
@@ -852,9 +852,9 @@ DispatchSuccessEvent(ResultHelper* aResultHelper,
   MOZ_ASSERT_IF(transaction,
                 transaction->IsOpen() && !transaction->IsAborted());
 
-  bool dummy;
-  nsresult rv = request->DispatchEvent(aEvent, &dummy);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
+  IgnoredErrorResult rv;
+  request->DispatchEvent(*aEvent, rv);
+  if (NS_WARN_IF(rv.Failed())) {
     return;
   }
 
@@ -1860,7 +1860,7 @@ BackgroundFactoryRequestChild::HandleResponse(
 
   ResultHelper helper(mRequest, nullptr, &JS::UndefinedHandleValue);
 
-  nsCOMPtr<nsIDOMEvent> successEvent =
+  RefPtr<Event> successEvent =
     IDBVersionChangeEvent::Create(mRequest,
                                   nsDependentString(kSuccessEventType),
                                   aResponse.previousVersion());
@@ -2014,7 +2014,7 @@ BackgroundFactoryRequestChild::RecvBlocked(const uint64_t& aCurrentVersion)
 
   const nsDependentString type(kBlockedEventType);
 
-  nsCOMPtr<nsIDOMEvent> blockedEvent;
+  RefPtr<Event> blockedEvent;
   if (mIsDeleteOp) {
     blockedEvent =
       IDBVersionChangeEvent::Create(mRequest, type, aCurrentVersion);
@@ -2035,8 +2035,9 @@ BackgroundFactoryRequestChild::RecvBlocked(const uint64_t& aCurrentVersion)
                IDB_LOG_ID_STRING(),
                kungFuDeathGrip->LoggingSerialNumber());
 
-  bool dummy;
-  if (NS_FAILED(kungFuDeathGrip->DispatchEvent(blockedEvent, &dummy))) {
+  IgnoredErrorResult rv;
+  kungFuDeathGrip->DispatchEvent(*blockedEvent, rv);
+  if (rv.Failed()) {
     NS_WARNING("Failed to dispatch event!");
   }
 
@@ -2265,7 +2266,7 @@ BackgroundDatabaseChild::RecvPBackgroundIDBVersionChangeTransactionConstructor(
 
   request->SetTransaction(transaction);
 
-  nsCOMPtr<nsIDOMEvent> upgradeNeededEvent =
+  RefPtr<Event> upgradeNeededEvent =
     IDBVersionChangeEvent::Create(request,
                                   nsDependentString(kUpgradeNeededEventType),
                                   aCurrentVersion,
@@ -2348,7 +2349,7 @@ BackgroundDatabaseChild::RecvVersionChange(const uint64_t& aOldVersion,
   // Otherwise fire a versionchange event.
   const nsDependentString type(kVersionChangeEventType);
 
-  nsCOMPtr<nsIDOMEvent> versionChangeEvent;
+  RefPtr<Event> versionChangeEvent;
 
   switch (aNewVersion.type()) {
     case NullableVersion::Tnull_t:
@@ -2374,8 +2375,9 @@ BackgroundDatabaseChild::RecvVersionChange(const uint64_t& aOldVersion,
                "IndexedDB %s: C: IDBDatabase \"versionchange\" event",
                IDB_LOG_ID_STRING());
 
-  bool dummy;
-  if (NS_FAILED(kungFuDeathGrip->DispatchEvent(versionChangeEvent, &dummy))) {
+  IgnoredErrorResult rv;
+  kungFuDeathGrip->DispatchEvent(*versionChangeEvent, rv);
+  if (rv.Failed()) {
     NS_WARNING("Failed to dispatch event!");
   }
 
@@ -3553,7 +3555,8 @@ PreprocessHelper::WaitForStreamReady(nsIInputStream* aInputStream)
   nsCOMPtr<nsIAsyncFileMetadata> asyncFileMetadata =
     do_QueryInterface(aInputStream);
   if (asyncFileMetadata) {
-    nsresult rv = asyncFileMetadata->AsyncWait(this, mTaskQueueEventTarget);
+    nsresult rv =
+      asyncFileMetadata->AsyncFileMetadataWait(this, mTaskQueueEventTarget);
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return rv;
     }

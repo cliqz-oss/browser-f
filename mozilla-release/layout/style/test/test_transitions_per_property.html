@@ -73,8 +73,6 @@ var supported_properties = {
     "box-shadow": [ test_shadow_transition ],
     "column-count": [ test_pos_integer_or_auto_transition,
                       test_integer_at_least_one_clamping ],
-    "column-gap": [ test_length_transition,
-                    test_length_clamped ],
     "column-rule-color": [ test_color_transition,
                            test_true_currentcolor_transition ],
     "column-rule-width": [ test_length_transition,
@@ -148,7 +146,8 @@ var supported_properties = {
                        test_float_zeroToOne_clamped ],
     "filter" : [ test_filter_transition ],
     "flex-basis": [ test_length_transition, test_percent_transition,
-                    test_length_clamped, test_percent_clamped ],
+                    test_length_clamped, test_percent_clamped,
+                    test_flex_basis_content_transition ],
     "flex-grow": [ test_float_zeroToOne_transition,
                    test_float_aboveOne_transition ],
     "flex-shrink": [ test_float_zeroToOne_transition,
@@ -166,10 +165,10 @@ var supported_properties = {
                           test_float_aboveOne_transition,
                           /* FIXME: font-size-adjust treats zero specially */
                           /* test_float_zeroToOne_clamped */ ],
-    "font-stretch": [ test_font_stretch ],
+    "font-stretch": [ test_percent_transition, test_percent_clamped ],
     "font-weight": [ test_font_weight ],
-    "grid-column-gap": [ test_grid_gap ],
-    "grid-row-gap": [ test_grid_gap ],
+    "column-gap": [ test_grid_gap ],
+    "row-gap": [ test_grid_gap ],
     "height": [ test_length_transition, test_percent_transition,
                 test_length_percent_calc_transition,
                 test_length_clamped, test_percent_clamped ],
@@ -317,6 +316,10 @@ if (SpecialPowers.getBoolPref("layout.css.shape-outside.enabled")) {
       // shape-image-threshold (like opacity) is clamped in computed style
       // (not parsing/interpolation)
       test_float_zeroToOne_clamped ];
+
+  supported_properties["shape-margin"] =
+    [ test_length_transition, test_percent_transition,
+      test_length_clamped, test_percent_clamped ];
 
   supported_properties["shape-outside"] =
     [ test_basic_shape_or_url_transition ];
@@ -1169,6 +1172,31 @@ function test_length_clamped_or_unclamped(prop, is_clamped, numbers_are_pixels) 
   div.style.setProperty("transition-timing-function", "linear", "");
 }
 
+// Test transition to/from the special 'flex-basis: content' keyword.
+function test_flex_basis_content_transition(prop) {
+  is(prop, "flex-basis", "this test function should only be called for 'flex-basis'");
+
+  // Test transition from length to 'content':
+  div.style.setProperty("transition-property", "none", "");
+  div.style.setProperty(prop, "8px", "");
+  is(cs.getPropertyValue(prop), "8px",
+     "property " + prop + ": computed value before transition to 'content'");
+  div.style.setProperty("transition-property", prop, "");
+  div.style.setProperty(prop, "content", "");
+  is(cs.getPropertyValue(prop), "content",
+     "property " + prop + ": transition to 'content' (should be discrete)");
+
+  // Test transition from 'content' to length:
+  div.style.setProperty("transition-property", "none", "");
+  div.style.setProperty(prop, "content", "");
+  is(cs.getPropertyValue(prop), "content",
+     "property " + prop + ": computed value before transition from 'content'");
+  div.style.setProperty("transition-property", prop, "");
+  div.style.setProperty(prop, "6px", "");
+  is(cs.getPropertyValue(prop), "6px",
+     "property " + prop + ": transition from 'content' (should be discrete)");
+}
+
 // Test using float values in the range [0, 1] (e.g. opacity)
 function test_float_zeroToOne_transition(prop) {
   div.style.setProperty("transition-property", "none", "");
@@ -1957,48 +1985,6 @@ function test_integer_transition(prop) {
   div.style.setProperty("transition-timing-function", "linear", "");
 }
 
-function test_font_stretch(prop) {
-  is(prop, "font-stretch", "only designed for one property");
-
-  div.style.setProperty("transition-property", "none", "");
-  div.style.setProperty(prop, "normal", "");
-  is(cs.getPropertyValue(prop), "normal",
-     "font-stretch property " + prop + ": computed value before transition");
-  div.style.setProperty("transition-property", prop, "");
-  div.style.setProperty(prop, "ultra-expanded", "");
-  is(cs.getPropertyValue(prop), "semi-expanded",
-     "font-stretch property " + prop + ": interpolation of font-stretches");
-  check_distance(prop, "normal", "semi-expanded", "ultra-expanded");
-  div.style.setProperty("transition-property", "none", "");
-  div.style.setProperty(prop, "expanded", "");
-  is(cs.getPropertyValue(prop), "expanded",
-     "font-stretch property " + prop + ": computed value before transition");
-  div.style.setProperty("transition-property", prop, "");
-  div.style.setProperty(prop, "extra-condensed", "");
-  is(cs.getPropertyValue(prop), "semi-expanded",
-     "font-stretch property " + prop + ": interpolation of font-stretches");
-  check_distance(prop, "expanded", "semi-expanded", "condensed");
-
-  div.style.setProperty("transition-timing-function", FUNC_NEGATIVE, "");
-  div.style.setProperty("transition-property", "none", "");
-  div.style.setProperty(prop, "ultra-condensed", "");
-  is(cs.getPropertyValue(prop), "ultra-condensed",
-     "font-stretch property " + prop + ": flush before clamping test");
-  div.style.setProperty("transition-property", prop, "");
-  div.style.setProperty(prop, "ultra-expanded", "");
-  is(cs.getPropertyValue(prop), "ultra-condensed",
-     "font-stretch property " + prop + ": clamping of values");
-  div.style.setProperty("transition-property", "none", "");
-  div.style.setProperty(prop, "ultra-expanded", "");
-  is(cs.getPropertyValue(prop), "ultra-expanded",
-     "font-stretch property " + prop + ": flush before clamping test");
-  div.style.setProperty("transition-property", prop, "");
-  div.style.setProperty(prop, "ultra-condensed", "");
-  is(cs.getPropertyValue(prop), "ultra-expanded",
-     "font-stretch property " + prop + ": clamping of values");
-  div.style.setProperty("transition-timing-function", "linear", "");
-}
-
 function test_font_weight(prop) {
   is(prop, "font-weight", "only designed for one property");
 
@@ -2008,7 +1994,7 @@ function test_font_weight(prop) {
      "font-weight property " + prop + ": computed value before transition");
   div.style.setProperty("transition-property", prop, "");
   div.style.setProperty(prop, "900", "");
-  is(cs.getPropertyValue(prop), "500",
+  is(cs.getPropertyValue(prop), "525",
      "font-weight property " + prop + ": interpolation of font-weights");
   check_distance(prop, "400", "500", "800");
 
@@ -2024,20 +2010,20 @@ function test_font_weight(prop) {
 
   div.style.setProperty("transition-timing-function", FUNC_NEGATIVE, "");
   div.style.setProperty("transition-property", "none", "");
-  div.style.setProperty(prop, "100", "");
-  is(cs.getPropertyValue(prop), "100",
+  div.style.setProperty(prop, "1", "");
+  is(cs.getPropertyValue(prop), "1",
      "font-weight property " + prop + ": flush before clamping test");
   div.style.setProperty("transition-property", prop, "");
-  div.style.setProperty(prop, "900", "");
-  is(cs.getPropertyValue(prop), "100",
+  div.style.setProperty(prop, "1000", "");
+  is(cs.getPropertyValue(prop), "1",
      "font-weight property " + prop + ": clamping of values");
   div.style.setProperty("transition-property", "none", "");
-  div.style.setProperty(prop, "900", "");
-  is(cs.getPropertyValue(prop), "900",
+  div.style.setProperty(prop, "1000", "");
+  is(cs.getPropertyValue(prop), "1000",
      "font-weight property " + prop + ": flush before clamping test");
   div.style.setProperty("transition-property", prop, "");
-  div.style.setProperty(prop, "100", "");
-  is(cs.getPropertyValue(prop), "900",
+  div.style.setProperty(prop, "1", "");
+  is(cs.getPropertyValue(prop), "1000",
      "font-weight property " + prop + ": clamping of values");
   div.style.setProperty("transition-timing-function", "linear", "");
 }

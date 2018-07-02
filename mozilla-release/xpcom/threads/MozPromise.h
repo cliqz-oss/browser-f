@@ -7,7 +7,6 @@
 #if !defined(MozPromise_h_)
 #define MozPromise_h_
 
-#include "mozilla/IndexSequence.h"
 #include "mozilla/Logging.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/Mutex.h"
@@ -303,8 +302,8 @@ private:
       if (--mOutstandingPromises == 0) {
         nsTArray<ResolveValueType> resolveValues;
         resolveValues.SetCapacity(mResolveValues.Length());
-        for (size_t i = 0; i < mResolveValues.Length(); ++i) {
-          resolveValues.AppendElement(Move(mResolveValues[i].ref()));
+        for (auto&& resolveValue : mResolveValues) {
+          resolveValues.AppendElement(Move(resolveValue.ref()));
         }
 
         mPromise->Resolve(Move(resolveValues), __func__);
@@ -1035,13 +1034,13 @@ protected:
   void DispatchAll()
   {
     mMutex.AssertCurrentThreadOwns();
-    for (size_t i = 0; i < mThenValues.Length(); ++i) {
-      mThenValues[i]->Dispatch(this);
+    for (auto&& thenValue : mThenValues) {
+      thenValue->Dispatch(this);
     }
     mThenValues.Clear();
 
-    for (size_t i = 0; i < mChainedPromises.Length(); ++i) {
-      ForwardTo(mChainedPromises[i]);
+    for (auto&& chainedPromise : mChainedPromises) {
+      ForwardTo(chainedPromise);
     }
     mChainedPromises.Clear();
   }
@@ -1205,10 +1204,7 @@ public:
     if (mMonitor) {
       mMonitor->AssertCurrentThreadOwns();
     }
-
-    RefPtr<typename PromiseType::Private> p = mPromise;
-    mPromise = nullptr;
-    return p.forget();
+    return mPromise.forget();
   }
 
   void Resolve(const typename PromiseType::ResolveValueType& aResolveValue,
@@ -1551,10 +1547,8 @@ InvokeAsync(nsISerialEventTarget* aTarget, const char* aCallerName,
   typedef typename RemoveSmartPointer<decltype(aFunction())>::Type PromiseType;
   typedef detail::ProxyFunctionRunnable<Function, PromiseType> ProxyRunnableType;
 
-  RefPtr<typename PromiseType::Private> p =
-    new (typename PromiseType::Private)(aCallerName);
-  RefPtr<ProxyRunnableType> r =
-    new ProxyRunnableType(p, Forward<Function>(aFunction));
+  auto p = MakeRefPtr<typename PromiseType::Private>(aCallerName);
+  auto r = MakeRefPtr<ProxyRunnableType>(p, Forward<Function>(aFunction));
   aTarget->Dispatch(r.forget());
   return p.forget();
 }

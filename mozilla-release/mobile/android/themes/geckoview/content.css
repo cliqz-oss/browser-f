@@ -21,7 +21,6 @@ xul|scrollbar[root="true"] {
 
 xul|scrollbar {
   -moz-appearance: none !important;
-  -moz-binding: url("chrome://global/content/bindings/scrollbar.xml#scrollbar");
   background-color: transparent !important;
   background-image: none !important;
   border: 0px solid transparent !important;
@@ -101,7 +100,7 @@ xul|button,
 textarea,
 button,
 xul|button,
-* > input:not(:-moz-any([type="image"], [type="checkbox"], [type="radio"])) {
+* > input:not(:-moz-any([type="image"], [type="checkbox"], [type="radio"], [type="range"])) {
   border-radius: var(--form_border_radius);
 }
 
@@ -109,15 +108,17 @@ select[size],
 select[multiple],
 select[size][multiple],
 textarea,
-* > input:not(:-moz-any([type="image"], [type="checkbox"], [type="radio"])) {
+* > input:not(:-moz-any([type="image"], [type="checkbox"], [type="radio"], [type="range"])) {
   border-style: solid;
   border-color: var(--form_border);
   color: var(--form_text);
   background-color: var(--form_background);
 }
 
-/* Selects are handled by the form helper, see bug 685197 */
-select option, select optgroup {
+/* These elements are handled by the prompt module. */
+select option, select optgroup,
+input[type="date"] div:-moz-native-anonymous.datetime-input-box-wrapper,
+input[type="time"] div:-moz-native-anonymous.datetime-input-box-wrapper {
   pointer-events: none;
 }
 
@@ -262,11 +263,6 @@ select:disabled > button {
   padding-inline-end: 7px;
   padding-block-start: 1px;
   padding-block-end: 1px;
-}
-
-/* -moz-touch-enabled? media elements */
-:-moz-any(video, audio) > xul|videocontrols {
-  -moz-binding: url("chrome://global/content/bindings/videocontrols.xml#touchControls");
 }
 
 /* display click to play when autoplay is blocked for videos */

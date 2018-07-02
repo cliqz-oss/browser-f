@@ -69,8 +69,9 @@ static bool
 XPC_WN_Shared_ToString(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
-    RootedObject obj(cx, JS_THIS_OBJECT(cx, vp));
-    if (!obj)
+
+    RootedObject obj(cx);
+    if (!args.computeThis(cx, &obj))
         return false;
 
     XPCCallContext ccx(cx, obj);
@@ -176,9 +177,11 @@ XPC_WN_DoubleWrappedGetter(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
 
-    RootedObject obj(cx, JS_THIS_OBJECT(cx, vp));
-    if (!obj)
+    if (!args.thisv().isObject()) {
+        JS_ReportErrorASCII(cx, "xpconnect double wrapped getter called on incompatible non-object");
         return false;
+    }
+    RootedObject obj(cx, &args.thisv().toObject());
 
     XPCCallContext ccx(cx, obj);
     XPCWrappedNative* wrapper = ccx.GetWrapper();
@@ -261,12 +264,7 @@ DefinePropertyIfFound(XPCCallContext& ccx,
                 }
             }
 
-            bool overwriteToString = !(flags & nsIClassInfo::DOM_OBJECT)
-                || Preferences::GetBool("dom.XPCToStringForDOMClasses", false);
-
-            if(id == xpccx->GetStringID(XPCJSContext::IDX_TO_STRING)
-                && overwriteToString)
-            {
+            if (id == xpccx->GetStringID(XPCJSContext::IDX_TO_STRING)) {
                 call = XPC_WN_Shared_ToString;
                 name = xpccx->GetStringName(XPCJSContext::IDX_TO_STRING);
             } else if (id == xpccx->GetStringID(XPCJSContext::IDX_TO_SOURCE)) {
@@ -894,8 +892,8 @@ XPC_WN_CallMethod(JSContext* cx, unsigned argc, Value* vp)
     MOZ_ASSERT(JS_TypeOfValue(cx, args.calleev()) == JSTYPE_FUNCTION, "bad function");
     RootedObject funobj(cx, &args.callee());
 
-    RootedObject obj(cx, JS_THIS_OBJECT(cx, vp));
-    if (!obj)
+    RootedObject obj(cx);
+    if (!args.computeThis(cx, &obj))
         return false;
 
     obj = FixUpThisIfBroken(obj, funobj);
@@ -920,9 +918,11 @@ XPC_WN_GetterSetter(JSContext* cx, unsigned argc, Value* vp)
     MOZ_ASSERT(JS_TypeOfValue(cx, args.calleev()) == JSTYPE_FUNCTION, "bad function");
     RootedObject funobj(cx, &args.callee());
 
-    RootedObject obj(cx, JS_THIS_OBJECT(cx, vp));
-    if (!obj)
+    if (!args.thisv().isObject()) {
+        JS_ReportErrorASCII(cx, "xpconnect getter/setter called on incompatible non-object");
         return false;
+    }
+    RootedObject obj(cx, &args.thisv().toObject());
 
     obj = FixUpThisIfBroken(obj, funobj);
     XPCCallContext ccx(cx, obj, funobj, JSID_VOIDHANDLE, args.length(),

@@ -20,6 +20,7 @@
 
 #include "mozilla/dom/BorrowedAttrInfo.h"
 #include "mozilla/dom/Element.h"
+#include "mozilla/ErrorResult.h"
 
 using namespace mozilla;
 using namespace mozilla::a11y;
@@ -222,7 +223,7 @@ sdnAccessible::get_computedStyle(unsigned short aMaxStyleProperties,
 
   *aNumStyleProperties = 0;
 
-  if (mNode->IsNodeOfType(nsINode::eDOCUMENT))
+  if (mNode->IsDocument())
     return S_FALSE;
 
   nsCOMPtr<nsICSSDeclaration> cssDecl =
@@ -265,7 +266,7 @@ sdnAccessible::get_computedStyleForProperties(unsigned short aNumStyleProperties
   if (IsDefunct())
     return CO_E_OBJNOTCONNECTED;
 
-  if (mNode->IsNodeOfType(nsINode::eDOCUMENT))
+  if (mNode->IsDocument())
     return S_FALSE;
 
   nsCOMPtr<nsICSSDeclaration> cssDecl =
@@ -431,7 +432,7 @@ sdnAccessible::get_innerHTML(BSTR __RPC_FAR* aInnerHTML)
     return S_FALSE;
 
   nsAutoString innerHTML;
-  mNode->AsElement()->GetInnerHTML(innerHTML);
+  mNode->AsElement()->GetInnerHTML(innerHTML, IgnoreErrors());
   if (innerHTML.IsEmpty())
     return S_FALSE;
 

@@ -10,6 +10,7 @@ const {TippyTopProvider} = ChromeUtils.import("resource://activity-stream/lib/Ti
 const {insertPinned, TOP_SITES_MAX_SITES_PER_ROW} = ChromeUtils.import("resource://activity-stream/common/Reducers.jsm", {});
 const {Dedupe} = ChromeUtils.import("resource://activity-stream/common/Dedupe.jsm", {});
 const {shortURL} = ChromeUtils.import("resource://activity-stream/lib/ShortURL.jsm", {});
+const {getDefaultOptions} = ChromeUtils.import("resource://activity-stream/lib/ActivityStreamStorage.jsm", {});
 
 ChromeUtils.defineModuleGetter(this, "filterAdult",
   "resource://activity-stream/lib/FilterAdult.jsm");
@@ -26,8 +27,9 @@ const DEFAULT_SITES_PREF = "default.sites";
 const DEFAULT_TOP_SITES = [];
 const FRECENCY_THRESHOLD = 100 + 1; // 1 visit (skip first-run/one-time pages)
 const MIN_FAVICON_SIZE = 96;
-const CACHED_LINK_PROPS_TO_MIGRATE = ["screenshot"];
+const CACHED_LINK_PROPS_TO_MIGRATE = ["screenshot", "customScreenshot"];
 const PINNED_FAVICON_PROPS_TO_MIGRATE = ["favicon", "faviconRef", "faviconSize"];
+const SECTION_ID = "topsites";
 
 this.TopSitesFeed = class TopSitesFeed {
   constructor() {
@@ -40,6 +42,13 @@ this.TopSitesFeed = class TopSitesFeed {
     this.pinnedCache = new LinksCache(NewTabUtils.pinnedLinks, "links",
       [...CACHED_LINK_PROPS_TO_MIGRATE, ...PINNED_FAVICON_PROPS_TO_MIGRATE]);
     PageThumbs.addExpirationFilter(this);
+  }
+
+  init() {
+    // If the feed was previously disabled PREFS_INITIAL_VALUES was never received
+    this.refreshDefaults(this.store.getState().Prefs.values[DEFAULT_SITES_PREF]);
+    this._storage = this.store.dbStorage.getDbTable("sectionPrefs");
+    this.refresh({broadcast: true});
   }
 
   uninit() {
@@ -69,10 +78,16 @@ this.TopSitesFeed = class TopSitesFeed {
 
   filterForThumbnailExpiration(callback) {
     const {rows} = this.store.getState().TopSites;
-    callback(rows.map(site => site.url));
+    callback(rows.reduce((acc, site) => {
+      acc.push(site.url);
+      if (site.customScreenshotURL) {
+        acc.push(site.customScreenshotURL);
+      }
+      return acc;
+    }, []));
   }
 
-  async getLinksWithDefaults(action) {
+  async getLinksWithDefaults() {
     // Get at least 2 rows so toggling between 1 and 2 rows has sites
     const numItems = Math.max(this.store.getState().Prefs.values.topSitesRows, 2) * TOP_SITES_MAX_SITES_PER_ROW;
     const frecent = (await this.frecentCache.request({
@@ -94,9 +109,14 @@ this.TopSitesFeed = class TopSitesFeed {
       // Copy all properties from a frecent link and add more
       const finder = other => other.url === link.url;
 
+      // Remove frecent link's screenshot if pinned link has a custom one
+      const frecentSite = frecent.find(finder);
+      if (frecentSite && link.customScreenshotURL) {
+        delete frecentSite.screenshot;
+      }
       // If the link is a frecent site, do not copy over 'isDefault', else check
       // if the site is a default site
-      const copy = Object.assign({}, frecent.find(finder) ||
+      const copy = Object.assign({}, frecentSite ||
         {isDefault: !!notBlockedDefaultSites.find(finder)}, link, {hostname: shortURL(link)});
 
       // Add in favicons if we don't already have it
@@ -131,10 +151,18 @@ this.TopSitesFeed = class TopSitesFeed {
     // Now, get a tippy top icon, a rich icon, or screenshot for every item
     for (const link of withPinned) {
       if (link) {
-        this._fetchIcon(link);
+        // If there is a custom screenshot this is the only image we display
+        if (link.customScreenshotURL) {
+          this._fetchScreenshot(link, link.customScreenshotURL);
+        } else {
+          this._fetchIcon(link);
+        }
 
         // Remove internal properties that might be updated after dispatch
         delete link.__sharedCache;
+
+        // Indicate that these links should get a frecency bonus when clicked
+        link.typedBonus = true;
       }
     }
 
@@ -149,9 +177,17 @@ this.TopSitesFeed = class TopSitesFeed {
     if (!this._tippyTopProvider.initialized) {
       await this._tippyTopProvider.init();
     }
-
     const links = await this.getLinksWithDefaults();
-    const newAction = {type: at.TOP_SITES_UPDATED, data: links};
+    const newAction = {type: at.TOP_SITES_UPDATED, data: {links}};
+    let storedPrefs;
+    try {
+      storedPrefs = await this._storage.get(SECTION_ID) || {};
+    } catch (e) {
+      storedPrefs = {};
+      Cu.reportError("Problem getting stored prefs for TopSites");
+    }
+    newAction.data.pref = getDefaultOptions(storedPrefs);
+
     if (options.broadcast) {
       // Broadcast an update to all open content pages
       this.store.dispatch(ac.BroadcastToContent(newAction));
@@ -180,14 +216,36 @@ this.TopSitesFeed = class TopSitesFeed {
     this._requestRichIcon(link.url);
 
     // Also request a screenshot if we don't have one yet
-    if (!link.screenshot) {
-      const {url} = link;
-      await Screenshots.maybeCacheScreenshot(link, url, "screenshot",
-        screenshot => this.store.dispatch(ac.BroadcastToContent({
-          data: {screenshot, url},
-          type: at.SCREENSHOT_UPDATED
-        })));
+    await this._fetchScreenshot(link, link.url);
+  }
+
+  /**
+   * Fetch, cache and broadcast a screenshot for a specific topsite.
+   * @param link cached topsite object
+   * @param url where to fetch the image from
+   */
+  async _fetchScreenshot(link, url) {
+    if (link.screenshot) {
+      return;
     }
+    await Screenshots.maybeCacheScreenshot(link, url, "screenshot",
+      screenshot => this.store.dispatch(ac.BroadcastToContent({
+        data: {screenshot, url: link.url},
+        type: at.SCREENSHOT_UPDATED
+      })));
+  }
+
+  /**
+   * Dispatch screenshot preview to target or notify if request failed.
+   * @param customScreenshotURL {string} The URL used to capture the screenshot
+   * @param target {string} Id of content process where to dispatch the result
+   */
+  async getScreenshotPreview(url, target) {
+    const preview = await Screenshots.getScreenshotForURL(url) || "";
+    this.store.dispatch(ac.OnlyToOneContent({
+      data: {url, preview},
+      type: at.PREVIEW_RESPONSE
+    }, target));
   }
 
   _requestRichIcon(url) {
@@ -195,6 +253,10 @@ this.TopSitesFeed = class TopSitesFeed {
       type: at.RICH_ICON_MISSING,
       data: {url}
     });
+  }
+
+  updateSectionPrefs(collapsed) {
+    this.store.dispatch(ac.BroadcastToContent({type: at.TOP_SITES_PREFS_UPDATED, data: {pref: collapsed}}));
   }
 
   /**
@@ -210,23 +272,41 @@ this.TopSitesFeed = class TopSitesFeed {
 
   /**
    * Pin a site at a specific position saving only the desired keys.
+   * @param customScreenshotURL {string} User set URL of preview image for site
+   * @param label {string} User set string of custom site name
    */
-  _pinSiteAt({label, url}, index) {
+  async _pinSiteAt({customScreenshotURL, label, url}, index) {
     const toPin = {url};
     if (label) {
       toPin.label = label;
     }
+    if (customScreenshotURL) {
+      toPin.customScreenshotURL = customScreenshotURL;
+    }
     NewTabUtils.pinnedLinks.pin(toPin, index);
+
+    await this._clearLinkCustomScreenshot({customScreenshotURL, url});
+  }
+
+  async _clearLinkCustomScreenshot(site) {
+    // If screenshot url changed or was removed we need to update the cached link obj
+    if (site.customScreenshotURL !== undefined) {
+      const pinned = await this.pinnedCache.request();
+      const link = pinned.find(pin => pin && pin.url === site.url);
+      if (link && link.customScreenshotURL !== site.customScreenshotURL) {
+        link.__sharedCache.updateLink("screenshot", undefined);
+      }
+    }
   }
 
   /**
    * Handle a pin action of a site to a position.
    */
-  pin(action) {
+  async pin(action) {
     const {site, index} = action.data;
     // If valid index provided, pin at that position
     if (index >= 0) {
-      this._pinSiteAt(site, index);
+      await this._pinSiteAt(site, index);
       this._broadcastPinnedSitesUpdated();
     } else {
       this.insert(action);
@@ -287,7 +367,7 @@ this.TopSitesFeed = class TopSitesFeed {
   /**
    * Handle an insert (drop/add) action of a site.
    */
-  insert(action) {
+  async insert(action) {
     let {index} = action.data;
     // Treat invalid pin index values (e.g., -1, undefined) as insert in the first position
     if (!(index > 0)) {
@@ -299,13 +379,15 @@ this.TopSitesFeed = class TopSitesFeed {
     this._insertPin(
       action.data.site, index,
       action.data.draggedFromIndex !== undefined ? action.data.draggedFromIndex : this.store.getState().Prefs.values.topSitesRows * TOP_SITES_MAX_SITES_PER_ROW);
+
+    await this._clearLinkCustomScreenshot(action.data.site);
     this._broadcastPinnedSitesUpdated();
   }
 
   onAction(action) {
     switch (action.type) {
       case at.INIT:
-        this.refresh({broadcast: true});
+        this.init();
         break;
       case at.SYSTEM_TICK:
         this.refresh({broadcast: false});
@@ -313,9 +395,12 @@ this.TopSitesFeed = class TopSitesFeed {
       // All these actions mean we need new top sites
       case at.MIGRATION_COMPLETED:
       case at.PLACES_HISTORY_CLEARED:
-      case at.PLACES_LINKS_DELETED:
         this.frecentCache.expire();
         this.refresh({broadcast: true});
+        break;
+      case at.PLACES_LINKS_CHANGED:
+        this.frecentCache.expire();
+        this.refresh({broadcast: false});
         break;
       case at.PLACES_LINK_BLOCKED:
         this.frecentCache.expire();
@@ -325,6 +410,11 @@ this.TopSitesFeed = class TopSitesFeed {
       case at.PREF_CHANGED:
         if (action.data.name === DEFAULT_SITES_PREF) {
           this.refreshDefaults(action.data.value);
+        }
+        break;
+      case at.UPDATE_SECTION_PREFS:
+        if (action.data.id === SECTION_ID) {
+          this.updateSectionPrefs(action.data.value);
         }
         break;
       case at.PREFS_INITIAL_VALUES:
@@ -338,6 +428,9 @@ this.TopSitesFeed = class TopSitesFeed {
         break;
       case at.TOP_SITES_INSERT:
         this.insert(action);
+        break;
+      case at.PREVIEW_REQUEST:
+        this.getScreenshotPreview(action.data.url, action.meta.fromTarget);
         break;
       case at.UNINIT:
         this.uninit();

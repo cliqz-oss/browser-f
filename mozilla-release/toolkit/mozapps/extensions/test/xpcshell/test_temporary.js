@@ -272,6 +272,7 @@ add_task(async function() {
       Assert.equal(addon.type, "extension");
       Assert.equal(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
 
+      Services.obs.notifyObservers(target, "flush-cache-entry");
       target.remove(true);
     }
   }
@@ -321,6 +322,7 @@ add_task(async function test_samefile() {
   Assert.equal(addon.type, "extension");
   Assert.equal(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
 
+  Services.obs.notifyObservers(webext, "flush-cache-entry");
   webext.remove(false);
   webext = createTempWebExtensionFile({
     manifest: {
@@ -431,6 +433,7 @@ add_task(async function() {
 
   addon.uninstall();
 
+  await new Promise(executeSoon);
   addon = await promiseAddonByID(ID);
 
   BootstrapMonitor.checkAddonInstalled(ID);
@@ -681,6 +684,7 @@ add_task(async function() {
   unpacked_addon.remove(true);
 
   addon.userDisabled = false;
+  await new Promise(executeSoon);
   addon = await promiseAddonByID(ID);
 
   BootstrapMonitor.checkAddonInstalled(ID, "1.0");
@@ -696,69 +700,6 @@ add_task(async function() {
   Assert.equal(addon.type, "extension");
   Assert.equal(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
 
-  addon.uninstall();
-
-  BootstrapMonitor.checkAddonNotInstalled(ID);
-  BootstrapMonitor.checkAddonNotStarted(ID);
-
-  await promiseRestartManager();
-});
-
-// Installing a temporary add-on over a non-restartless add-on should fail.
-add_task(async function() {
-  await promiseInstallAllFiles([do_get_addon("test_install1")], true);
-
-  let non_restartless_ID = "addon1@tests.mozilla.org";
-
-  BootstrapMonitor.checkAddonNotInstalled(non_restartless_ID);
-  BootstrapMonitor.checkAddonNotStarted(non_restartless_ID);
-
-  restartManager();
-
-  BootstrapMonitor.checkAddonNotInstalled(non_restartless_ID);
-  BootstrapMonitor.checkAddonNotStarted(non_restartless_ID);
-
-  let addon = await promiseAddonByID(non_restartless_ID);
-
-  // non-restartless add-on is installed and started
-  Assert.notEqual(addon, null);
-  Assert.equal(addon.id, non_restartless_ID);
-  Assert.equal(addon.version, "1.0");
-  Assert.equal(addon.name, "Test 1");
-  Assert.ok(addon.isCompatible);
-  Assert.ok(!addon.appDisabled);
-  Assert.ok(addon.isActive);
-  Assert.equal(addon.type, "extension");
-  Assert.equal(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
-
-  let tempdir = gTmpD.clone();
-  writeInstallRDFToDir({
-    id: non_restartless_ID,
-    version: "2.0",
-    bootstrap: true,
-    unpack: true,
-    targetApplications: [{
-          id: "xpcshell@tests.mozilla.org",
-      minVersion: "1",
-      maxVersion: "1"
-        }],
-    name: "Test 1 (temporary)",
-  }, tempdir);
-
-  let unpacked_addon = tempdir.clone();
-  unpacked_addon.append(non_restartless_ID);
-
-  try {
-    await AddonManager.installTemporaryAddon(unpacked_addon);
-    do_throw("Installing over a non-restartless add-on should return"
-             + " a rejected promise");
-  } catch (err) {
-    Assert.equal(err.message,
-        "Non-restartless add-on with ID addon1@tests.mozilla.org is"
-        + " already installed");
-  }
-
-  unpacked_addon.remove(true);
   addon.uninstall();
 
   BootstrapMonitor.checkAddonNotInstalled(ID);
@@ -818,38 +759,4 @@ add_task(async function() {
   equal(addon.temporarilyInstalled, false);
 
   await promiseRestartManager();
-});
-
-// Check that WebExtensions experiments can only be installed temporarily
-// in builds that allow legacy extensions.
-add_task(async function() {
-  AddonTestUtils.usePrivilegedSignatures = false;
-
-  const API_ID = "apiexperiment@tests.mozilla.org";
-  let xpi = createTempXPIFile({
-    id: API_ID,
-    name: "WebExtension Experiment",
-    version: "1.0",
-    type: 256,
-    targetApplications: [{
-      id: "xpcshell@tests.mozilla.org",
-      minVersion: "1",
-      maxVersion: "1"
-    }],
-  });
-
-  let addon = null;
-  try {
-    await AddonManager.installTemporaryAddon(xpi);
-    addon = await promiseAddonByID(API_ID);
-  } catch (err) {
-    // fall through, level addon null
-  }
-
-  if (AppConstants.MOZ_ALLOW_LEGACY_EXTENSIONS) {
-    notEqual(addon, null, "Temporary install of WebExtension experiment succeeded");
-    addon.uninstall();
-  } else {
-    equal(addon, null, "Temporary install of WebExtension experiment was not allowed");
-  }
 });

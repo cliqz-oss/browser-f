@@ -18,8 +18,6 @@
 
     <link rel="icon" type="image/png" id="favicon"
           href="chrome://branding/content/icon32.png"/>
-    <link rel="stylesheet" href="chrome://global/skin/in-content/common.css"
-          type="text/css"/>
     <link rel="stylesheet" href="chrome://global/skin/aboutSupport.css"
           type="text/css"/>
 
@@ -27,10 +25,10 @@
             src="chrome://global/content/aboutSupport.js"/>
   </head>
 
-  <body dir="&locale.dir;">
+  <body dir="&locale.dir;" class="wide-container">
 
 #ifndef ANDROID
-    <div id="action-box">
+    <div id="action-box" class="notice-box">
       <div id="reset-box">
         <h3>&refreshProfile.title;</h3>
         <button id="reset-box-button">
@@ -234,15 +232,6 @@
             </th>
 
             <td id="contentprocesses-box">
-            </td>
-          </tr>
-
-          <tr>
-            <th class="column">
-              Stylo
-            </th>
-
-            <td id="stylo-box">
             </td>
           </tr>
 
@@ -725,40 +714,6 @@
         </tbody>
       </table>
 
-
-      <h2 class="major-section">
-        &aboutSupport.experimentsTitle;
-      </h2>
-
-      <table>
-        <thead>
-          <tr>
-            <th>
-              &aboutSupport.experimentName;
-            </th>
-            <th>
-              &aboutSupport.experimentId;
-            </th>
-            <th>
-              &aboutSupport.experimentDescription;
-            </th>
-            <th>
-              &aboutSupport.experimentActive;
-            </th>
-            <th>
-              &aboutSupport.experimentEndDate;
-            </th>
-            <th>
-              &aboutSupport.experimentHomepage;
-            </th>
-            <th>
-              &aboutSupport.experimentBranch;
-            </th>
-          </tr>
-        </thead>
-        <tbody id="experiments-tbody">
-        </tbody>
-      </table>
       <!-- - - - - - - - - - - - - - - - - - - - - -->
 
 #if defined(MOZ_SANDBOX)

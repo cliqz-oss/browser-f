@@ -24,10 +24,16 @@
 #include "nsITimer.h"
 #include "mozilla/Attributes.h"
 
-nsIFrame* NS_NewMenuFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
-nsIFrame* NS_NewMenuItemFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
+nsIFrame* NS_NewMenuFrame(nsIPresShell* aPresShell, mozilla::ComputedStyle*);
+nsIFrame* NS_NewMenuItemFrame(nsIPresShell* aPresShell, mozilla::ComputedStyle*);
 
 class nsIContent;
+
+namespace mozilla {
+namespace dom {
+class Element;
+} // namespace dom
+} // namespace mozilla
 
 #define NS_STATE_ACCELTEXT_IS_DERIVED  NS_STATE_BOX_CHILD_RESERVED
 
@@ -80,7 +86,7 @@ class nsMenuFrame final : public nsBoxFrame
                         , public nsIReflowCallback
 {
 public:
-  explicit nsMenuFrame(nsStyleContext* aContext);
+  explicit nsMenuFrame(ComputedStyle* aStyle);
 
   NS_DECL_QUERYFRAME
   NS_DECL_FRAMEARENA_HELPERS(nsMenuFrame)
@@ -92,10 +98,6 @@ public:
   virtual void Init(nsIContent*       aContent,
                     nsContainerFrame* aParent,
                     nsIFrame*         aPrevInFlow) override;
-
-#ifdef DEBUG_LAYOUT
-  virtual nsresult SetXULDebug(nsBoxLayoutState& aState, bool aDebug) override;
-#endif
 
   // The following methods are all overridden so that the menupopup
   // can be stored in a separate list, so that it doesn't impact reflow of the
@@ -142,8 +144,8 @@ public:
 
   bool IsChecked() { return mChecked; }
 
-  NS_IMETHOD GetActiveChild(nsIDOMElement** aResult);
-  NS_IMETHOD SetActiveChild(nsIDOMElement* aChild);
+  NS_IMETHOD GetActiveChild(mozilla::dom::Element** aResult);
+  NS_IMETHOD SetActiveChild(mozilla::dom::Element* aChild);
 
   // called when the Enter key is pressed while the menuitem is the current
   // one in its parent popup. This will carry out the command attached to
@@ -268,9 +270,6 @@ protected:
   void PassMenuCommandEventToPopupManager();
 
 protected:
-#ifdef DEBUG_LAYOUT
-  nsresult SetXULDebug(nsBoxLayoutState& aState, nsIFrame* aList, bool aDebug);
-#endif
   nsresult Notify(nsITimer* aTimer);
 
   bool mIsMenu; // Whether or not we can even have children or not.

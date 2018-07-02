@@ -21,7 +21,9 @@
 #include "mozilla/BinarySearch.h"
 
 #include "vm/MutexIDs.h"
+#include "wasm/WasmBuiltins.h"
 #include "wasm/WasmCode.h"
+#include "wasm/WasmInstance.h"
 
 using namespace js;
 using namespace wasm;
@@ -50,15 +52,14 @@ class ProcessCodeSegmentMap
     CodeSegmentVector segments1_;
     CodeSegmentVector segments2_;
 
-    // Because of sampling/interruptions/stack iteration in general, the
-    // thread running wasm might need to know to which CodeSegment the
-    // current PC belongs, during a call to lookup(). A lookup is a
-    // read-only operation, and we don't want to take a lock then
+    // Because of profiling, the thread running wasm might need to know to which
+    // CodeSegment the current PC belongs, during a call to lookup(). A lookup
+    // is a read-only operation, and we don't want to take a lock then
     // (otherwise, we could have a deadlock situation if an async lookup
     // happened on a given thread that was holding mutatorsMutex_ while getting
-    // interrupted/sampled). Since the writer could be modifying the data that
-    // is getting looked up, the writer functions use spin-locks to know if
-    // there are any observers (i.e. calls to lookup()) of the atomic data.
+    // sampled). Since the writer could be modifying the data that is getting
+    // looked up, the writer functions use spin-locks to know if there are any
+    // observers (i.e. calls to lookup()) of the atomic data.
 
     Atomic<size_t> observers_;
 
@@ -247,7 +248,14 @@ wasm::LookupCode(const void* pc, const CodeRange** cr /* = nullptr */)
 }
 
 void
-wasm::ShutDownProcessStaticData()
+wasm::ShutDown()
 {
+    // If there are live runtimes then we are already pretty much leaking the
+    // world, so to avoid spurious assertions (which are valid and valuable when
+    // there are not live JSRuntimes), don't bother releasing anything here.
+    if (JSRuntime::hasLiveRuntimes())
+        return;
+
+    ReleaseBuiltinThunks();
     processCodeSegmentMap.freeAll();
 }

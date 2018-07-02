@@ -12,14 +12,14 @@ add_task(async function test() {
 
   // Load some URL in the current tab.
   let flags = Ci.nsIWebNavigation.LOAD_FLAGS_REPLACE_HISTORY;
-  win.gBrowser.selectedBrowser.loadURIWithFlags("about:robots", flags);
+  win.gBrowser.selectedBrowser.loadURI("about:robots", { flags });
   await promiseBrowserLoaded(win.gBrowser.selectedBrowser);
 
   // Open a second tab and close the first one.
   let tab = win.gBrowser.addTab("about:mozilla");
   await promiseBrowserLoaded(tab.linkedBrowser);
   await TabStateFlusher.flush(tab.linkedBrowser);
-  await promiseRemoveTab(win.gBrowser.tabs[0]);
+  await promiseRemoveTabAndSessionState(win.gBrowser.tabs[0]);
 
   // Make sure our window is still tracked by sessionstore
   // and the window state is as expected.

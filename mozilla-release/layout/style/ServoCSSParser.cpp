@@ -33,32 +33,6 @@ ServoCSSParser::ComputeColor(ServoStyleSet* aStyleSet,
                             aWasCurrentColor, aLoader);
 }
 
-/* static */ bool
-ServoCSSParser::ParseIntersectionObserverRootMargin(const nsAString& aValue,
-                                                    nsCSSRect* aResult)
-{
-  return Servo_ParseIntersectionObserverRootMargin(&aValue, aResult);
-}
-
-/* static */ already_AddRefed<nsAtom>
-ServoCSSParser::ParseCounterStyleName(const nsAString& aValue)
-{
-  NS_ConvertUTF16toUTF8 value(aValue);
-  nsAtom* atom = Servo_ParseCounterStyleName(&value);
-  return already_AddRefed<nsAtom>(atom);
-}
-
-/* static */ bool
-ServoCSSParser::ParseCounterStyleDescriptor(nsCSSCounterDesc aDescriptor,
-                                            const nsAString& aValue,
-                                            URLExtraData* aURLExtraData,
-                                            nsCSSValue& aResult)
-{
-  NS_ConvertUTF16toUTF8 value(aValue);
-  return Servo_ParseCounterStyleDescriptor(aDescriptor, &value, aURLExtraData,
-                                           &aResult);
-}
-
 /* static */ already_AddRefed<RawServoDeclarationBlock>
 ServoCSSParser::ParseProperty(nsCSSPropertyID aProperty,
                               const nsAString& aValue,
@@ -90,15 +64,6 @@ ServoCSSParser::ParseTransformIntoMatrix(const nsAString& aValue,
   return Servo_ParseTransformIntoMatrix(&aValue,
                                         &aContains3DTransform,
                                         &aResult);
-}
-
-/* static */ bool
-ServoCSSParser::ParseFontDescriptor(nsCSSFontDesc aDescID,
-                                    const nsAString& aValue,
-                                    URLExtraData* aUrl,
-                                    nsCSSValue& aResult)
-{
-  return Servo_ParseFontDescriptor(aDescID, &aValue, aUrl, &aResult);
 }
 
 /* static */ bool

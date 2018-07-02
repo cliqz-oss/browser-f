@@ -12,10 +12,9 @@
 #define jsutil_h
 
 #include "mozilla/Assertions.h"
-#include "mozilla/Compiler.h"
-#include "mozilla/GuardObjects.h"
 #include "mozilla/HashFunctions.h"
 #include "mozilla/MathAlgorithms.h"
+#include "mozilla/MemoryChecking.h"
 #include "mozilla/PodOperations.h"
 
 #include <limits.h>
@@ -23,9 +22,6 @@
 #include "js/Initialization.h"
 #include "js/Utility.h"
 #include "js/Value.h"
-
-#define JS_ALWAYS_TRUE(expr)      MOZ_ALWAYS_TRUE(expr)
-#define JS_ALWAYS_FALSE(expr)     MOZ_ALWAYS_FALSE(expr)
 
 #if defined(JS_DEBUG)
 # define JS_DIAGNOSTICS_ASSERT(expr) MOZ_ASSERT(expr)
@@ -156,26 +152,6 @@ Max(T t1, T t2)
     return t1 > t2 ? t1 : t2;
 }
 
-template<typename T>
-class MOZ_RAII AutoScopedAssign
-{
-  public:
-    AutoScopedAssign(T* addr, const T& value
-                     MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
-        : addr_(addr), old(*addr_)
-    {
-        MOZ_GUARD_OBJECT_NOTIFIER_INIT;
-        *addr_ = value;
-    }
-
-    ~AutoScopedAssign() { *addr_ = old; }
-
-  private:
-    MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
-    T* addr_;
-    T old;
-};
-
 template <typename T, typename U>
 static inline U
 ComputeByteAlignment(T bytes, U alignment)
@@ -283,14 +259,16 @@ PodSet(T* aDst, const T& aSrc, size_t aNElem)
  *
  * Note: new patterns should also be added to the array in IsThingPoisoned!
  */
-#define JS_FRESH_NURSERY_PATTERN 0x2F
-#define JS_SWEPT_NURSERY_PATTERN 0x2B
-#define JS_ALLOCATED_NURSERY_PATTERN 0x2D
-#define JS_FRESH_TENURED_PATTERN 0x4F
-#define JS_MOVED_TENURED_PATTERN 0x49
-#define JS_SWEPT_TENURED_PATTERN 0x4B
-#define JS_ALLOCATED_TENURED_PATTERN 0x4D
-#define JS_FREED_HEAP_PTR_PATTERN 0x6B
+const uint8_t JS_FRESH_NURSERY_PATTERN     = 0x2F;
+const uint8_t JS_SWEPT_NURSERY_PATTERN     = 0x2B;
+const uint8_t JS_ALLOCATED_NURSERY_PATTERN = 0x2D;
+const uint8_t JS_FRESH_TENURED_PATTERN     = 0x4F;
+const uint8_t JS_MOVED_TENURED_PATTERN     = 0x49;
+const uint8_t JS_SWEPT_TENURED_PATTERN     = 0x4B;
+const uint8_t JS_ALLOCATED_TENURED_PATTERN = 0x4D;
+const uint8_t JS_FREED_HEAP_PTR_PATTERN    = 0x6B;
+const uint8_t JS_FREED_CHUNK_PATTERN       = 0x8B;
+#define JS_SWEPT_TI_PATTERN 0x6F
 
 /*
  * Ensure JS_SWEPT_CODE_PATTERN is a byte pattern that will crash immediately
@@ -307,13 +285,36 @@ PodSet(T* aDst, const T& aSrc, size_t aNElem)
 # error "JS_SWEPT_CODE_PATTERN not defined for this platform"
 #endif
 
-static inline void*
-Poison(void* ptr, uint8_t value, size_t num)
-{
-    static bool disablePoison = bool(getenv("JSGC_DISABLE_POISONING"));
-    if (disablePoison)
-        return ptr;
+enum class MemCheckKind : uint8_t {
+    // Marks a region as poisoned. Memory sanitizers like ASan will crash when
+    // accessing it (both reads and writes).
+    MakeNoAccess,
 
+    // Marks a region as having undefined contents. In ASan builds this just
+    // unpoisons the memory. MSan and Valgrind can also use this to find
+    // reads of uninitialized memory.
+    MakeUndefined,
+};
+
+static MOZ_ALWAYS_INLINE void
+SetMemCheckKind(void* ptr, size_t bytes, MemCheckKind kind)
+{
+    switch (kind) {
+      case MemCheckKind::MakeUndefined:
+        MOZ_MAKE_MEM_UNDEFINED(ptr, bytes);
+        return;
+      case MemCheckKind::MakeNoAccess:
+        MOZ_MAKE_MEM_NOACCESS(ptr, bytes);
+        return;
+    }
+    MOZ_CRASH("Invalid kind");
+}
+
+namespace js {
+
+static inline void
+AlwaysPoison(void* ptr, uint8_t value, size_t num, MemCheckKind kind)
+{
     // Without a valid Value tag, a poisoned Value may look like a valid
     // floating point number. To ensure that we crash more readily when
     // observing a poisoned Value, we make the poison an invalid ObjectValue.
@@ -338,97 +339,38 @@ Poison(void* ptr, uint8_t value, size_t num)
 #else // !DEBUG
     memset(ptr, value, num);
 #endif // !DEBUG
-    return ptr;
+
+    SetMemCheckKind(ptr, num, kind);
 }
 
+static inline void
+Poison(void* ptr, uint8_t value, size_t num, MemCheckKind kind)
+{
+    static bool disablePoison = bool(getenv("JSGC_DISABLE_POISONING"));
+    if (!disablePoison)
+        AlwaysPoison(ptr, value, num, kind);
+}
+
+} // namespace js
+
 /* Crash diagnostics by default in debug and on nightly channel. */
-#if (defined(DEBUG) || defined(NIGHTLY_BUILD)) && !defined(MOZ_ASAN)
+#if defined(DEBUG) || defined(NIGHTLY_BUILD)
 # define JS_CRASH_DIAGNOSTICS 1
 #endif
 
 /* Enable poisoning in crash-diagnostics and zeal builds. */
 #if defined(JS_CRASH_DIAGNOSTICS) || defined(JS_GC_ZEAL)
-# define JS_POISON(p, val, size) Poison(p, val, size)
+# define JS_POISON(p, val, size, kind) js::Poison(p, val, size, kind)
 # define JS_GC_POISONING 1
 #else
-# define JS_POISON(p, val, size) ((void) 0)
+# define JS_POISON(p, val, size, kind) ((void) 0)
 #endif
 
 /* Enable even more poisoning in purely debug builds. */
 #if defined(DEBUG)
-# define JS_EXTRA_POISON(p, val, size) Poison(p, val, size)
+# define JS_EXTRA_POISON(p, val, size, kind) js::Poison(p, val, size, kind)
 #else
-# define JS_EXTRA_POISON(p, val, size) ((void) 0)
-#endif
-
-/* Basic stats */
-#ifdef DEBUG
-# define JS_BASIC_STATS 1
-#endif
-#ifdef JS_BASIC_STATS
-# include <stdio.h>
-typedef struct JSBasicStats {
-    uint32_t    num;
-    uint32_t    max;
-    double      sum;
-    double      sqsum;
-    uint32_t    logscale;           /* logarithmic scale: 0 (linear), 2, 10 */
-    uint32_t    hist[11];
-} JSBasicStats;
-# define JS_INIT_STATIC_BASIC_STATS  {0,0,0,0,0,{0,0,0,0,0,0,0,0,0,0,0}}
-# define JS_BASIC_STATS_INIT(bs)     memset((bs), 0, sizeof(JSBasicStats))
-# define JS_BASIC_STATS_ACCUM(bs,val)                                         \
-    JS_BasicStatsAccum(bs, val)
-# define JS_MeanAndStdDevBS(bs,sigma)                                         \
-    JS_MeanAndStdDev((bs)->num, (bs)->sum, (bs)->sqsum, sigma)
-extern void
-JS_BasicStatsAccum(JSBasicStats* bs, uint32_t val);
-extern double
-JS_MeanAndStdDev(uint32_t num, double sum, double sqsum, double* sigma);
-extern void
-JS_DumpBasicStats(JSBasicStats* bs, const char* title, FILE* fp);
-extern void
-JS_DumpHistogram(JSBasicStats* bs, FILE* fp);
-#else
-# define JS_BASIC_STATS_ACCUM(bs,val)
-#endif
-
-/* A jsbitmap_t is a long integer that can be used for bitmaps. */
-typedef size_t jsbitmap;
-#define JS_BITMAP_NBITS (sizeof(jsbitmap) * CHAR_BIT)
-#define JS_TEST_BIT(_map,_bit)  ((_map)[(_bit)/JS_BITMAP_NBITS] &             \
-                                 (jsbitmap(1)<<((_bit)%JS_BITMAP_NBITS)))
-#define JS_SET_BIT(_map,_bit)   ((_map)[(_bit)/JS_BITMAP_NBITS] |=            \
-                                 (jsbitmap(1)<<((_bit)%JS_BITMAP_NBITS)))
-#define JS_CLEAR_BIT(_map,_bit) ((_map)[(_bit)/JS_BITMAP_NBITS] &=            \
-                                 ~(jsbitmap(1)<<((_bit)%JS_BITMAP_NBITS)))
-
-/* Wrapper for various macros to stop warnings coming from their expansions. */
-#if defined(__clang__)
-# define JS_SILENCE_UNUSED_VALUE_IN_EXPR(expr)                                \
-    JS_BEGIN_MACRO                                                            \
-        _Pragma("clang diagnostic push")                                      \
-        /* If these _Pragmas cause warnings for you, try disabling ccache. */ \
-        _Pragma("clang diagnostic ignored \"-Wunused-value\"")                \
-        { expr; }                                                             \
-        _Pragma("clang diagnostic pop")                                       \
-    JS_END_MACRO
-#elif MOZ_IS_GCC
-
-# define JS_SILENCE_UNUSED_VALUE_IN_EXPR(expr)                                \
-    JS_BEGIN_MACRO                                                            \
-        _Pragma("GCC diagnostic push")                                        \
-        _Pragma("GCC diagnostic ignored \"-Wunused-but-set-variable\"")       \
-        expr;                                                                 \
-        _Pragma("GCC diagnostic pop")                                         \
-    JS_END_MACRO
-#endif
-
-#if !defined(JS_SILENCE_UNUSED_VALUE_IN_EXPR)
-# define JS_SILENCE_UNUSED_VALUE_IN_EXPR(expr)                                \
-    JS_BEGIN_MACRO                                                            \
-        expr;                                                                 \
-    JS_END_MACRO
+# define JS_EXTRA_POISON(p, val, size, kind) ((void) 0)
 #endif
 
 #endif /* jsutil_h */

@@ -138,3 +138,12 @@ fonts-languages-fallback-name-vietnamese =
     .label = Vietnamesisch
 fonts-languages-fallback-name-other =
     .label = Andere (einschließlich Westeuropäisch)
+fonts-very-large-warning-title = Große Mindestschriftgröße
+fonts-very-large-warning-message = Es wurde eine große Mindestschriftgröße ausgewählt (mehr als 24 Pixel). Dies kann es schwierig oder unmöglich machen, auf wichtige Einstellungsseiten wie diese zuzugreifen.
+fonts-very-large-warning-accept = Änderungen trotzdem übernehmen
+# Variables:
+#   $name {string, "Arial"} - Name of the default font
+fonts-label-default =
+    .label = Standard ({ $name })
+fonts-label-default-unnamed =
+    .label = Standard

@@ -19,7 +19,6 @@
 #include "nsTArray.h"
 #include "nsString.h"
 #include "nsIHTMLCollection.h"
-#include "nsIDOMNodeList.h"
 #include "nsINodeList.h"
 #include "nsStubMutationObserver.h"
 #include "nsAtom.h"
@@ -42,14 +41,11 @@ class nsBaseContentList : public nsINodeList
 public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
 
-  // nsIDOMNodeList
-  NS_DECL_NSIDOMNODELIST
-
   // nsINodeList
   virtual int32_t IndexOf(nsIContent* aContent) override;
   virtual nsIContent* Item(uint32_t aIndex) override;
 
-  uint32_t Length() const {
+  uint32_t Length() override {
     return mElements.Length();
   }
 
@@ -153,8 +149,6 @@ public:
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(nsEmptyContentList,
                                            nsBaseContentList)
-  // nsIDOMNodeList, which we also implement.
-  NS_DECL_NSIDOMNODELIST
 
   virtual nsINode* GetParentObject() override
   {
@@ -335,9 +329,6 @@ protected:
   }
 public:
 
-  // nsIDOMNodeList, which we also implement.
-  NS_DECL_NSIDOMNODELIST
-
   // nsBaseContentList overrides
   virtual int32_t IndexOf(nsIContent *aContent, bool aDoFlush) override;
   virtual int32_t IndexOf(nsIContent* aContent) override;
@@ -350,7 +341,7 @@ public:
   {
     return Length(true);
   }
-  virtual nsIContent* Item(uint32_t aIndex) override;
+  nsIContent* Item(uint32_t aIndex) final;
   virtual mozilla::dom::Element* GetElementAt(uint32_t index) override;
   virtual mozilla::dom::Element*
   GetFirstNamedElement(const nsAString& aName, bool& aFound) override

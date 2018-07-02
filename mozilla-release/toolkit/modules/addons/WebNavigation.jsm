@@ -9,8 +9,8 @@ const EXPORTED_SYMBOLS = ["WebNavigation"];
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-ChromeUtils.defineModuleGetter(this, "RecentWindow",
-                               "resource:///modules/RecentWindow.jsm");
+ChromeUtils.defineModuleGetter(this, "BrowserWindowTracker",
+                               "resource:///modules/BrowserWindowTracker.jsm");
 
 // Maximum amount of time that can be passed and still consider
 // the data recent (similar to how is done in nsNavHistory,
@@ -95,7 +95,7 @@ var Manager = {
    * Support nsIObserver interface to observe the urlbar autocomplete events used
    * to keep track of the urlbar user interaction.
    */
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver, Ci.nsISupportsWeakReference]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver, Ci.nsISupportsWeakReference]),
 
   /**
    * Observe autocomplete-did-enter-text (to track the user interaction with the awesomebar)
@@ -157,7 +157,7 @@ var Manager = {
         let action = input._parseActionUrl(value);
 
         if (action) {
-          // Detect keywork and generated and more typed scenarios.
+          // Detect keyword and generated and more typed scenarios.
           switch (action.type) {
             case "keyword":
               tabTransistionData.keyword = true;
@@ -216,7 +216,7 @@ var Manager = {
    * @param {boolean} [tabTransitionData.typed]
    */
   setRecentTabTransitionData(tabTransitionData) {
-    let window = RecentWindow.getMostRecentBrowserWindow();
+    let window = BrowserWindowTracker.getTopWindow();
     if (window && window.gBrowser && window.gBrowser.selectedTab &&
         window.gBrowser.selectedTab.linkedBrowser) {
       let browser = window.gBrowser.selectedTab.linkedBrowser;

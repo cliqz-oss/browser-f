@@ -22,10 +22,10 @@ using namespace mozilla::dom;
 class SVGViewFrame : public nsFrame
 {
   friend nsIFrame*
-  NS_NewSVGViewFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
+  NS_NewSVGViewFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle);
 protected:
-  explicit SVGViewFrame(nsStyleContext* aContext)
-    : nsFrame(aContext, kClassID)
+  explicit SVGViewFrame(ComputedStyle* aStyle)
+    : nsFrame(aStyle, kClassID)
   {
     AddStateBits(NS_FRAME_IS_NONDISPLAY);
   }
@@ -62,9 +62,9 @@ public:
 };
 
 nsIFrame*
-NS_NewSVGViewFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewSVGViewFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) SVGViewFrame(aContext);
+  return new (aPresShell) SVGViewFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(SVGViewFrame)
@@ -91,8 +91,7 @@ SVGViewFrame::AttributeChanged(int32_t  aNameSpaceID,
 
   if (aNameSpaceID == kNameSpaceID_None &&
       (aAttribute == nsGkAtoms::preserveAspectRatio ||
-       aAttribute == nsGkAtoms::viewBox ||
-       aAttribute == nsGkAtoms::viewTarget)) {
+       aAttribute == nsGkAtoms::viewBox)) {
 
     nsSVGOuterSVGFrame *outerSVGFrame = nsSVGUtils::GetOuterSVGFrame(this);
     NS_ASSERTION(outerSVGFrame->GetContent()->IsSVGElement(nsGkAtoms::svg),

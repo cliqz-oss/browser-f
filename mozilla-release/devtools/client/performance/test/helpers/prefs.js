@@ -6,7 +6,7 @@ const Services = require("Services");
 const { Preferences } = require("resource://gre/modules/Preferences.jsm");
 
 // Prefs to revert to default once tests finish. Keep these in sync with
-// all the preferences defined in devtools/client/preferences/devtools.js.
+// all the preferences defined in devtools/client/preferences/devtools-client.js.
 exports.MEMORY_SAMPLE_PROB_PREF = "devtools.performance.memory.sample-probability";
 exports.MEMORY_MAX_LOG_LEN_PREF = "devtools.performance.memory.max-log-length";
 exports.PROFILER_BUFFER_SIZE_PREF = "devtools.performance.profiler.buffer-size";
@@ -52,7 +52,7 @@ exports.DEFAULT_PREF_VALUES = [
  * Invokes callback when a pref which is not in the `DEFAULT_PREF_VALUES` store
  * is changed. Returns a cleanup function.
  */
-exports.whenUnknownPrefChanged = function (branch, callback) {
+exports.whenUnknownPrefChanged = function(branch, callback) {
   function onObserve(subject, topic, data) {
     if (!(data in exports.DEFAULT_PREF_VALUES)) {
       callback(data);
@@ -65,7 +65,7 @@ exports.whenUnknownPrefChanged = function (branch, callback) {
 /**
  * Reverts all known preferences to their default values.
  */
-exports.rollbackPrefsToDefault = function () {
+exports.rollbackPrefsToDefault = function() {
   for (let prefName of Object.keys(exports.DEFAULT_PREF_VALUES)) {
     Preferences.set(prefName, exports.DEFAULT_PREF_VALUES[prefName]);
   }

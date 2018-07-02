@@ -83,6 +83,7 @@ const URLBAR_SELECTED_RESULT_METHODS = {
   click: 2,
   arrowEnterSelection: 3,
   tabEnterSelection: 4,
+  rightClickEnter: 5,
 };
 
 
@@ -226,8 +227,8 @@ let URICountListener = {
     this._domainSet.clear();
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIWebProgressListener,
-                                         Ci.nsISupportsWeakReference]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIWebProgressListener,
+                                          Ci.nsISupportsWeakReference]),
 };
 
 let urlbarListener = {
@@ -305,14 +306,18 @@ let urlbarListener = {
       Services.telemetry
               .getKeyedHistogramById("FX_URLBAR_SELECTED_RESULT_INDEX_BY_TYPE")
               .add(actionType, idx);
+      if (actionType === "bookmark" || actionType === "history") {
+        Services.telemetry.recordEvent("savant", "follow_urlbar_link", actionType, null,
+                                      { subcategory: "navigation" });
+      }
     } else {
       Cu.reportError("Unknown FX_URLBAR_SELECTED_RESULT_TYPE type: " +
                      actionType);
     }
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver,
-                                         Ci.nsISupportsWeakReference]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver,
+                                          Ci.nsISupportsWeakReference]),
 };
 
 let BrowserUsageTelemetry = {
@@ -340,8 +345,8 @@ let BrowserUsageTelemetry = {
     URICountListener.reset();
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver,
-                                         Ci.nsISupportsWeakReference]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver,
+                                          Ci.nsISupportsWeakReference]),
 
   uninit() {
     if (!this._inited) {
@@ -438,6 +443,9 @@ let BrowserUsageTelemetry = {
                                       scalarKey, 1);
     Services.telemetry.recordEvent("navigation", "search", source, action,
                                    { engine: getSearchEngineId(engine) });
+    Services.telemetry.recordEvent("savant", "search", source, action,
+                                   { subcategory: "navigation",
+                                   engine: getSearchEngineId(engine) });
   },
 
   _handleSearchAction(engine, source, details) {
@@ -509,7 +517,7 @@ let BrowserUsageTelemetry = {
   /**
    * Records the method by which the user selected a urlbar result.
    *
-   * @param {nsIDOMEvent} event
+   * @param {Event} event
    *        The event that triggered the selection.
    * @param {string} userSelectionBehavior
    *        How the user cycled through results before picking the current match.
@@ -533,7 +541,7 @@ let BrowserUsageTelemetry = {
   /**
    * Records the method by which the user selected a searchbar result.
    *
-   * @param {nsIDOMEvent} event
+   * @param {Event} event
    *        The event that triggered the selection.
    * @param {number} highlightedIndex
    *        The index that the user chose in the popup, or -1 if there wasn't a
@@ -550,8 +558,10 @@ let BrowserUsageTelemetry = {
   _recordUrlOrSearchbarSelectedResultMethod(event, highlightedIndex, histogramID, userSelectionBehavior) {
     let histogram = Services.telemetry.getHistogramById(histogramID);
     // command events are from the one-off context menu.  Treat them as clicks.
-    let isClick = event instanceof Ci.nsIDOMMouseEvent ||
-                  (event && event.type == "command");
+    // Note that we don't care about MouseEvent subclasses here, since
+    // those are not clicks.
+    let isClick = event && (ChromeUtils.getClassName(event) == "MouseEvent" ||
+                            event.type == "command");
     let category;
     if (isClick) {
       category = "click";
@@ -562,6 +572,10 @@ let BrowserUsageTelemetry = {
         break;
       case "arrow":
         category = "arrowEnterSelection";
+        break;
+      case "rightClick":
+        // Selected by right mouse button.
+        category = "rightClickEnter";
         break;
       default:
         category = "enterSelection";

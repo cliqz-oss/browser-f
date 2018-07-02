@@ -4,7 +4,6 @@
 
 /* eslint-env mozilla/frame-script */
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.defineModuleGetter(this, "Logger",
   "resource://gre/modules/accessibility/Utils.jsm");
 ChromeUtils.defineModuleGetter(this, "Presentation",
@@ -63,19 +62,6 @@ function forwardToChild(aMessage, aListener, aVCPosition) {
   return true;
 }
 
-function activateContextMenu(aMessage) {
-  let position = Utils.getVirtualCursor(content.document).position;
-  if (!forwardToChild(aMessage, activateContextMenu, position)) {
-    let center = Utils.getBounds(position, true).center();
-
-    let evt = content.document.createEvent("HTMLEvents");
-    evt.initEvent("contextmenu", true, true);
-    evt.clientX = center.x;
-    evt.clientY = center.y;
-    position.DOMNode.dispatchEvent(evt);
-  }
-}
-
 function presentCaretChange(aText, aOldOffset, aNewOffset) {
   if (aOldOffset !== aNewOffset) {
     let msg = Presentation.textSelectionChanged(aText, aNewOffset, aNewOffset,
@@ -88,7 +74,7 @@ function scroll(aMessage) {
   let position = Utils.getVirtualCursor(content.document).position;
   if (!forwardToChild(aMessage, scroll, position)) {
     sendAsyncMessage("AccessFu:DoScroll",
-                     { bounds: Utils.getBounds(position, true),
+                     { bounds: Utils.getBounds(position),
                        page: aMessage.json.page,
                        horizontal: aMessage.json.horizontal });
   }
@@ -105,7 +91,6 @@ addMessageListener(
     if (m.json.buildApp)
       Utils.MozBuildApp = m.json.buildApp;
 
-    addMessageListener("AccessFu:ContextMenu", activateContextMenu);
     addMessageListener("AccessFu:Scroll", scroll);
 
     if (!contentControl) {
@@ -140,7 +125,6 @@ addMessageListener(
   function(m) {
     Logger.debug("AccessFu:Stop");
 
-    removeMessageListener("AccessFu:ContextMenu", activateContextMenu);
     removeMessageListener("AccessFu:Scroll", scroll);
 
     eventManager.stop();

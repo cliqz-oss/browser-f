@@ -270,7 +270,7 @@ def get_partner_config(partner_url_config, github_token):
         "required": ['release_promotion_flavor', 'build_number'],
     }
 )
-def release_promotion_action(parameters, input, task_group_id, task_id, task):
+def release_promotion_action(parameters, graph_config, input, task_group_id, task_id, task):
     release_promotion_flavor = input['release_promotion_flavor']
     promotion_config = RELEASE_PROMOTION_CONFIG[release_promotion_flavor]
     release_history = {}
@@ -328,8 +328,8 @@ def release_promotion_action(parameters, input, task_group_id, task_id, task):
     if not previous_graph_ids:
         revision = input.get('revision')
         parameters['pushlog_id'] = parameters['pushlog_id'] or \
-            find_hg_revision_pushlog_id(parameters, revision)
-        previous_graph_ids = [find_decision_task(parameters)]
+            find_hg_revision_pushlog_id(parameters, graph_config, revision)
+        previous_graph_ids = [find_decision_task(parameters, graph_config)]
 
     # Download parameters from the first decision task
     parameters = get_artifact(previous_graph_ids[0], "public/parameters.yml")
@@ -360,7 +360,7 @@ def release_promotion_action(parameters, input, task_group_id, task_id, task):
     partner_config = input.get('release_partner_config')
     if not partner_config and (release_enable_emefree or release_enable_partners):
         partner_url_config = get_partner_url_config(
-            parameters, enable_emefree=release_enable_emefree,
+            parameters, graph_config, enable_emefree=release_enable_emefree,
             enable_partners=release_enable_partners
         )
         github_token = get_token(parameters)
@@ -378,4 +378,4 @@ def release_promotion_action(parameters, input, task_group_id, task_id, task):
     # make parameters read-only
     parameters = Parameters(**parameters)
 
-    taskgraph_decision({}, parameters=parameters)
+    taskgraph_decision({'root': graph_config.root_dir}, parameters=parameters)

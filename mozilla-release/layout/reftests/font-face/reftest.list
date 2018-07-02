@@ -82,8 +82,8 @@ random-if(cocoaWidget) == sheet-set-switch-1.html sheet-set-switch-1-ref.html # 
 == insert-rule-1a.html insert-rule-1-ref.html
 == insert-rule-1b.html insert-rule-1-ref.html
 == delete-rule-1.html delete-rule-1-ref.html
-skip-if(styloVsGecko) == media-query-add-1.html media-query-add-1-ref.html # skip styloVsGecko for imperceptible pixel rounding differences between Stylo and Gecko
-skip-if(styloVsGecko) == media-query-remove-1.html media-query-remove-1-ref.html # skip styloVsGecko for imperceptible pixel rounding differences between Stylo and Gecko
+== media-query-add-1.html media-query-add-1-ref.html
+== media-query-remove-1.html media-query-remove-1-ref.html
 != media-query-add-1-ref.html media-query-remove-1-ref.html
 
 == ahem-metrics-1.html ahem-metrics-1-ref.html
@@ -129,7 +129,7 @@ load 486974-1.html
 # Tests for bug 523717
 == underline-offset-change-1.html underline-offset-change-1-ref.html
 == underline-offset-change-2.html underline-offset-change-2-ref.html
-fails-if(cocoaWidget||winWidget) != underline-offset-change-1-ref.html underline-offset-change-2-ref.html # Bug 534132
+fails != underline-offset-change-1-ref.html underline-offset-change-2-ref.html # Bug 534132
 
 != 534352-1-extra-cmap-sentinel.html 534352-1-extra-cmap-sentinel-ref.html
 == bug533251.html bug533251-ref.html
@@ -200,8 +200,10 @@ default-preferences pref(layout.css.font-variations.enabled,false)
 == variation-format-hint-1c.html variation-format-hint-1A-ref.html
 == variation-format-hint-1d.html variation-format-hint-1A-ref.html
 default-preferences pref(layout.css.font-variations.enabled,true)
-== variation-format-hint-1a.html variation-format-hint-1B-ttf-ref.html
-== variation-format-hint-1b.html variation-format-hint-1B-otf-ref.html
-== variation-format-hint-1c.html variation-format-hint-1B-woff-ref.html
-== variation-format-hint-1d.html variation-format-hint-1B-woff2-ref.html
+# Currently Windows, Linux and macOS all fail on treeherder because our OS versions
+# are too old to support variation fonts
+fails-if(winWidget||gtkWidget||(cocoaWidget&&OSX<1012)) == variation-format-hint-1a.html variation-format-hint-1B-ttf-ref.html
+fails-if(winWidget||gtkWidget||(cocoaWidget&&OSX<1012)) == variation-format-hint-1b.html variation-format-hint-1B-otf-ref.html
+fails-if(winWidget||gtkWidget||(cocoaWidget&&OSX<1012)) == variation-format-hint-1c.html variation-format-hint-1B-woff-ref.html
+fails-if(winWidget||gtkWidget||(cocoaWidget&&OSX<1012)) == variation-format-hint-1d.html variation-format-hint-1B-woff2-ref.html
 default-preferences

@@ -80,33 +80,6 @@ def validate(config, jobs):
 
 
 @transforms.add
-def skip_for_indirect_dependencies(config, jobs):
-    for job in jobs:
-        dep_job = job['dependent-task']
-        build_platform = dep_job.attributes.get("build_platform")
-        if not build_platform:
-            raise Exception("Cannot find build platform!")
-
-        # Partner and EME free beetmover tasks have multiple upstreams defined
-        # because some platforms don't run some parts of the sign -> repack ->
-        # repack sign chain. We only want to run beetmover for the last part of
-        # that chain that runs for any given platform.
-        # For Linux, it is the eme-free/partner repack build tasks.
-        # For Mac, it is repackage.
-        # For Windows, it is repackage-signing.
-        if "win" in build_platform:
-            if "repackage" not in dep_job.label:
-                continue
-            elif "signing" not in dep_job.label:
-                continue
-        if "macosx" in build_platform:
-            if "repackage" not in dep_job.label:
-                continue
-
-        yield job
-
-
-@transforms.add
 def resolve_keys(config, jobs):
     for job in jobs:
         resolve_keyed_by(
@@ -150,10 +123,9 @@ def make_task_description(config, jobs):
             dependencies["repackage"] = "{}-repackage-{}-{}".format(
                 base_label, build_platform, repack_id.replace('/', '-')
             )
-        if "win" in build_platform:
-            dependencies["repackage-signing"] = "{}-repackage-signing-{}-{}".format(
-                base_label, build_platform, repack_id.replace('/', '-')
-            )
+        dependencies["repackage-signing"] = "{}-repackage-signing-{}-{}".format(
+             base_label, build_platform, repack_id.replace('/', '-')
+        )
 
         attributes = copy_attributes_from_dependent_job(dep_job)
 
@@ -196,15 +168,16 @@ def split_public_and_private(config, jobs):
         partner_bucket_scope = add_scope_prefix(config, job['partner-bucket-scope'])
         partner, subpartner, _ = job['extra']['repack_id'].split('/')
 
-        # public
         if partner_config[partner][subpartner].get('upload_to_candidates'):
+            # public
             yield populate_scopes_and_worker_type(
                 config, job, public_bucket_scope, partner_public=True
             )
-        # private
-        yield populate_scopes_and_worker_type(
-            config, job, partner_bucket_scope, partner_public=False
-        )
+        else:
+            # private
+            yield populate_scopes_and_worker_type(
+                config, job, partner_bucket_scope, partner_public=False
+            )
 
 
 def generate_upstream_artifacts(job, build_task_ref, repackage_task_ref,
@@ -221,6 +194,12 @@ def generate_upstream_artifacts(job, build_task_ref, repackage_task_ref,
             "paths": ["{}/{}/target.tar.bz2".format(artifact_prefix, repack_id)],
             "locale": partner_path,
         })
+        upstream_artifacts.append({
+            "taskId": {"task-reference": repackage_signing_task_ref},
+            "taskType": "repackage",
+            "paths": ["{}/{}/target.tar.bz2.asc".format(artifact_prefix, repack_id)],
+            "locale": partner_path,
+        })
     elif "macosx" in platform:
         upstream_artifacts.append({
             "taskId": {"task-reference": repackage_task_ref},
@@ -228,11 +207,23 @@ def generate_upstream_artifacts(job, build_task_ref, repackage_task_ref,
             "paths": ["{}/{}/target.dmg".format(artifact_prefix, repack_id)],
             "locale": partner_path,
         })
+        upstream_artifacts.append({
+            "taskId": {"task-reference": repackage_signing_task_ref},
+            "taskType": "repackage",
+            "paths": ["{}/{}/target.dmg.asc".format(artifact_prefix, repack_id)],
+            "locale": partner_path,
+        })
     elif "win" in platform:
         upstream_artifacts.append({
             "taskId": {"task-reference": repackage_signing_task_ref},
             "taskType": "repackage",
             "paths": ["{}/{}/target.installer.exe".format(artifact_prefix, repack_id)],
+            "locale": partner_path,
+        })
+        upstream_artifacts.append({
+            "taskId": {"task-reference": repackage_signing_task_ref},
+            "taskType": "repackage",
+            "paths": ["{}/{}/target.installer.exe.asc".format(artifact_prefix, repack_id)],
             "locale": partner_path,
         })
 

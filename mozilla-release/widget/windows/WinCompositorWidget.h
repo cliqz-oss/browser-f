@@ -3,8 +3,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#ifndef widget_windows_CompositorWidgetParent_h
-#define widget_windows_CompositorWidgetParent_h
+#ifndef widget_windows_WinCompositorWidget_h
+#define widget_windows_WinCompositorWidget_h
 
 #include "CompositorWidget.h"
 #include "gfxASurface.h"
@@ -54,6 +54,7 @@ class WinCompositorWidget
 public:
   WinCompositorWidget(const WinCompositorWidgetInitData& aInitData,
                       const layers::CompositorOptions& aOptions);
+  ~WinCompositorWidget() override;
 
   // CompositorWidget Overrides
 
@@ -94,8 +95,18 @@ public:
     return mMemoryDC;
   }
   HWND GetHwnd() const {
-    return mWnd;
+    return mCompositorWnd ? mCompositorWnd : mWnd;
   }
+
+  HWND GetCompositorHwnd() const {
+    return mCompositorWnd;
+  }
+
+  void EnsureCompositorWindow();
+  void DestroyCompositorWindow();
+  void UpdateCompositorWndSizeIfNecessary();
+
+protected:
 
 private:
   HDC GetWindowSurface();
@@ -106,6 +117,10 @@ private:
 private:
   uintptr_t mWidgetKey;
   HWND mWnd;
+
+  HWND mCompositorWnd;
+  LayoutDeviceIntSize mLastCompositorWndSize;
+
   gfx::CriticalSection mPresentLock;
 
   // Transparency handling.
@@ -123,4 +138,4 @@ private:
 } // namespace widget
 } // namespace mozilla
 
-#endif // widget_windows_CompositorWidgetParent_h
+#endif // widget_windows_WinCompositorWidget_h

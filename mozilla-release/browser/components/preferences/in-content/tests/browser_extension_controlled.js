@@ -22,20 +22,19 @@ function getSupportsFile(path) {
 
 function installAddon(xpiName) {
   let filePath = getSupportsFile(`addons/${xpiName}`).file;
-  return new Promise((resolve, reject) => {
-    AddonManager.getInstallForFile(filePath, install => {
-      if (!install) {
-        throw new Error(`An install was not created for ${filePath}`);
-      }
-      install.addListener({
-        onDownloadFailed: reject,
-        onDownloadCancelled: reject,
-        onInstallFailed: reject,
-        onInstallCancelled: reject,
-        onInstallEnded: resolve
-      });
-      install.install();
+  return new Promise(async (resolve, reject) => {
+    let install = await AddonManager.getInstallForFile(filePath);
+    if (!install) {
+      throw new Error(`An install was not created for ${filePath}`);
+    }
+    install.addListener({
+      onDownloadFailed: reject,
+      onDownloadCancelled: reject,
+      onInstallFailed: reject,
+      onInstallCancelled: reject,
+      onInstallEnded: resolve
     });
+    install.install();
   });
 }
 
@@ -55,7 +54,6 @@ function waitForMessageChange(element, cb, opts = { attributes: true, attributeF
   return waitForMutation(element, opts, cb);
 }
 
-// eslint-disable-next-line mozilla/no-cpows-in-tests
 function getElement(id, doc = gBrowser.contentDocument) {
   return doc.getElementById(id);
 }
@@ -75,27 +73,31 @@ function waitForEnableMessage(messageId, doc) {
     { attributeFilter: ["class"], attributes: true });
 }
 
-function waitForMessageContent(messageId, content, doc) {
+function waitForMessageContent(messageId, l10nId, doc) {
   return waitForMessageChange(
     getElement(messageId, doc),
-    target => target.textContent === content,
+    target => doc.l10n.getAttributes(target).id === l10nId,
     { childList: true });
 }
 
 add_task(async function testExtensionControlledHomepage() {
-  await openPreferencesViaOpenPreferencesAPI("paneGeneral", {leaveOpen: true});
+  await openPreferencesViaOpenPreferencesAPI("paneHome", {leaveOpen: true});
   // eslint-disable-next-line mozilla/no-cpows-in-tests
   let doc = gBrowser.contentDocument;
-  is(gBrowser.currentURI.spec, "about:preferences#general",
-     "#general should be in the URI for about:preferences");
+  is(gBrowser.currentURI.spec, "about:preferences#home",
+     "#home should be in the URI for about:preferences");
   let homepagePref = () => Services.prefs.getCharPref("browser.startup.homepage");
   let originalHomepagePref = homepagePref();
   let extensionHomepage = "https://developer.mozilla.org/";
   let controlledContent = doc.getElementById("browserHomePageExtensionContent");
 
-  // The homepage is set to the default and editable.
+  let homeModeEl = doc.getElementById("homeMode");
+  let customSettingsSection = doc.getElementById("customSettings");
+
+  // The homepage is set to the default and the custom settings section is hidden
   ok(originalHomepagePref != extensionHomepage, "homepage is empty by default");
-  is(doc.getElementById("browserHomePage").disabled, false, "The homepage input is enabled");
+  is(homeModeEl.disabled, false, "The homepage menulist is enabled");
+  is(customSettingsSection.hidden, true, "The custom settings element is hidden");
   is(controlledContent.hidden, true, "The extension controlled row is hidden");
 
   // Install an extension that will set the homepage.
@@ -105,11 +107,14 @@ add_task(async function testExtensionControlledHomepage() {
   // The homepage has been set by the extension, the user is notified and it isn't editable.
   let controlledLabel = controlledContent.querySelector("description");
   is(homepagePref(), extensionHomepage, "homepage is set by extension");
-  // There are two spaces before "set_homepage" because it's " <image /> set_homepage".
-  is(controlledLabel.textContent, "An extension,  set_homepage, is controlling your home page.",
-     "The user is notified that an extension is controlling the homepage");
+  Assert.deepEqual(doc.l10n.getAttributes(controlledLabel), {
+    id: "extension-controlled-homepage-override",
+    args: {
+      name: "set_homepage",
+    }
+  }, "The user is notified that an extension is controlling the homepage");
   is(controlledContent.hidden, false, "The extension controlled row is hidden");
-  is(doc.getElementById("browserHomePage").disabled, true, "The homepage input is disabled");
+  is(homeModeEl.disabled, true, "The homepage input is disabled");
 
   // Disable the extension.
   let enableMessageShown = waitForEnableMessage(controlledContent.id);
@@ -117,8 +122,9 @@ add_task(async function testExtensionControlledHomepage() {
   await enableMessageShown;
 
   // The user is notified how to enable the extension.
-  is(controlledLabel.textContent, "To enable the extension go to  Add-ons in the  menu.",
-     "The user is notified of how to enable the extension again");
+  is(doc.l10n.getAttributes(controlledLabel.querySelector("label")).id,
+    "extension-controlled-enable",
+    "The user is notified of how to enable the extension again");
 
   // The user can dismiss the enable instructions.
   let hidden = waitForMessageHidden("browserHomePageExtensionContent");
@@ -127,7 +133,7 @@ add_task(async function testExtensionControlledHomepage() {
 
   // The homepage elements are reset to their original state.
   is(homepagePref(), originalHomepagePref, "homepage is set back to default");
-  is(doc.getElementById("browserHomePage").disabled, false, "The homepage input is enabled");
+  is(homeModeEl.disabled, false, "The homepage menulist is enabled");
   is(controlledContent.hidden, true, "The extension controlled row is hidden");
 
   // Cleanup the add-on and tab.
@@ -139,15 +145,15 @@ add_task(async function testExtensionControlledHomepage() {
   await waitForMessageShown("browserHomePageExtensionContent");
   // Do the uninstall now that the enable code has been run.
   addon.uninstall();
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
 });
 
 add_task(async function testPrefLockedHomepage() {
-  await openPreferencesViaOpenPreferencesAPI("paneGeneral", {leaveOpen: true});
+  await openPreferencesViaOpenPreferencesAPI("paneHome", {leaveOpen: true});
   // eslint-disable-next-line mozilla/no-cpows-in-tests
   let doc = gBrowser.contentDocument;
-  is(gBrowser.currentURI.spec, "about:preferences#general",
-     "#general should be in the URI for about:preferences");
+  is(gBrowser.currentURI.spec, "about:preferences#home",
+     "#home should be in the URI for about:preferences");
 
   let homePagePref = "browser.startup.homepage";
   let buttonPrefs = [
@@ -155,7 +161,8 @@ add_task(async function testPrefLockedHomepage() {
     "pref.browser.homepage.disable_button.bookmark_page",
     "pref.browser.homepage.disable_button.restore_default",
   ];
-  let homePageInput = doc.getElementById("browserHomePage");
+  let homeModeEl = doc.getElementById("homeMode");
+  let homePageInput = doc.getElementById("homePageUrl");
   let prefs = Services.prefs.getDefaultBranch(null);
   let mutationOpts = {attributes: true, attributeFilter: ["disabled"]};
   let controlledContent = doc.getElementById("browserHomePageExtensionContent");
@@ -164,7 +171,10 @@ add_task(async function testPrefLockedHomepage() {
   let getButton = pref => doc.querySelector(`.homepage-button[preference="${pref}"`);
   let waitForAllMutations = () => Promise.all(
     buttonPrefs.map(pref => waitForMutation(getButton(pref), mutationOpts))
-    .concat([waitForMutation(homePageInput, mutationOpts)]));
+      .concat([
+        waitForMutation(homeModeEl, mutationOpts),
+        waitForMutation(homePageInput, mutationOpts)
+      ]));
   let getHomepage = () => Services.prefs.getCharPref("browser.startup.homepage");
 
   let originalHomepage = getHomepage();
@@ -199,7 +209,8 @@ add_task(async function testPrefLockedHomepage() {
   // Check that everything is still disabled, homepage didn't change.
   is(getHomepage(), extensionHomepage, "The reported homepage is set by the extension");
   is(homePageInput.value, extensionHomepage, "The homepage is set by the extension");
-  is(homePageInput.disabled, true, "Homepage is disabled when set by extension");
+  is(homePageInput.disabled, true, "Homepage custom input is disabled when set by extension");
+  is(homeModeEl.disabled, true, "Homepage menulist is disabled when set by extension");
   buttonPrefs.forEach(pref => {
     is(getButton(pref).disabled, true, `${pref} is disabled when set by extension`);
   });
@@ -207,6 +218,7 @@ add_task(async function testPrefLockedHomepage() {
 
   // Lock all of the prefs, wait for the UI to update.
   let messageHidden = waitForMessageHidden(controlledContent.id);
+
   lockPrefs();
   await messageHidden;
 
@@ -214,6 +226,8 @@ add_task(async function testPrefLockedHomepage() {
   is(getHomepage(), lockedHomepage, "The reported homepage is set by the pref");
   is(homePageInput.value, lockedHomepage, "The homepage is set by the pref");
   is(homePageInput.disabled, true, "The homepage is disabed when the pref is locked");
+  is(homeModeEl.disabled, true, "Homepage menulist is disabled when the pref is locked");
+
   buttonPrefs.forEach(pref => {
     is(getButton(pref).disabled, true, `The ${pref} button is disabled when locked`);
   });
@@ -227,6 +241,7 @@ add_task(async function testPrefLockedHomepage() {
   // Verify that the UI is showing the extension's settings.
   is(homePageInput.value, extensionHomepage, "The homepage is set by the extension");
   is(homePageInput.disabled, true, "Homepage is disabled when set by extension");
+  is(homeModeEl.disabled, true, "Homepage menulist is disabled when set by extension");
   buttonPrefs.forEach(pref => {
     is(getButton(pref).disabled, true, `${pref} is disabled when set by extension`);
   });
@@ -241,6 +256,7 @@ add_task(async function testPrefLockedHomepage() {
   is(getHomepage(), originalHomepage, "The reported homepage is reset to original value");
   is(homePageInput.value, "", "The homepage is empty");
   is(homePageInput.disabled, false, "The homepage is enabled after clearing lock");
+  is(homeModeEl.disabled, false, "Homepage menulist is enabled after clearing lock");
   buttonPrefs.forEach(pref => {
     is(getButton(pref).disabled, false, `The ${pref} button is enabled when unlocked`);
   });
@@ -253,6 +269,7 @@ add_task(async function testPrefLockedHomepage() {
   is(getHomepage(), lockedHomepage, "The reported homepage is set by the pref");
   is(homePageInput.value, lockedHomepage, "The homepage is set by the pref");
   is(homePageInput.disabled, true, "The homepage is disabed when the pref is locked");
+  is(homeModeEl.disabled, true, "Homepage menulist is disabled when prefis locked");
   buttonPrefs.forEach(pref => {
     is(getButton(pref).disabled, true, `The ${pref} button is disabled when locked`);
   });
@@ -265,21 +282,22 @@ add_task(async function testPrefLockedHomepage() {
   is(getHomepage(), originalHomepage, "The homepage is reset to the original value");
   is(homePageInput.value, "", "The homepage is clear after being unlocked");
   is(homePageInput.disabled, false, "The homepage is enabled after clearing lock");
+  is(homeModeEl.disabled, false, "Homepage menulist is enabled after clearing lock");
   buttonPrefs.forEach(pref => {
     is(getButton(pref).disabled, false, `The ${pref} button is enabled when unlocked`);
   });
   is(controlledContent.hidden, true,
      "The extension controlled message is hidden when unlocked with no extension");
 
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
 });
 
 add_task(async function testExtensionControlledNewTab() {
-  await openPreferencesViaOpenPreferencesAPI("paneGeneral", {leaveOpen: true});
+  await openPreferencesViaOpenPreferencesAPI("paneHome", {leaveOpen: true});
   // eslint-disable-next-line mozilla/no-cpows-in-tests
   let doc = gBrowser.contentDocument;
-  is(gBrowser.currentURI.spec, "about:preferences#general",
-     "#general should be in the URI for about:preferences");
+  is(gBrowser.currentURI.spec, "about:preferences#home",
+     "#home should be in the URI for about:preferences");
 
   let controlledContent = doc.getElementById("browserNewTabExtensionContent");
 
@@ -295,9 +313,12 @@ add_task(async function testExtensionControlledNewTab() {
   // The new tab page has been set by the extension and the user is notified.
   let controlledLabel = controlledContent.querySelector("description");
   ok(aboutNewTabService.newTabURL.startsWith("moz-extension:"), "new tab url is set by extension");
-  // There are two spaces before "set_newtab" because it's " <image /> set_newtab".
-  is(controlledLabel.textContent, "An extension,  set_newtab, is controlling your New Tab page.",
-     "The user is notified that an extension is controlling the new tab page");
+  Assert.deepEqual(doc.l10n.getAttributes(controlledLabel), {
+    id: "extension-controlled-new-tab-url",
+    args: {
+      name: "set_newtab",
+    }
+  }, "The user is notified that an extension is controlling the new tab page");
   is(controlledContent.hidden, false, "The extension controlled row is hidden");
 
   // Disable the extension.
@@ -305,8 +326,9 @@ add_task(async function testExtensionControlledNewTab() {
 
   // Verify the user is notified how to enable the extension.
   await waitForEnableMessage(controlledContent.id);
-  is(controlledLabel.textContent, "To enable the extension go to  Add-ons in the  menu.",
-     "The user is notified of how to enable the extension again");
+  is(doc.l10n.getAttributes(controlledLabel.querySelector("label")).id,
+    "extension-controlled-enable",
+    "The user is notified of how to enable the extension again");
 
   // Verify the enable message can be dismissed.
   let hidden = waitForMessageHidden(controlledContent.id);
@@ -319,14 +341,13 @@ add_task(async function testExtensionControlledNewTab() {
   is(controlledContent.hidden, true, "The extension controlled row is shown");
 
   // Cleanup the tab and add-on.
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
   let addon = await AddonManager.getAddonByID("@set_newtab");
   addon.uninstall();
 });
 
 add_task(async function testExtensionControlledDefaultSearch() {
   await openPreferencesViaOpenPreferencesAPI("paneSearch", {leaveOpen: true});
-  // eslint-disable-next-line mozilla/no-cpows-in-tests
   let doc = gBrowser.contentDocument;
   let extensionId = "@set_default_search";
   let manifest = {
@@ -375,10 +396,12 @@ add_task(async function testExtensionControlledDefaultSearch() {
   let controlledLabel = controlledContent.querySelector("description");
   let extensionEngine = Services.search.currentEngine;
   ok(initialEngine != extensionEngine, "The default engine has changed.");
-  // There are two spaces before "set_default_search" because it's " <image /> set_default_search".
-  is(controlledLabel.textContent,
-     "An extension,  set_default_search, has set your default search engine.",
-     "The user is notified that an extension is controlling the default search engine");
+  Assert.deepEqual(doc.l10n.getAttributes(controlledLabel), {
+    id: "extension-controlled-default-search",
+    args: {
+      name: "set_default_search",
+    }
+  }, "The user is notified that an extension is controlling the default search engine");
   is(controlledContent.hidden, false, "The extension controlled row is shown");
 
   // Set the engine back to the initial one, ensure the message is hidden.
@@ -416,25 +439,25 @@ add_task(async function testExtensionControlledDefaultSearch() {
 
   await originalExtension.unload();
   await updatedExtension.unload();
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
 });
 
 add_task(async function testExtensionControlledHomepageUninstalledAddon() {
   async function checkHomepageEnabled() {
-    await openPreferencesViaOpenPreferencesAPI("paneGeneral", {leaveOpen: true});
+    await openPreferencesViaOpenPreferencesAPI("paneHome", {leaveOpen: true});
     // eslint-disable-next-line mozilla/no-cpows-in-tests
     let doc = gBrowser.contentDocument;
-    is(gBrowser.currentURI.spec, "about:preferences#general",
-      "#general should be in the URI for about:preferences");
+    is(gBrowser.currentURI.spec, "about:preferences#home",
+      "#home should be in the URI for about:preferences");
     let controlledContent = doc.getElementById("browserHomePageExtensionContent");
 
     // The homepage is enabled.
-    let homepageInut = doc.getElementById("browserHomePage");
-    is(homepageInut.disabled, false, "The homepage input is enabled");
-    is(homepageInut.value, "", "The homepage input is empty");
+    let homepageInput = doc.getElementById("homePageUrl");
+    is(homepageInput.disabled, false, "The homepage input is enabled");
+    is(homepageInput.value, "", "The homepage input is empty");
     is(controlledContent.hidden, true, "The extension controlled row is hidden");
 
-    await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+    BrowserTestUtils.removeTab(gBrowser.selectedTab);
   }
 
   await ExtensionSettingsStore.initialize();
@@ -516,9 +539,12 @@ add_task(async function testExtensionControlledTrackingProtection() {
     is(controlledButton.hidden, !isControlled, "The disable extension button's visibility is as expected.");
     if (isControlled) {
       let controlledDesc = controlledLabel.querySelector("description");
-      // There are two spaces before "set_tp" because it's " <image /> set_tp".
-      is(controlledDesc.textContent, "An extension,  set_tp, is controlling tracking protection.",
-         "The user is notified that an extension is controlling TP.");
+      Assert.deepEqual(doc.l10n.getAttributes(controlledDesc), {
+        id: "extension-controlled-websites-tracking-protection-mode",
+        args: {
+          name: "set_tp",
+        }
+      }, "The user is notified that an extension is controlling TP.");
     }
 
     if (uiType === "new") {
@@ -548,8 +574,9 @@ add_task(async function testExtensionControlledTrackingProtection() {
 
     // The user is notified how to enable the extension.
     let controlledDesc = controlledLabel.querySelector("description");
-    is(controlledDesc.textContent, "To enable the extension go to  Add-ons in the  menu.",
-       "The user is notified of how to enable the extension again");
+    is(doc.l10n.getAttributes(controlledDesc.querySelector("label")).id,
+      "extension-controlled-enable",
+      "The user is notified of how to enable the extension again");
 
     // The user can dismiss the enable instructions.
     let hidden = waitForMessageHidden(labelId);
@@ -566,7 +593,6 @@ add_task(async function testExtensionControlledTrackingProtection() {
   let uiType = "new";
 
   await openPreferencesViaOpenPreferencesAPI("panePrivacy", {leaveOpen: true});
-  // eslint-disable-next-line mozilla/no-cpows-in-tests
   let doc = gBrowser.contentDocument;
 
   is(gBrowser.currentURI.spec, "about:preferences#privacy",
@@ -619,7 +645,7 @@ add_task(async function testExtensionControlledTrackingProtection() {
 
   await extension.unload();
 
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
 });
 
 add_task(async function testExtensionControlledProxyConfig() {
@@ -638,22 +664,21 @@ add_task(async function testExtensionControlledProxyConfig() {
   }
 
   function expectedConnectionSettingsMessage(doc, isControlled) {
-    let brandShortName = doc.getElementById("bundleBrand").getString("brandShortName");
     return isControlled ?
-      `An extension,  set_proxy, is controlling how ${brandShortName} connects to the internet.` :
-      `Configure how ${brandShortName} connects to the internet.`;
+      "extension-controlled-proxy-config" :
+      "network-proxy-connection-description";
   }
 
   function connectionSettingsMessagePromise(doc, isControlled) {
     return waitForMessageContent(
       CONNECTION_SETTINGS_DESC_ID,
-      expectedConnectionSettingsMessage(doc, isControlled)
+      expectedConnectionSettingsMessage(doc, isControlled),
+      doc
     );
   }
 
   function verifyState(doc, isControlled) {
     let isPanel = doc.getElementById(CONTROLLED_BUTTON_ID);
-    let brandShortName = doc.getElementById("bundleBrand").getString("brandShortName");
     is(proxyType === proxySvc.PROXYCONFIG_DIRECT, isControlled,
       "Proxy pref is set to the expected value.");
 
@@ -667,9 +692,12 @@ add_task(async function testExtensionControlledProxyConfig() {
       }
       if (isControlled) {
         let controlledDesc = controlledSection.querySelector("description");
-        // There are two spaces before "set_proxy" because it's " <image /> set_proxy".
-        is(controlledDesc.textContent, `An extension,  set_proxy, is controlling how ${brandShortName} connects to the internet.`,
-          "The user is notified that an extension is controlling proxy settings.");
+        Assert.deepEqual(doc.l10n.getAttributes(controlledDesc), {
+          id: "extension-controlled-proxy-config",
+          args: {
+            name: "set_proxy",
+          }
+        }, "The user is notified that an extension is controlling proxy settings.");
       }
       function getProxyControls() {
         let controlGroup = doc.getElementById("networkProxyType");
@@ -700,9 +728,10 @@ add_task(async function testExtensionControlledProxyConfig() {
         is(element.disabled, isControlled, `Proxy controls are ${controlState}.`);
       }
     } else {
-      is(doc.getElementById(CONNECTION_SETTINGS_DESC_ID).textContent,
-         expectedConnectionSettingsMessage(doc, isControlled),
-         "The connection settings description is as expected.");
+      let elem = doc.getElementById(CONNECTION_SETTINGS_DESC_ID);
+      is(doc.l10n.getAttributes(elem).id,
+        expectedConnectionSettingsMessage(doc, isControlled),
+        "The connection settings description is as expected.");
     }
   }
 
@@ -716,8 +745,9 @@ add_task(async function testExtensionControlledProxyConfig() {
 
     // The user is notified how to enable the extension.
     let controlledDesc = controlledSection.querySelector("description");
-    is(controlledDesc.textContent, "To enable the extension go to  Add-ons in the  menu.",
-       "The user is notified of how to enable the extension again");
+    is(panelDoc.l10n.getAttributes(controlledDesc.querySelector("label")).id,
+      "extension-controlled-enable",
+      "The user is notified of how to enable the extension again");
 
     // The user can dismiss the enable instructions.
     let hidden = waitForMessageHidden(sectionId, panelDoc);
@@ -745,7 +775,6 @@ add_task(async function testExtensionControlledProxyConfig() {
   }
 
   await openPreferencesViaOpenPreferencesAPI("paneGeneral", {leaveOpen: true});
-  // eslint-disable-next-line mozilla/no-cpows-in-tests
   let mainDoc = gBrowser.contentDocument;
 
   is(gBrowser.currentURI.spec, "about:preferences#general",
@@ -822,5 +851,5 @@ add_task(async function testExtensionControlledProxyConfig() {
 
   await extension.unload();
 
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
 });

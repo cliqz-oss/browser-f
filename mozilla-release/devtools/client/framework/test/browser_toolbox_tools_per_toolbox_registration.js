@@ -40,8 +40,6 @@ var waitForToolInstanceDestroyed = new Promise((resolve) => {
 function toolboxRegister(aToolbox) {
   toolbox = aToolbox;
 
-  var resolveToolInstanceBuild;
-
   waitForToolInstanceBuild = new Promise((resolve) => {
     resolveToolInstanceBuild = resolve;
   });
@@ -53,7 +51,7 @@ function toolboxRegister(aToolbox) {
     label: "per-toolbox Test Tool",
     inMenu: true,
     isTargetSupported: () => true,
-    build: function () {
+    build: function() {
       info("per-toolbox tool has been built.");
       resolveToolInstanceBuild();
 
@@ -132,7 +130,7 @@ function toolboxToolUnregistered() {
 }
 
 function cleanup() {
-  toolbox.destroy().then(() => {;
+  toolbox.destroy().then(() => {
     toolbox = null;
     gBrowser.removeCurrentTab();
     finish();

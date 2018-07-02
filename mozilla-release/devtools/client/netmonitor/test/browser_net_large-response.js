@@ -9,7 +9,7 @@
 
 const HTML_LONG_URL = CONTENT_TYPE_SJS + "?fmt=html-long";
 
-add_task(async function () {
+add_task(async function() {
   let { tab, monitor } = await initNetMonitor(CUSTOM_GET_URL);
   info("Starting test... ");
 
@@ -27,14 +27,14 @@ add_task(async function () {
   store.dispatch(Actions.batchEnable(false));
 
   let wait = waitForNetworkEvents(monitor, 1);
-  await ContentTask.spawn(tab.linkedBrowser, HTML_LONG_URL, async function (url) {
+  await ContentTask.spawn(tab.linkedBrowser, HTML_LONG_URL, async function(url) {
     content.wrappedJSObject.performRequests(1, url);
   });
   await wait;
 
   let requestItem = document.querySelector(".request-list-item");
   requestItem.scrollIntoView();
-  let requestsListStatus = requestItem.querySelector(".requests-list-status");
+  let requestsListStatus = requestItem.querySelector(".status-code");
   EventUtils.sendMouseEvent({ type: "mouseover" }, requestsListStatus);
   await waitUntil(() => requestsListStatus.title);
 
@@ -50,8 +50,7 @@ add_task(async function () {
     });
 
   wait = waitForDOM(document, "#response-panel .CodeMirror-code");
-  EventUtils.sendMouseEvent({ type: "click" },
-    document.querySelector(".network-details-panel-toggle"));
+  store.dispatch(Actions.toggleNetworkDetails());
   EventUtils.sendMouseEvent({ type: "click" },
     document.querySelector("#response-tab"));
   await wait;

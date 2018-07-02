@@ -26,14 +26,13 @@ public:
   HTMLMenuItemElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo,
                       mozilla::dom::FromParser aFromParser);
 
-  NS_IMPL_FROMCONTENT_HTML_WITH_TAG(HTMLMenuItemElement, menuitem)
+  NS_IMPL_FROMNODE_HTML_WITH_TAG(HTMLMenuItemElement, menuitem)
 
   // nsISupports
   NS_INLINE_DECL_REFCOUNTING_INHERITED(HTMLMenuItemElement,
                                        nsGenericHTMLElement)
 
-  virtual nsresult GetEventTargetParent(
-                     EventChainPreVisitor& aVisitor) override;
+  void GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
   virtual nsresult PostHandleEvent(
                      EventChainPostVisitor& aVisitor) override;
 

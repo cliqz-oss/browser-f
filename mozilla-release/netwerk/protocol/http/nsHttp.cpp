@@ -383,10 +383,9 @@ ValidationRequired(bool isForcedValid, nsHttpResponseHead *cachedResponseHead,
         if (cachedResponseHead->NoStore()) {
             LOG(("Validating based on no-store logic\n"));
             return true;
-        } else {
-            LOG(("NOT validating based on VALIDATE_NEVER load flag\n"));
-            return false;
         }
+        LOG(("NOT validating based on VALIDATE_NEVER load flag\n"));
+        return false;
     }
 
     // check if validation is strictly required...
@@ -443,13 +442,18 @@ ValidationRequired(bool isForcedValid, nsHttpResponseHead *cachedResponseHead,
         doValidation = staleTime > maxStaleRequest;
         LOG(("  validating=%d, max-stale=%u requested", doValidation, maxStaleRequest));
     } else if (cacheControlRequest.MaxAge(&maxAgeRequest)) {
-        doValidation = age > maxAgeRequest;
+        // The input information for age and freshness calculation are in seconds.
+        // Hence, the internal logic can't have better resolution than seconds too.
+        // To make max-age=0 case work even for requests made in less than a second
+        // after the last response has been received, we use >= for compare.  This
+        // is correct because of the rounding down of the age calculated value.
+        doValidation = age >= maxAgeRequest;
         LOG(("  validating=%d, max-age=%u requested", doValidation, maxAgeRequest));
     } else if (cacheControlRequest.MinFresh(&minFreshRequest)) {
         uint32_t freshTime = freshness > age ? freshness - age : 0;
         doValidation = freshTime < minFreshRequest;
         LOG(("  validating=%d, min-fresh=%u requested", doValidation, minFreshRequest));
-    } else if (now <= expiration) {
+    } else if (now < expiration) {
         doValidation = false;
         LOG(("  not validating, expire time not in the past"));
     } else if (cachedResponseHead->MustValidateIfExpired()) {
@@ -488,7 +492,7 @@ GetHttpResponseHeadFromCacheEntry(nsICacheEntry *entry, nsHttpResponseHead *cach
         }
     }
 
-    buf.Adopt(0);
+    buf.Adopt(nullptr);
     // A "response-head" metadata element holds response head, e.g. response status
     // line and headers in the form Firefox uses them internally (no dupicate
     // headers, etc.).
@@ -500,7 +504,7 @@ GetHttpResponseHeadFromCacheEntry(nsICacheEntry *entry, nsHttpResponseHead *cach
     // headers stored in a "original-response-headers" metadata element).
     rv = cachedResponseHead->ParseCachedHead(buf.get());
     NS_ENSURE_SUCCESS(rv, rv);
-    buf.Adopt(0);
+    buf.Adopt(nullptr);
 
     return NS_OK;
 }
@@ -833,6 +837,26 @@ ParsedHeaderValueListList::ParsedHeaderValueListList(const nsCString &fullHeader
         };
 
     Tokenize(mFull.BeginReading(), mFull.Length(), ',', consumer);
+}
+
+void LogCallingScriptLocation(void* instance)
+{
+    if (!LOG4_ENABLED()) {
+        return;
+    }
+
+    JSContext* cx = nsContentUtils::GetCurrentJSContext();
+    if (!cx) {
+        return;
+    }
+
+    nsAutoCString fileNameString;
+    uint32_t line = 0, col = 0;
+    if (!nsJSUtils::GetCallingLocation(cx, fileNameString, &line, &col)) {
+        return;
+    }
+
+    LOG(("%p called from script: %s:%u:%u", instance, fileNameString.get(), line, col));
 }
 
 } // namespace net

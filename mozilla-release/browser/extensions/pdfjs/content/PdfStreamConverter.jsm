@@ -49,29 +49,6 @@ XPCOMUtils.defineLazyServiceGetter(Svc, "mime",
                                    "@mozilla.org/mime;1",
                                    "nsIMIMEService");
 
-function getContainingBrowser(domWindow) {
-  return domWindow.QueryInterface(Ci.nsIInterfaceRequestor)
-                  .getInterface(Ci.nsIWebNavigation)
-                  .QueryInterface(Ci.nsIDocShell)
-                  .chromeEventHandler;
-}
-
-function getFindBar(domWindow) {
-  if (PdfjsContentUtils.isRemote) {
-    throw new Error("FindBar is not accessible from the content process.");
-  }
-  try {
-    var browser = getContainingBrowser(domWindow);
-    var tabbrowser = browser.getTabBrowser();
-    var tab = tabbrowser.getTabForBrowser(browser);
-    return tabbrowser.getFindBar(tab);
-  } catch (e) {
-    // Suppress errors for PDF files opened in the bookmark sidebar, see
-    // https://bugzilla.mozilla.org/show_bug.cgi?id=1248959.
-    return null;
-  }
-}
-
 function getBoolPref(pref, def) {
   try {
     return Services.prefs.getBoolPref(pref);
@@ -340,18 +317,7 @@ class ChromeActions {
 
   supportsIntegratedFind() {
     // Integrated find is only supported when we're not in a frame
-    if (this.domWindow.frameElement !== null) {
-      return false;
-    }
-
-    // ... and we are in a child process
-    if (PdfjsContentUtils.isRemote) {
-      return true;
-    }
-
-    // ... or when the new find events code exists.
-    var findBar = getFindBar(this.domWindow);
-    return !!findBar && ("updateControlState" in findBar);
+    return this.domWindow.frameElement === null;
   }
 
   supportsDocumentFonts() {
@@ -843,12 +809,7 @@ PdfStreamConverter.prototype = {
   classID2: Components.ID("{d0c5195d-e798-49d4-b1d3-9324328b2292}"),
   contractID2: "@mozilla.org/streamconv;1?from=application/pdf&to=text/html",
 
-  QueryInterface: XPCOMUtils.generateQI([
-      Ci.nsISupports,
-      Ci.nsIStreamConverter,
-      Ci.nsIStreamListener,
-      Ci.nsIRequestObserver
-  ]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIStreamConverter, Ci.nsIStreamListener, Ci.nsIRequestObserver]),
 
   /*
    * This component works as such:

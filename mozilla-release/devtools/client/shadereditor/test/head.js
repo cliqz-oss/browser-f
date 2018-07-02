@@ -68,23 +68,17 @@ function ifWebGLUnsupported() {
   finish();
 }
 
-function test() {
+async function test() {
   let generator = isWebGLSupported(document) ? ifWebGLSupported : ifWebGLUnsupported;
-  Task.spawn(generator).catch(handleError);
+  try {
+    await generator();
+  } catch (e) {
+    handleError(e);
+  }
 }
 
 function createCanvas() {
   return document.createElementNS("http://www.w3.org/1999/xhtml", "canvas");
-}
-
-// Hack around `once`, as that only resolves to a single (first) argument
-// and discards the rest. `onceSpread` is similar, except resolves to an
-// array of all of the arguments in the handler. These should be consolidated
-// into the same function, but many tests will need to be changed.
-function onceSpread(aTarget, aEvent) {
-  let deferred = defer();
-  aTarget.once(aEvent, (...args) => deferred.resolve(args));
-  return deferred.promise;
 }
 
 function observe(aNotificationName, aOwnsWeak = false) {
@@ -112,21 +106,22 @@ function isApproxColor(aFirst, aSecond, aMargin) {
 }
 
 function ensurePixelIs(aFront, aPosition, aColor, aWaitFlag = false, aSelector = "canvas") {
-  return Task.spawn(function* () {
-    let pixel = yield aFront.getPixel({ selector: aSelector, position: aPosition });
+  return (async function() {
+    let pixel = await aFront.getPixel({ selector: aSelector, position: aPosition });
     if (isApproxColor(pixel, aColor)) {
       ok(true, "Expected pixel is shown at: " + aPosition.toSource());
       return;
     }
 
     if (aWaitFlag) {
-      yield aFront.waitForFrame();
-      return ensurePixelIs(aFront, aPosition, aColor, aWaitFlag, aSelector);
+      await aFront.waitForFrame();
+      await ensurePixelIs(aFront, aPosition, aColor, aWaitFlag, aSelector);
+      return;
     }
 
     ok(false, "Expected pixel was not already shown at: " + aPosition.toSource());
     throw new Error("Expected pixel was not already shown at: " + aPosition.toSource());
-  });
+  })();
 }
 
 function navigateInHistory(aTarget, aDirection, aWaitForTargetEvent = "navigate") {
@@ -155,31 +150,31 @@ function initBackend(aUrl) {
   DebuggerServer.init();
   DebuggerServer.registerAllActors();
 
-  return Task.spawn(function* () {
-    let tab = yield addTab(aUrl);
+  return (async function() {
+    let tab = await addTab(aUrl);
     let target = TargetFactory.forTab(tab);
 
-    yield target.makeRemote();
+    await target.makeRemote();
 
     let front = new WebGLFront(target.client, target.form);
     return { target, front };
-  });
+  })();
 }
 
 function initShaderEditor(aUrl) {
   info("Initializing a shader editor pane.");
 
-  return Task.spawn(function* () {
-    let tab = yield addTab(aUrl);
+  return (async function() {
+    let tab = await addTab(aUrl);
     let target = TargetFactory.forTab(tab);
 
-    yield target.makeRemote();
+    await target.makeRemote();
 
     Services.prefs.setBoolPref("devtools.shadereditor.enabled", true);
-    let toolbox = yield gDevTools.showToolbox(target, "shadereditor");
+    let toolbox = await gDevTools.showToolbox(target, "shadereditor");
     let panel = toolbox.getCurrentPanel();
     return { target, panel };
-  });
+  })();
 }
 
 function teardown(aPanel) {
@@ -205,7 +200,9 @@ function getPrograms(front, count, onAdd) {
   front.on("program-linked", function onLink(actor) {
     if (actors.length !== count) {
       actors.push(actor);
-      if (typeof onAdd === "function") onAdd(actors);
+      if (typeof onAdd === "function") {
+        onAdd(actors);
+      }
     }
     if (actors.length === count) {
       front.off("program-linked", onLink);

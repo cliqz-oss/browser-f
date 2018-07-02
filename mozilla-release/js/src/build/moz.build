@@ -30,17 +30,9 @@ FORCE_STATIC_LIB = True
 STATIC_LIBRARY_NAME = 'js_static'
 
 if CONFIG['ENABLE_INTL_API']:
-    if not CONFIG['MOZ_ICU_DATA_ARCHIVE']:
-        USE_LIBS += [
-            'icu',
-        ]
-    else:
-        # Linking 'icu' will pull in the stubdata library,
-        # which the shell doesn't want, so link the other bits.
-        USE_LIBS += [
-            'icui18n',
-            'icuuc',
-        ]
+    USE_LIBS += [
+        'icu',
+    ]
 
 USE_LIBS += [
     'nspr',
@@ -70,6 +62,9 @@ if CONFIG['OS_ARCH'] == 'SunOS':
         'socket',
     ]
 
+if CONFIG['MOZ_NEEDS_LIBATOMIC']:
+    OS_LIBS += ['atomic']
+
 OS_LIBS += CONFIG['REALTIME_LIBS']
 
 NO_EXPAND_LIBS = True
@@ -80,3 +75,15 @@ DIST_INSTALL = True
 # with those in libxul.
 if CONFIG['OS_TARGET'] == 'Linux':
     LDFLAGS += ['-Wl,-version-script,symverscript']
+
+# Run SpiderMonkey style checker after linking the static library. This avoids
+# running the script for no-op builds.
+GENERATED_FILES += ['spidermonkey_checks']
+run_checks = GENERATED_FILES['spidermonkey_checks']
+run_checks.script = '/config/run_spidermonkey_checks.py'
+run_checks.inputs += [
+    '!%sjs_static.%s' % (CONFIG['LIB_PREFIX'], CONFIG['LIB_SUFFIX']),
+    '/config/check_spidermonkey_style.py',
+    '/config/check_macroassembler_style.py',
+    '/config/check_js_opcode.py'
+]

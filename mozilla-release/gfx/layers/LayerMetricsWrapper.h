@@ -355,7 +355,7 @@ public:
     return nullptr;
   }
 
-  Maybe<uint64_t> GetReferentId() const
+  Maybe<LayersId> GetReferentId() const
   {
     MOZ_ASSERT(IsValid());
 
@@ -410,11 +410,11 @@ public:
     return EventRegionsOverride::NoOverride;
   }
 
-  const ScrollThumbData& GetScrollThumbData() const
+  const ScrollbarData& GetScrollbarData() const
   {
     MOZ_ASSERT(IsValid());
 
-    return mLayer->GetScrollThumbData();
+    return mLayer->GetScrollbarData();
   }
 
   uint64_t GetScrollbarAnimationId() const
@@ -424,19 +424,6 @@ public:
     // WebRenderScrollDataWrapper. Although it will be called, the return
     // value is not used.
     return 0;
-  }
-
-  FrameMetrics::ViewID GetScrollbarTargetContainerId() const
-  {
-    MOZ_ASSERT(IsValid());
-
-    return mLayer->GetScrollbarTargetContainerId();
-  }
-
-  Maybe<ScrollDirection> GetScrollbarContainerDirection() const
-  {
-    MOZ_ASSERT(IsValid());
-    return mLayer->GetScrollbarContainerDirection();
   }
 
   FrameMetrics::ViewID GetFixedPositionScrollContainerId() const

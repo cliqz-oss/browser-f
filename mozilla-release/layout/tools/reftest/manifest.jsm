@@ -68,10 +68,6 @@ function ReadManifest(aURL, aFilter)
         AddRetainedDisplayListTestPrefs(sandbox, defaultTestPrefSettings,
                                         defaultRefPrefSettings);
     }
-    if (g.compareStyloToGecko) {
-        AddStyloTestPrefs(sandbox, defaultTestPrefSettings,
-                          defaultRefPrefSettings);
-    }
     for (var str of lines) {
         ++lineNo;
         if (str.charAt(0) == "#")
@@ -109,10 +105,6 @@ function ReadManifest(aURL, aFilter)
             if (g.compareRetainedDisplayLists) {
                 AddRetainedDisplayListTestPrefs(sandbox, defaultTestPrefSettings,
                                                 defaultRefPrefSettings);
-            }
-            if (g.compareStyloToGecko) {
-                AddStyloTestPrefs(sandbox, defaultTestPrefSettings,
-                                  defaultRefPrefSettings);
             }
             continue;
         }
@@ -327,7 +319,7 @@ function ReadManifest(aURL, aFilter)
             }
 
             var type = items[0];
-            if (g.compareStyloToGecko || g.compareRetainedDisplayLists) {
+            if (g.compareRetainedDisplayLists) {
                 type = TYPE_REFTEST_EQUAL;
 
                 // We expect twice as many assertion failures when running in
@@ -490,23 +482,8 @@ let retainedDisplayListsEnabled = prefs.getBoolPref("layout.display-list.retain"
 sandbox.retainedDisplayLists = retainedDisplayListsEnabled && !g.compareRetainedDisplayLists;
 sandbox.compareRetainedDisplayLists = g.compareRetainedDisplayLists;
 
-#ifdef MOZ_STYLO
-    let styloEnabled = false;
-    // Perhaps a bit redundant in places, but this is easier to compare with the
-    // the real check in `nsLayoutUtils.cpp` to ensure they test the same way.
-    if (env.get("STYLO_FORCE_ENABLED")) {
-        styloEnabled = true;
-    } else if (env.get("STYLO_FORCE_DISABLED")) {
-        styloEnabled = false;
-    } else {
-        styloEnabled = prefs.getBoolPref("layout.css.servo.enabled", false);
-    }
-    sandbox.stylo = styloEnabled && !g.compareStyloToGecko;
-    sandbox.styloVsGecko = g.compareStyloToGecko;
-#else
-    sandbox.stylo = false;
-    sandbox.styloVsGecko = false;
-#endif
+// TODO(emilio): Remove the remaining reftest expectations that mention stylo.
+sandbox.stylo = true;
 
     sandbox.skiaPdf = false;
 
@@ -583,13 +560,6 @@ function AddRetainedDisplayListTestPrefs(aSandbox, aTestPrefSettings,
                     aTestPrefSettings, aRefPrefSettings);
 }
 
-function AddStyloTestPrefs(aSandbox, aTestPrefSettings, aRefPrefSettings) {
-    AddPrefSettings("test-", "layout.css.servo.enabled", "true", aSandbox,
-                    aTestPrefSettings, aRefPrefSettings);
-    AddPrefSettings("ref-", "layout.css.servo.enabled", "false", aSandbox,
-                    aTestPrefSettings, aRefPrefSettings);
-}
-
 function AddPrefSettings(aWhere, aPrefName, aPrefValExpression, aSandbox, aTestPrefSettings, aRefPrefSettings) {
     var prefVal = Cu.evalInSandbox("(" + aPrefValExpression + ")", aSandbox);
     var prefType;
@@ -607,8 +577,7 @@ function AddPrefSettings(aWhere, aPrefName, aPrefValExpression, aSandbox, aTestP
                     type: prefType,
                     value: prefVal };
 
-    if ((g.compareStyloToGecko && aPrefName != "layout.css.servo.enabled") ||
-        (g.compareRetainedDisplayLists && aPrefName != "layout.display-list.retain")) {
+    if (g.compareRetainedDisplayLists && aPrefName != "layout.display-list.retain") {
         // ref-pref() is ignored, test-pref() and pref() are added to both
         if (aWhere != "ref-") {
             aTestPrefSettings.push(setting);
@@ -690,8 +659,6 @@ function CreateUrls(test) {
 
     let files = [test.url1, test.url2];
     [test.url1, test.url2] = files.map(FileToURI);
-    if (test.url2 && g.compareStyloToGecko)
-        test.url2 = test.url1;
 
     return test;
 }

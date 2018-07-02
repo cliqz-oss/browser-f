@@ -39,7 +39,6 @@ class ClientSource;
 interface nsIURI;
 interface nsIChannel;
 interface nsIContentViewer;
-interface nsIDOMEventTarget;
 interface nsIDocShellLoadInfo;
 interface nsIEditor;
 interface nsIEditingSession;
@@ -62,6 +61,8 @@ interface nsICommandManager;
 interface nsICommandParams;
 interface nsILoadURIDelegate;
 native TabChildRef(already_AddRefed<nsITabChild>);
+
+webidl EventTarget;
 
 [scriptable, builtinclass, uuid(049234fe-da10-478b-bc5d-bc6f9a1ba63d)]
 interface nsIDocShell : nsIDocShellTreeItem
@@ -137,6 +138,9 @@ interface nsIDocShell : nsIDocShellTreeItem
 
   // Whether a top-level data URI navigation is allowed for that load
   const long INTERNAL_LOAD_FLAGS_FORCE_ALLOW_DATA_URI    = 0x200;
+
+  // Whether the load was triggered by user interaction.
+  const long INTERNAL_LOAD_FLAGS_IS_USER_TRIGGERED       = 0x1000;
 
   /**
    * Loads the given URI.  This method is identical to loadURI(...) except
@@ -286,12 +290,17 @@ interface nsIDocShell : nsIDocShellTreeItem
    * This attribute allows chrome to tie in to handle DOM events that may
    * be of interest to chrome.
    */
-  attribute nsIDOMEventTarget chromeEventHandler;
+  attribute EventTarget chromeEventHandler;
 
   /**
-    * This allows chrome to set a custom User agent on a specific docshell
-    */
+   * This allows chrome to set a custom User agent on a specific docshell
+   */
   attribute DOMString customUserAgent;
+
+  /**
+   * Whether CSS error reporting is enabled.
+   */
+  attribute boolean cssErrorReportingEnabled;
 
   /**
    * Whether to allow plugin execution
@@ -581,13 +590,6 @@ interface nsIDocShell : nsIDocShellTreeItem
    * transition. This is set just before the pagehide/unload events fire.
    */
   readonly attribute boolean isInUnload;
-
-  /**
-   * Find out if the currently loaded document came from a suspicious channel
-   * (such as a JAR channel where the server-returned content type isn't a
-   * known JAR type).
-   */
-  readonly attribute boolean channelIsUnsafe;
 
   /**
    * This attribute determines whether Mixed Active Content is loaded on the
@@ -1188,6 +1190,12 @@ interface nsIDocShell : nsIDocShellTreeItem
 
   void getColorMatrix([optional] out unsigned long aMatrixLen,
                       [array, size_is(aMatrixLen), retval] out float aMatrix);
+
+  /**
+   * Initialize session history for this docshell. The docshell must be the root
+   * docshell.
+   */
+  void initSessionHistory();
 
 %{C++
   /**

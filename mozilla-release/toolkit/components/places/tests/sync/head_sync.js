@@ -13,10 +13,12 @@ ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 // Put any other stuff relative to this test folder below.
 
+ChromeUtils.import("resource://gre/modules/CanonicalJSON.jsm");
 ChromeUtils.import("resource://gre/modules/Log.jsm");
 ChromeUtils.import("resource://gre/modules/ObjectUtils.jsm");
 ChromeUtils.import("resource://gre/modules/PlacesSyncUtils.jsm");
 ChromeUtils.import("resource://gre/modules/SyncedBookmarksMirror.jsm");
+ChromeUtils.import("resource://testing-common/FileTestUtils.jsm");
 ChromeUtils.import("resource://testing-common/httpd.js");
 
 // These titles are defined in Database::CreateBookmarkRoots
@@ -44,6 +46,60 @@ function run_test() {
   run_next_test();
 }
 
+// A test helper to insert local roots directly into Places, since the public
+// bookmarks APIs no longer support custom roots.
+async function insertLocalRoot({ guid, title }) {
+  await PlacesUtils.withConnectionWrapper("insertLocalRoot",
+    async function(db) {
+      let dateAdded = PlacesUtils.toPRTime(new Date());
+      await db.execute(`
+        INSERT INTO moz_bookmarks(guid, type, parent, position, title,
+                                  dateAdded, lastModified)
+        VALUES(:guid, :type, (SELECT id FROM moz_bookmarks
+                              WHERE guid = :parentGuid),
+               (SELECT COUNT(*) FROM moz_bookmarks
+                WHERE parent = (SELECT id FROM moz_bookmarks
+                                WHERE guid = :parentGuid)),
+               :title, :dateAdded, :dateAdded)`,
+        { guid, type: PlacesUtils.bookmarks.TYPE_FOLDER,
+          parentGuid: PlacesUtils.bookmarks.rootGuid, title, dateAdded });
+  });
+}
+
+// Returns a `CryptoWrapper`-like object that wraps the Sync record cleartext.
+// This exists to avoid importing `record.js` from Sync.
+function makeRecord(cleartext) {
+  return new Proxy({ cleartext }, {
+    get(target, property, receiver) {
+      if (property == "cleartext") {
+        return target.cleartext;
+      }
+      if (property == "cleartextToString") {
+        return () => JSON.stringify(target.cleartext);
+      }
+      return target.cleartext[property];
+    },
+    set(target, property, value, receiver) {
+      if (property == "cleartext") {
+        target.cleartext = value;
+      } else if (property != "cleartextToString") {
+        target.cleartext[property] = value;
+      }
+    },
+    has(target, property) {
+      return property == "cleartext" || (property in target.cleartext);
+    },
+    deleteProperty(target, property) {},
+    ownKeys(target) {
+      return ["cleartext", ...Reflect.ownKeys(target)];
+    },
+  });
+}
+
+async function storeRecords(buf, records, options) {
+  await buf.store(records.map(makeRecord), options);
+}
+
 function inspectChangeRecords(changeRecords) {
   let results = { updated: [], deleted: [] };
   for (let [id, record] of Object.entries(changeRecords)) {
@@ -54,7 +110,26 @@ function inspectChangeRecords(changeRecords) {
   return results;
 }
 
-async function assertLocalTree(rootGuid, expected, message) {
+async function promiseManyDatesAdded(guids) {
+  let datesAdded = new Map();
+  let db = await PlacesUtils.promiseDBConnection();
+  for (let chunk of PlacesSyncUtils.chunkArray(guids, 100)) {
+    let rows = await db.executeCached(`
+      SELECT guid, dateAdded FROM moz_bookmarks
+      WHERE guid IN (${new Array(chunk.length).fill("?").join(",")})`,
+      chunk);
+    if (rows.length != chunk.length) {
+      throw new TypeError("Can't fetch date added for nonexistent items");
+    }
+    for (let row of rows) {
+      let dateAdded = row.getResultByName("dateAdded") / 1000;
+      datesAdded.set(row.getResultByName("guid"), dateAdded);
+    }
+  }
+  return datesAdded;
+}
+
+async function fetchLocalTree(rootGuid) {
   function bookmarkNodeToInfo(node) {
     let { guid, index, title, typeCode: type } = node;
     let itemInfo = { guid, index, title, type };
@@ -82,10 +157,14 @@ async function assertLocalTree(rootGuid, expected, message) {
     return itemInfo;
   }
   let root = await PlacesUtils.promiseBookmarksTree(rootGuid);
-  let actual = bookmarkNodeToInfo(root);
+  return bookmarkNodeToInfo(root);
+}
+
+async function assertLocalTree(rootGuid, expected, message) {
+  let actual = await fetchLocalTree(rootGuid);
   if (!ObjectUtils.deepEqual(actual, expected)) {
-    info(`Expected structure for ${rootGuid}: ${JSON.stringify(expected)}`);
-    info(`Actual structure for ${rootGuid}: ${JSON.stringify(actual)}`);
+    info(`Expected structure for ${rootGuid}: ${CanonicalJSON.stringify(expected)}`);
+    info(`Actual structure for ${rootGuid}:   ${CanonicalJSON.stringify(actual)}`);
     throw new Assert.constructor.AssertionError({ actual, expected, message });
   }
 }
@@ -124,11 +203,14 @@ async function fetchAllKeywords(info) {
   return entries;
 }
 
-async function openMirror(name) {
-  let path = OS.Path.join(OS.Constants.Path.profileDir, `${name}_buf.sqlite`);
+async function openMirror(name, options = {}) {
   let buf = await SyncedBookmarksMirror.open({
-    path,
-    recordTelemetryEvent() {},
+    path: `${name}_buf.sqlite`,
+    recordTelemetryEvent(...args) {
+      if (options.recordTelemetryEvent) {
+        options.recordTelemetryEvent.call(this, ...args);
+      }
+    },
   });
   return buf;
 }
@@ -179,7 +261,7 @@ BookmarkObserver.prototype = {
     });
   },
 
-  QueryInterface: XPCOMUtils.generateQI([
+  QueryInterface: ChromeUtils.generateQI([
     Ci.nsINavBookmarkObserver,
   ]),
 
@@ -200,4 +282,13 @@ function expectBookmarkChangeNotifications(options) {
   let observer = new BookmarkObserver(options);
   PlacesUtils.bookmarks.addObserver(observer);
   return observer;
+}
+
+// Copies a support file to a temporary fixture file, allowing the support
+// file to be reused for multiple tests.
+async function setupFixtureFile(fixturePath) {
+  let fixtureFile = do_get_file(fixturePath);
+  let tempFile = FileTestUtils.getTempFile(fixturePath);
+  await OS.File.copy(fixtureFile.path, tempFile.path);
+  return tempFile;
 }

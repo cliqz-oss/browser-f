@@ -476,7 +476,9 @@ class Talos(TestingMixin, MercurialScript, BlobUploadMixin, TooltoolMixin,
         self.install_mitmproxy()
 
         # download the recording set; will be overridden by the --no-download
-        if '--no-download' not in self.config['talos_extra_options']:
+        if ('talos_extra_options' in self.config and \
+            '--no-download' not in self.config['talos_extra_options']) or \
+            'talos_extra_options' not in self.config:
             self.download_mitmproxy_recording_set()
         else:
             self.info("Not downloading mitmproxy recording set because no-download was specified")
@@ -507,7 +509,9 @@ class Talos(TestingMixin, MercurialScript, BlobUploadMixin, TooltoolMixin,
             self.mitmdump = os.path.join(mitmproxy_path, 'mitmdump')
             if not os.path.exists(self.mitmdump):
                 # download the mitmproxy release binary; will be overridden by the --no-download
-                if '--no-download' not in self.config['talos_extra_options']:
+                if ('talos_extra_options' in self.config and \
+                   '--no-download' not in self.config['talos_extra_options']) or \
+                   'talos_extra_options' not in self.config:
                     if 'osx' in self.platform_name():
                         _platform = 'osx'
                     else:
@@ -624,10 +628,7 @@ class Talos(TestingMixin, MercurialScript, BlobUploadMixin, TooltoolMixin,
             two_pass=True,
             editable=True,
         )
-        # require pip >= 1.5 so pip will prefer .whl files to install
-        super(Talos, self).create_virtualenv(
-            modules=['pip>=1.5']
-        )
+        super(Talos, self).create_virtualenv()
         # talos in harness requires what else is
         # listed in talos requirements.txt file.
         self.install_module(
@@ -712,10 +713,6 @@ class Talos(TestingMixin, MercurialScript, BlobUploadMixin, TooltoolMixin,
             if 'qr' in platform:
                 env['MOZ_WEBRENDER'] = '1'
                 env['MOZ_ACCELERATED'] = '1'
-            if 'stylo' in platform and 'stylo_disabled' not in platform:
-                env['STYLO_FORCE_ENABLED'] = '1'
-            if 'stylo_disabled' in platform:
-                env['STYLO_FORCE_DISABLED'] = '1'
             if 'styloseq' in platform:
                 env['STYLO_THREADS'] = '1'
 

@@ -1,4 +1,4 @@
-// |reftest| skip -- BigInt is not supported
+// |reftest| skip-if(!this.hasOwnProperty('BigInt')) -- BigInt is not enabled unconditionally
 // Copyright (C) 2017 Caio Lima. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -25,6 +25,5 @@ assert.sameValue(BigInt("-18446744073709551616"), -18446744073709551616n);
 assert.sameValue(BigInt("-7"), -7n);
 assert.sameValue(BigInt("-88"), -88n);
 assert.sameValue(BigInt("-900"), -900n);
-
 
 reportCompare(0, 0);

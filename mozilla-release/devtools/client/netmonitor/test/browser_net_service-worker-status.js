@@ -12,7 +12,7 @@ const URL = EXAMPLE_URL.replace("http:", "https:");
 
 const TEST_URL = URL + "service-workers/status-codes.html";
 
-add_task(async function () {
+add_task(async function() {
   let { tab, monitor } = await initNetMonitor(TEST_URL, true);
   info("Starting test... ");
 
@@ -41,16 +41,13 @@ add_task(async function () {
   ];
 
   info("Registering the service worker...");
-  await ContentTask.spawn(tab.linkedBrowser, {}, async function () {
+  await ContentTask.spawn(tab.linkedBrowser, {}, async function() {
     await content.wrappedJSObject.registerServiceWorker();
   });
 
   info("Performing requests...");
-  let wait = waitForNetworkEvents(monitor, REQUEST_DATA.length);
-  await ContentTask.spawn(tab.linkedBrowser, {}, async function () {
-    content.wrappedJSObject.performRequests();
-  });
-  await wait;
+  // Execute requests.
+  await performRequests(monitor, tab, REQUEST_DATA.length);
 
   // Fetch stack-trace data from the backend and wait till
   // all packets are received.
@@ -61,7 +58,7 @@ add_task(async function () {
   let requestItems = document.querySelectorAll(".request-list-item");
   for (let requestItem of requestItems) {
     requestItem.scrollIntoView();
-    let requestsListStatus = requestItem.querySelector(".requests-list-status");
+    let requestsListStatus = requestItem.querySelector(".status-code");
     EventUtils.sendMouseEvent({ type: "mouseover" }, requestsListStatus);
     await waitUntil(() => requestsListStatus.title);
   }
@@ -96,7 +93,7 @@ add_task(async function () {
   }
 
   info("Unregistering the service worker...");
-  await ContentTask.spawn(tab.linkedBrowser, {}, async function () {
+  await ContentTask.spawn(tab.linkedBrowser, {}, async function() {
     await content.wrappedJSObject.unregisterServiceWorker();
   });
 

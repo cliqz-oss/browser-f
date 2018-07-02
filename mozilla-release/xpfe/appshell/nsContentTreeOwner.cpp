@@ -15,12 +15,9 @@
 
 // Interfaces needed to be included
 #include "nsIDOMNode.h"
-#include "nsIDOMElement.h"
-#include "nsIDOMNodeList.h"
 #include "nsIDOMWindow.h"
 #include "nsIDOMChromeWindow.h"
 #include "nsIBrowserDOMWindow.h"
-#include "nsIDOMXULElement.h"
 #include "nsIEmbeddingSiteWindow.h"
 #include "nsIPrompt.h"
 #include "nsIAuthPrompt.h"
@@ -451,12 +448,9 @@ NS_IMETHODIMP nsContentTreeOwner::SetStatusWithContext(uint32_t aStatusType,
   {
     switch(aStatusType)
     {
-    case STATUS_SCRIPT:
-      xulBrowserWindow->SetJSStatus(aStatusText);
-      break;
     case STATUS_LINK:
       {
-        nsCOMPtr<nsIDOMElement> element = do_QueryInterface(aStatusContext);
+        nsCOMPtr<dom::Element> element = do_QueryInterface(aStatusContext);
         xulBrowserWindow->SetOverLink(aStatusText, element);
         break;
       }
@@ -911,7 +905,7 @@ nsContentTreeOwner::ProvideWindow(mozIDOMWindowProxy* aParent,
     //
     // This method handles setting the opener for us, so we don't need to set it
     // ourselves.
-    RefPtr<NullPrincipal> nullPrincipal = NullPrincipal::Create();
+    RefPtr<NullPrincipal> nullPrincipal = NullPrincipal::CreateWithoutOriginAttributes();
     return browserDOMWin->CreateContentWindow(aURI, aParent, openLocation,
                                               flags, nullPrincipal, aReturn);
   }

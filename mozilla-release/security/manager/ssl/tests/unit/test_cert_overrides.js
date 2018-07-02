@@ -50,6 +50,10 @@ function check_telemetry() {
         "Actual and expected SEC_ERROR_INVALID_TIME counts should match");
   equal(histogram.counts[17], 1,
         "Actual and expected MOZILLA_PKIX_ERROR_EMPTY_ISSUER_NAME counts should match");
+  equal(histogram.counts[19], 3,
+        "Actual and expected MOZILLA_PKIX_ERROR_SELF_SIGNED_CERT counts should match");
+  equal(histogram.counts[20], 1,
+        "Actual and expected MOZILLA_PKIX_ERROR_MITM_DETECTED counts should match");
 
   let keySizeHistogram = Services.telemetry
                            .getHistogramById("CERT_CHAIN_KEY_SIZE_STATUS")
@@ -60,7 +64,7 @@ function check_telemetry() {
         "Actual and expected successful verifications of 2048-bit keys should match");
   equal(keySizeHistogram.counts[2], 0,
         "Actual and expected successful verifications of 1024-bit keys should match");
-  equal(keySizeHistogram.counts[3], 60,
+  equal(keySizeHistogram.counts[3], 68,
         "Actual and expected verification failures unrelated to key size should match");
 
   run_next_test();
@@ -134,7 +138,7 @@ function add_simple_tests() {
                          SEC_ERROR_INVALID_TIME);
   add_cert_override_test("selfsigned.example.com",
                          Ci.nsICertOverrideService.ERROR_UNTRUSTED,
-                         SEC_ERROR_UNKNOWN_ISSUER);
+                         MOZILLA_PKIX_ERROR_SELF_SIGNED_CERT);
   add_cert_override_test("unknownissuer.example.com",
                          Ci.nsICertOverrideService.ERROR_UNTRUSTED,
                          SEC_ERROR_UNKNOWN_ISSUER);
@@ -157,24 +161,69 @@ function add_simple_tests() {
   // but not the subject common name.
   add_cert_override_test("mismatch.example.com",
                          Ci.nsICertOverrideService.ERROR_MISMATCH,
-                         SSL_ERROR_BAD_CERT_DOMAIN,
-                         /The certificate is only valid for the following names:\s*doesntmatch\.example\.com, \*\.alsodoesntmatch\.example\.com/);
+                         SSL_ERROR_BAD_CERT_DOMAIN);
   // This has name information in the subject common name but not the subject
   // alternative names extension.
   add_cert_override_test("mismatch-CN.example.com",
                          Ci.nsICertOverrideService.ERROR_MISMATCH,
-                         SSL_ERROR_BAD_CERT_DOMAIN,
-                         /The certificate is not valid for the name mismatch-CN\.example\.com/);
+                         SSL_ERROR_BAD_CERT_DOMAIN);
 
   // A Microsoft IIS utility generates self-signed certificates with
   // properties similar to the one this "host" will present.
   add_cert_override_test("selfsigned-inadequateEKU.example.com",
                          Ci.nsICertOverrideService.ERROR_UNTRUSTED,
-                         SEC_ERROR_UNKNOWN_ISSUER);
+                         MOZILLA_PKIX_ERROR_SELF_SIGNED_CERT);
 
   add_prevented_cert_override_test("inadequatekeyusage.example.com",
                                    Ci.nsICertOverrideService.ERROR_UNTRUSTED,
                                    SEC_ERROR_INADEQUATE_KEY_USAGE);
+
+  // Test triggering the MitM detection. We don't set-up a proxy here. Just
+  // set the pref. Without the pref set we expect an unkown issuer error.
+  add_cert_override_test("mitm.example.com",
+                         Ci.nsICertOverrideService.ERROR_UNTRUSTED,
+                         SEC_ERROR_UNKNOWN_ISSUER);
+  add_test(function() {
+    Services.prefs.setStringPref("security.pki.mitm_canary_issuer",
+                                 "CN=Test MITM Root");
+    let certOverrideService = Cc["@mozilla.org/security/certoverride;1"]
+                                .getService(Ci.nsICertOverrideService);
+    certOverrideService.clearValidityOverride("mitm.example.com", 8443);
+    run_next_test();
+  });
+  add_cert_override_test("mitm.example.com",
+                         Ci.nsICertOverrideService.ERROR_UNTRUSTED,
+                         MOZILLA_PKIX_ERROR_MITM_DETECTED);
+  add_test(function() {
+    Services.prefs.setStringPref("security.pki.mitm_canary_issuer",
+                                 "CN=Other MITM Root");
+    let certOverrideService = Cc["@mozilla.org/security/certoverride;1"]
+                                .getService(Ci.nsICertOverrideService);
+    certOverrideService.clearValidityOverride("mitm.example.com", 8443);
+    run_next_test();
+  });
+  // If the canary issuer doesn't match the one we see, we exepct and unknown
+  // issuer error.
+  add_cert_override_test("mitm.example.com",
+                         Ci.nsICertOverrideService.ERROR_UNTRUSTED,
+                         SEC_ERROR_UNKNOWN_ISSUER);
+  // If security.pki.mitm_canary_issuer.enabled is false, there should always
+  // be an unknown issuer error.
+  add_test(function() {
+    Services.prefs.setBoolPref("security.pki.mitm_canary_issuer.enabled",
+                               false);
+    let certOverrideService = Cc["@mozilla.org/security/certoverride;1"]
+                                .getService(Ci.nsICertOverrideService);
+    certOverrideService.clearValidityOverride("mitm.example.com", 8443);
+    run_next_test();
+  });
+  add_cert_override_test("mitm.example.com",
+                         Ci.nsICertOverrideService.ERROR_UNTRUSTED,
+                         SEC_ERROR_UNKNOWN_ISSUER);
+  add_test(function() {
+    Services.prefs.clearUserPref("security.pki.mitm_canary_issuer");
+    run_next_test();
+  });
 
   // This is intended to test the case where a verification has failed for one
   // overridable reason (e.g. unknown issuer) but then, in the process of
@@ -199,7 +248,7 @@ function add_simple_tests() {
   // is a scenario in which an override is allowed.
   add_cert_override_test("self-signed-end-entity-with-cA-true.example.com",
                          Ci.nsICertOverrideService.ERROR_UNTRUSTED,
-                         SEC_ERROR_UNKNOWN_ISSUER);
+                         MOZILLA_PKIX_ERROR_SELF_SIGNED_CERT);
 
   add_cert_override_test("ca-used-as-end-entity.example.com",
                          Ci.nsICertOverrideService.ERROR_UNTRUSTED,
@@ -246,8 +295,7 @@ function add_simple_tests() {
                          SSL_ERROR_BAD_CERT_DOMAIN);
   add_cert_override_test("noValidNames.example.com",
                          Ci.nsICertOverrideService.ERROR_MISMATCH,
-                         SSL_ERROR_BAD_CERT_DOMAIN,
-                         /The certificate is not valid for the name noValidNames\.example\.com/);
+                         SSL_ERROR_BAD_CERT_DOMAIN);
   add_cert_override_test("badSubjectAltNames.example.com",
                          Ci.nsICertOverrideService.ERROR_MISMATCH,
                          SSL_ERROR_BAD_CERT_DOMAIN);
@@ -287,8 +335,7 @@ function add_combo_tests() {
   add_cert_override_test("mismatch-expired.example.com",
                          Ci.nsICertOverrideService.ERROR_MISMATCH |
                          Ci.nsICertOverrideService.ERROR_TIME,
-                         SSL_ERROR_BAD_CERT_DOMAIN,
-                         /The certificate is only valid for <a id="cert_domain_link" title="doesntmatch\.example\.com">doesntmatch\.example\.com<\/a>/);
+                         SSL_ERROR_BAD_CERT_DOMAIN);
   add_cert_override_test("mismatch-notYetValid.example.com",
                          Ci.nsICertOverrideService.ERROR_MISMATCH |
                          Ci.nsICertOverrideService.ERROR_TIME,

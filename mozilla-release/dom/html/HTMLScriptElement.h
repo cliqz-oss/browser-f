@@ -19,7 +19,6 @@ class HTMLScriptElement final : public nsGenericHTMLElement,
 {
 public:
   using Element::GetText;
-  using Element::SetText;
 
   HTMLScriptElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo,
                     FromParser aFromParser);
@@ -27,7 +26,7 @@ public:
   // nsISupports
   NS_DECL_ISUPPORTS_INHERITED
 
-  NS_IMETHOD GetInnerHTML(nsAString& aInnerHTML) override;
+  void GetInnerHTML(nsAString& aInnerHTML, OOMReporter& aError) override;
   virtual void SetInnerHTML(const nsAString& aInnerHTML,
                             nsIPrincipal* aSubjectPrincipal,
                             mozilla::ErrorResult& aError) override;

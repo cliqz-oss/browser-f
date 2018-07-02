@@ -68,8 +68,13 @@ struct null_t {
 
 struct SerializedStructuredCloneBuffer final
 {
-  SerializedStructuredCloneBuffer() {}
+  SerializedStructuredCloneBuffer()
+   : data(JS::StructuredCloneScope::Unassigned)
+  {
+  }
+
   SerializedStructuredCloneBuffer(const SerializedStructuredCloneBuffer& aOther)
+   : SerializedStructuredCloneBuffer()
   {
     *this = aOther;
   }
@@ -78,11 +83,8 @@ struct SerializedStructuredCloneBuffer final
   operator=(const SerializedStructuredCloneBuffer& aOther)
   {
     data.Clear();
-    auto iter = aOther.data.Iter();
-    while (!iter.Done()) {
-      data.WriteBytes(iter.Data(), iter.RemainingInSegment());
-      iter.Advance(aOther.data, iter.RemainingInSegment());
-    }
+    data.initScope(aOther.data.scope());
+    data.Append(aOther.data);
     return *this;
   }
 
@@ -398,6 +400,9 @@ struct ParamTraits<nsACString>
     if (!ReadParam(aMsg, aIter, &length)) {
       return false;
     }
+    if (!aMsg->HasBytesAvailable(aIter, length)) {
+      return false;
+    }
     aResult->SetLength(length);
 
     return aMsg->ReadBytesInto(aIter, aResult->BeginWriting(), length);
@@ -447,12 +452,12 @@ struct ParamTraits<nsAString>
       return false;
     }
 
-    aResult->SetLength(length);
-
     mozilla::CheckedInt<uint32_t> byteLength = mozilla::CheckedInt<uint32_t>(length) * sizeof(char16_t);
-    if (!byteLength.isValid()) {
+    if (!byteLength.isValid() || !aMsg->HasBytesAvailable(aIter, byteLength.value())) {
       return false;
     }
+
+    aResult->SetLength(length);
 
     return aMsg->ReadBytesInto(aIter, aResult->BeginWriting(), byteLength.value());
   }
@@ -587,6 +592,14 @@ struct ParamTraits<nsTArray<E>>
       E* elements = aResult->AppendElements(length);
       return aMsg->ReadBytesInto(aIter, elements, pickledLength);
     } else {
+
+      // Each ReadParam<E> may read more than 1 byte each; this is an attempt
+      // to minimally validate that the length isn't much larger than what's
+      // actually available in aMsg.
+      if (!aMsg->HasBytesAvailable(aIter, length)) {
+        return false;
+      }
+
       aResult->SetCapacity(length);
 
       for (uint32_t index = 0; index < length; index++) {
@@ -837,11 +850,9 @@ struct ParamTraits<JSStructuredCloneData>
   {
     MOZ_ASSERT(!(aParam.Size() % sizeof(uint64_t)));
     WriteParam(aMsg, aParam.Size());
-    auto iter = aParam.Iter();
-    while (!iter.Done()) {
-      aMsg->WriteBytes(iter.Data(), iter.RemainingInSegment(), sizeof(uint64_t));
-      iter.Advance(aParam, iter.RemainingInSegment());
-    }
+    aParam.ForEachDataChunk([&](const char* aData, size_t aSize) {
+        return aMsg->WriteBytes(aData, aSize, sizeof(uint64_t));
+    });
   }
 
   static bool Read(const Message* aMsg, PickleIterator* aIter, paramType* aResult)
@@ -871,7 +882,7 @@ struct ParamTraits<JSStructuredCloneData>
       return false;
     }
 
-    *aResult = JSStructuredCloneData(Move(out));
+    *aResult = JSStructuredCloneData(Move(out), JS::StructuredCloneScope::DifferentProcess);
 
     return true;
   }

@@ -13,7 +13,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=
   <script type="application/javascript">
 "use strict";
 
-window.onload = function () {
+window.onload = function() {
   SimpleTest.waitForExplicitFinish();
   runNextTest();
 };
@@ -28,7 +28,7 @@ function assertOwnership() {
 }
 addTest(function setup() {
   let url = document.getElementById("inspectorContent").href;
-  attachURL(url, function (err, client, tab, doc) {
+  attachURL(url, function(err, client, tab, doc) {
     gInspectee = doc;
     let {InspectorFront} = require("devtools/shared/fronts/inspector");
     let inspector = InspectorFront(client, tab);
@@ -144,7 +144,7 @@ addTest(function testQuerySelectors() {
 // Helper to check the response of requests that return hasFirst/hasLast/nodes
 // node lists (like `children` and `siblings`)
 function nodeArrayChecker(first, last, ids) {
-  return function (response) {
+  return function(response) {
     is(response.hasFirst, first,
        "Should " + (first ? "" : "not ") + " have the first node.");
     is(response.hasLast, last, "Should " + (last ? "" : "not ") + " have the last node.");
@@ -224,19 +224,6 @@ addTest(function testObjectNodeChildren() {
     .then(runNextTest));
 });
 
-addTest(function testSiblings() {
-  promiseDone(gWalker.querySelector(gWalker.rootNode, "#a").then(a => {
-    return gWalker.siblings(a, { maxNodes: 5, center: a })
-           .then(nodeArrayChecker(true, false, "abcde"));
-  }).then(() => {
-    return gWalker.siblings(gWalker.rootNode).then(response => {
-      ok(response.hasFirst && response.hasLast, "Has first and last.");
-      is(response.nodes.length, 1, "Has only the document element.");
-      ok(response.nodes[0] === gWalker.rootNode, "Document element is its own sibling.");
-    });
-  }).then(runNextTest));
-});
-
 addTest(function testNextSibling() {
   promiseDone(gWalker.querySelector(gWalker.rootNode, "#y").then(y => {
     is(y.id, "y", "Got the right node.");
@@ -269,16 +256,6 @@ addTest(function testFrameTraversal() {
     is(nodes.length, 1, "There should be only one child of the iframe");
     is(nodes[0].nodeType, Node.DOCUMENT_NODE, "iframe child should be a document node");
     return gWalker.querySelector(nodes[0], "#z");
-  }).then(childDocumentZ => {
-    return gWalker.parents(childDocumentZ);
-  }).then(parents => {
-    // Expected set of parent tag names for this item:
-    let expectedParents = ["DIV", "BODY", "HTML", "#document", "IFRAME", "BODY", "HTML",
-                           "#document"];
-    for (let parent of parents) {
-      let expected = expectedParents.shift();
-      is(parent.nodeName, expected, "Got expected parent");
-    }
   }).then(runNextTest));
 });
 
@@ -287,7 +264,7 @@ addTest(function testLongValue() {
   const WalkerActor = require("devtools/server/actors/inspector/walker");
 
   WalkerActor.setValueSummaryLength(testSummaryLength);
-  SimpleTest.registerCleanupFunction(function () {
+  SimpleTest.registerCleanupFunction(function() {
     WalkerActor.setValueSummaryLength(WalkerActor.DEFAULT_VALUE_SUMMARY_LENGTH);
   });
 

@@ -83,6 +83,13 @@
 <!ENTITY lightning.imipbar.btnUpdate.tooltiptext                  "Termin in Kalender aktualisieren">
 <!ENTITY lightning.imipbar.description                            "Diese Nachricht enthält eine Termineinladung.">
 
+<!ENTITY lightning.imipbar.btnSend.label                                    "Antwort jetzt senden">
+<!ENTITY lightning.imipbar.btnSend.tooltiptext                              "Antwort an den Organisierer senden">
+<!ENTITY lightning.imipbar.btnSendSeries.tooltiptext                        "Antwort für die gesamte Terminreihe an den Organisierer senden">
+<!ENTITY lightning.imipbar.btnDontSend.label                                "Keine Antwort senden">
+<!ENTITY lightning.imipbar.btnDontSend.tooltiptext                          "Teilnahmestatus ändern, ohne eine E-Mail an den Organisierer zu senden">
+<!ENTITY lightning.imipbar.btnDontSendSeries.tooltiptext                    "Teilnahmestatus für die gesamte Terminreihe ändern, ohne eine E-Mail an den Organisierer zu senden">
+
 <!-- Lightning specific keybindings -->
 <!ENTITY lightning.keys.event.showCalendar.key "C">
 <!ENTITY lightning.keys.event.showTasks.key "D">

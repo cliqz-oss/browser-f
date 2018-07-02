@@ -8,7 +8,6 @@
 #include "nsTitleBarFrame.h"
 #include "nsIContent.h"
 #include "nsIDocument.h"
-#include "nsIDOMNodeList.h"
 #include "nsGkAtoms.h"
 #include "nsIWidget.h"
 #include "nsMenuPopupFrame.h"
@@ -18,6 +17,7 @@
 #include "nsDisplayList.h"
 #include "nsContentUtils.h"
 #include "mozilla/MouseEvents.h"
+#include "mozilla/dom/MouseEventBinding.h"
 
 using namespace mozilla;
 
@@ -27,15 +27,15 @@ using namespace mozilla;
 // Creates a new TitleBar frame and returns it
 //
 nsIFrame*
-NS_NewTitleBarFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewTitleBarFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsTitleBarFrame(aContext);
+  return new (aPresShell) nsTitleBarFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsTitleBarFrame)
 
-nsTitleBarFrame::nsTitleBarFrame(nsStyleContext* aContext, ClassID aID)
-  : nsBoxFrame(aContext, aID, false)
+nsTitleBarFrame::nsTitleBarFrame(ComputedStyle* aStyle, ClassID aID)
+  : nsBoxFrame(aStyle, aID, false)
 {
   mTrackingMouseMove = false;
   UpdateMouseThrough();
@@ -173,7 +173,7 @@ nsTitleBarFrame::MouseClicked(WidgetMouseEvent* aEvent)
   bool isControl = false;
   bool isAlt = false;
   bool isMeta = false;
-  uint16_t inputSource = nsIDOMMouseEvent::MOZ_SOURCE_UNKNOWN;
+  uint16_t inputSource = dom::MouseEventBinding::MOZ_SOURCE_UNKNOWN;
 
   if(aEvent) {
     isShift = aEvent->IsShift();

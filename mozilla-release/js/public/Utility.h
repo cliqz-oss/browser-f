@@ -63,7 +63,7 @@ namespace js {
  */
 enum ThreadType {
     THREAD_TYPE_NONE = 0,       // 0
-    THREAD_TYPE_COOPERATING,    // 1
+    THREAD_TYPE_MAIN,           // 1
     THREAD_TYPE_WASM,           // 2
     THREAD_TYPE_ION,            // 3
     THREAD_TYPE_PARSE,          // 4
@@ -92,7 +92,7 @@ namespace oom {
 
 // Define the range of threads tested by simulated OOM testing and the
 // like. Testing worker threads is not supported.
-const ThreadType FirstThreadTypeToTest = THREAD_TYPE_COOPERATING;
+const ThreadType FirstThreadTypeToTest = THREAD_TYPE_MAIN;
 const ThreadType LastThreadTypeToTest = THREAD_TYPE_WASM_TIER2;
 
 extern bool InitThreadType(void);
@@ -302,7 +302,7 @@ HadSimulatedInterrupt()
 #  define JS_INTERRUPT_POSSIBLY_FAIL()                                        \
     do {                                                                      \
         if (MOZ_UNLIKELY(js::oom::ShouldFailWithInterrupt())) {               \
-            cx->interrupt_ = true;                                            \
+            cx->requestInterrupt(js::InterruptReason::CallbackUrgent);        \
             return cx->handleInterrupt();                                     \
         }                                                                     \
     } while (0)

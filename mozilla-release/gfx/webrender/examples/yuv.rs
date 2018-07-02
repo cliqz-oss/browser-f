@@ -87,12 +87,14 @@ impl Example for App {
         let info = LayoutPrimitiveInfo::new(bounds);
         builder.push_stacking_context(
             &info,
+            None,
             ScrollPolicy::Scrollable,
             None,
             TransformStyle::Flat,
             None,
             MixBlendMode::Normal,
             Vec::new(),
+            GlyphRasterSpace::Screen,
         );
 
         let yuv_chanel1 = api.generate_image_key();
@@ -101,7 +103,7 @@ impl Example for App {
         let yuv_chanel3 = api.generate_image_key();
         resources.add_image(
             yuv_chanel1,
-            ImageDescriptor::new(100, 100, ImageFormat::R8, true),
+            ImageDescriptor::new(100, 100, ImageFormat::R8, true, false),
             ImageData::External(ExternalImageData {
                 id: ExternalImageId(0),
                 channel_index: 0,
@@ -113,7 +115,7 @@ impl Example for App {
         );
         resources.add_image(
             yuv_chanel2,
-            ImageDescriptor::new(100, 100, ImageFormat::RG8, true),
+            ImageDescriptor::new(100, 100, ImageFormat::RG8, true, false),
             ImageData::External(ExternalImageData {
                 id: ExternalImageId(1),
                 channel_index: 0,
@@ -125,7 +127,7 @@ impl Example for App {
         );
         resources.add_image(
             yuv_chanel2_1,
-            ImageDescriptor::new(100, 100, ImageFormat::R8, true),
+            ImageDescriptor::new(100, 100, ImageFormat::R8, true, false),
             ImageData::External(ExternalImageData {
                 id: ExternalImageId(2),
                 channel_index: 0,
@@ -137,7 +139,7 @@ impl Example for App {
         );
         resources.add_image(
             yuv_chanel3,
-            ImageDescriptor::new(100, 100, ImageFormat::R8, true),
+            ImageDescriptor::new(100, 100, ImageFormat::R8, true, false),
             ImageData::External(ExternalImageData {
                 id: ExternalImageId(3),
                 channel_index: 0,

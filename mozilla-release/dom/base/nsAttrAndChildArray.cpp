@@ -18,9 +18,6 @@
 #include "nsMappedAttributeElement.h"
 #include "nsString.h"
 #include "nsHTMLStyleSheet.h"
-#ifdef MOZ_OLD_STYLE
-#include "nsRuleWalker.h"
-#endif
 #include "nsMappedAttributes.h"
 #include "nsUnicharUtils.h"
 #include "nsContentUtils.h" // nsAutoScriptBlocker
@@ -38,7 +35,7 @@ However not all elements will have enough children to get cached. And any
 allocator that doesn't return addresses aligned to 64 bytes will ensure that
 any index will get used.
 
-[*] sizeof(Element) + 4 bytes for nsIDOMElement vtable pointer.
+[*] sizeof(Element) + 4 bytes for nsIDOMNode vtable pointer.
 */
 
 #define CACHE_POINTER_SHIFT 5
@@ -631,15 +628,6 @@ nsAttrAndChildArray::DoSetMappedAttrStyleSheet(nsHTMLStyleSheet* aSheet)
   return MakeMappedUnique(mapped);
 }
 
-#ifdef MOZ_OLD_STYLE
-void
-nsAttrAndChildArray::WalkMappedAttributeStyleRules(nsRuleWalker* aRuleWalker)
-{
-  if (mImpl && mImpl->mMappedAttrs) {
-    aRuleWalker->Forward(mImpl->mMappedAttrs);
-  }
-}
-#endif
 
 void
 nsAttrAndChildArray::Compact()

@@ -7,7 +7,7 @@
 
 const { Cc, Ci, Cu, Cr } = require("chrome");
 const promise = require("promise");
-const EventEmitter = require("devtools/shared/old-event-emitter");
+const EventEmitter = require("devtools/shared/event-emitter");
 const DevToolsUtils = require("devtools/shared/DevToolsUtils");
 
 function DebuggerPanel(iframeWindow, toolbox) {
@@ -130,6 +130,12 @@ DebuggerPanel.prototype = {
   },
 
   // DebuggerPanel API
+
+  getMappedExpression(expression) {
+    // No-op implementation since this feature doesn't exist in the older
+    // debugger implementation.
+    return expression;
+  },
 
   isPaused() {
     let framesController = this.panelWin.DebuggerController.StackFrames;

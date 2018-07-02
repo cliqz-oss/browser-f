@@ -8,13 +8,11 @@
 
 #include "mozilla/EditorDOMPoint.h"
 #include "nsCOMPtr.h"
-#include "nsIDOMNode.h"
 #include "nsINode.h"
 #include "nsTArray.h"
 #include "nscore.h"
 
 class nsCycleCollectionTraversalCallback;
-class nsIDOMCharacterData;
 class nsRange;
 namespace mozilla {
 class RangeUpdater;
@@ -109,8 +107,10 @@ public:
   // if you move a node, that corresponds to deleting it and reinserting it.
   // DOM Range gravity will promote the selection out of the node on deletion,
   // which is not what you want if you know you are reinserting it.
-  nsresult SelAdjCreateNode(const EditorRawDOMPoint& aPoint);
-  nsresult SelAdjInsertNode(const EditorRawDOMPoint& aPoint);
+  template<typename PT, typename CT>
+  nsresult SelAdjCreateNode(const EditorDOMPointBase<PT, CT>& aPoint);
+  template<typename PT, typename CT>
+  nsresult SelAdjInsertNode(const EditorDOMPointBase<PT, CT>& aPoint);
   void SelAdjDeleteNode(nsINode* aNode);
   nsresult SelAdjSplitNode(nsIContent& aRightNode, nsIContent* aNewLeftNode);
   nsresult SelAdjJoinNodes(nsINode& aLeftNode,
@@ -122,8 +122,6 @@ public:
                         const nsAString &aString);
   nsresult SelAdjDeleteText(nsIContent* aTextNode, int32_t aOffset,
                             int32_t aLength);
-  nsresult SelAdjDeleteText(nsIDOMCharacterData* aTextNode,
-                            int32_t aOffset, int32_t aLength);
   // the following gravity routines need will/did sandwiches, because the other
   // gravity routines will be called inside of these sandwiches, but should be
   // ignored.
@@ -132,8 +130,6 @@ public:
                                dom::Element* aNewNode);
   nsresult WillRemoveContainer();
   nsresult DidRemoveContainer(nsINode* aNode, nsINode* aParent,
-                              int32_t aOffset, uint32_t aNodeOrigLen);
-  nsresult DidRemoveContainer(nsIDOMNode* aNode, nsIDOMNode* aParent,
                               int32_t aOffset, uint32_t aNodeOrigLen);
   nsresult WillInsertContainer();
   nsresult DidInsertContainer();
@@ -176,9 +172,8 @@ class MOZ_STACK_CLASS AutoTrackDOMPoint final
 {
 private:
   RangeUpdater& mRangeUpdater;
-  // Allow tracking either nsIDOMNode or nsINode until nsIDOMNode is gone
+  // Allow tracking nsINode until nsNode is gone
   nsCOMPtr<nsINode>* mNode;
-  nsCOMPtr<nsIDOMNode>* mDOMNode;
   int32_t* mOffset;
   EditorDOMPoint* mPoint;
   RefPtr<RangeItem> mRangeItem;
@@ -188,7 +183,6 @@ public:
                     nsCOMPtr<nsINode>* aNode, int32_t* aOffset)
     : mRangeUpdater(aRangeUpdater)
     , mNode(aNode)
-    , mDOMNode(nullptr)
     , mOffset(aOffset)
     , mPoint(nullptr)
   {
@@ -201,26 +195,9 @@ public:
   }
 
   AutoTrackDOMPoint(RangeUpdater& aRangeUpdater,
-                    nsCOMPtr<nsIDOMNode>* aNode, int32_t* aOffset)
-    : mRangeUpdater(aRangeUpdater)
-    , mNode(nullptr)
-    , mDOMNode(aNode)
-    , mOffset(aOffset)
-    , mPoint(nullptr)
-  {
-    mRangeItem = new RangeItem();
-    mRangeItem->mStartContainer = do_QueryInterface(*mDOMNode);
-    mRangeItem->mEndContainer = do_QueryInterface(*mDOMNode);
-    mRangeItem->mStartOffset = *mOffset;
-    mRangeItem->mEndOffset = *mOffset;
-    mRangeUpdater.RegisterRangeItem(mRangeItem);
-  }
-
-  AutoTrackDOMPoint(RangeUpdater& aRangeUpdater,
                     EditorDOMPoint* aPoint)
     : mRangeUpdater(aRangeUpdater)
     , mNode(nullptr)
-    , mDOMNode(nullptr)
     , mOffset(nullptr)
     , mPoint(aPoint)
   {
@@ -239,11 +216,7 @@ public:
       mPoint->Set(mRangeItem->mStartContainer, mRangeItem->mStartOffset);
       return;
     }
-    if (mNode) {
-      *mNode = mRangeItem->mStartContainer;
-    } else {
-      *mDOMNode = GetAsDOMNode(mRangeItem->mStartContainer);
-    }
+    *mNode = mRangeItem->mStartContainer;
     *mOffset = mRangeItem->mStartOffset;
   }
 };
@@ -286,8 +259,8 @@ class MOZ_STACK_CLASS AutoRemoveContainerSelNotify final
 {
 private:
   RangeUpdater& mRangeUpdater;
-  nsIDOMNode* mNode;
-  nsIDOMNode* mParent;
+  nsINode* mNode;
+  nsINode* mParent;
   int32_t mOffset;
   uint32_t mNodeOrigLen;
 
@@ -298,8 +271,8 @@ public:
                                int32_t aOffset,
                                uint32_t aNodeOrigLen)
     : mRangeUpdater(aRangeUpdater)
-    , mNode(aNode->AsDOMNode())
-    , mParent(aParent->AsDOMNode())
+    , mNode(aNode)
+    , mParent(aParent)
     , mOffset(aOffset)
     , mNodeOrigLen(aNodeOrigLen)
   {
@@ -342,27 +315,18 @@ public:
 
 class MOZ_STACK_CLASS AutoMoveNodeSelNotify final
 {
-private:
-  RangeUpdater& mRangeUpdater;
-  nsINode* mOldParent;
-  nsINode* mNewParent;
-  int32_t mOldOffset;
-  int32_t mNewOffset;
-
 public:
   AutoMoveNodeSelNotify(RangeUpdater& aRangeUpdater,
-                        nsINode* aOldParent,
-                        int32_t aOldOffset,
-                        nsINode* aNewParent,
-                        int32_t aNewOffset)
+                        const EditorDOMPoint& aOldPoint,
+                        const EditorDOMPoint& aNewPoint)
     : mRangeUpdater(aRangeUpdater)
-    , mOldParent(aOldParent)
-    , mNewParent(aNewParent)
-    , mOldOffset(aOldOffset)
-    , mNewOffset(aNewOffset)
+    , mOldParent(aOldPoint.GetContainer())
+    , mNewParent(aNewPoint.GetContainer())
+    , mOldOffset(aOldPoint.Offset())
+    , mNewOffset(aNewPoint.Offset())
   {
-    MOZ_ASSERT(aOldParent);
-    MOZ_ASSERT(aNewParent);
+    MOZ_ASSERT(mOldParent);
+    MOZ_ASSERT(mNewParent);
     mRangeUpdater.WillMoveNode();
   }
 
@@ -370,6 +334,22 @@ public:
   {
     mRangeUpdater.DidMoveNode(mOldParent, mOldOffset, mNewParent, mNewOffset);
   }
+
+  EditorRawDOMPoint ComputeInsertionPoint() const
+  {
+    if (mOldParent == mNewParent &&
+        mOldOffset < mNewOffset) {
+      return EditorRawDOMPoint(mNewParent, mNewOffset - 1);
+    }
+    return EditorRawDOMPoint(mNewParent, mNewOffset);
+  }
+
+private:
+  RangeUpdater& mRangeUpdater;
+  nsINode* mOldParent;
+  nsINode* mNewParent;
+  uint32_t mOldOffset;
+  uint32_t mNewOffset;
 };
 
 } // namespace mozilla

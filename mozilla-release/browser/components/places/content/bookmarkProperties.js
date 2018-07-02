@@ -53,11 +53,12 @@
  *     - "loadInSidebar"
  *     - "folderPicker" - hides both the tree and the menu.
  *
- * window.arguments[0].performed is set to true if any transaction has
- * been performed by the dialog.
+ * window.arguments[0].bookmarkGuid is set to the guid of the item, if the
+ * dialog is accepted.
  */
 
-/* import-globals-from editBookmarkOverlay.js */
+/* import-globals-from editBookmark.js */
+/* import-globals-from controller.js */
 
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
@@ -85,7 +86,6 @@ var BookmarkPropertiesPanel = {
 
   _action: null,
   _itemType: null,
-  _itemId: -1,
   _uri: null,
   _loadInSidebar: false,
   _title: "",
@@ -132,7 +132,8 @@ var BookmarkPropertiesPanel = {
         return this._strings.getString("dialogTitleAddLivemark");
 
       // add folder
-      NS_ASSERT(this._itemType == BOOKMARK_FOLDER, "Unknown item type");
+      if (this._itemType != BOOKMARK_FOLDER)
+        throw new Error("Unknown item type");
       if (this._URIs.length)
         return this._strings.getString("dialogTitleAddMulti");
 
@@ -152,7 +153,8 @@ var BookmarkPropertiesPanel = {
     this._action = dialogInfo.action == "add" ? ACTION_ADD : ACTION_EDIT;
     this._hiddenRows = dialogInfo.hiddenRows ? dialogInfo.hiddenRows : [];
     if (this._action == ACTION_ADD) {
-      NS_ASSERT("type" in dialogInfo, "missing type property for add action");
+      if (!("type" in dialogInfo))
+        throw new Error("missing type property for add action");
 
       if ("title" in dialogInfo)
         this._title = dialogInfo.title;
@@ -171,8 +173,8 @@ var BookmarkPropertiesPanel = {
         case "bookmark":
           this._itemType = BOOKMARK_ITEM;
           if ("uri" in dialogInfo) {
-            NS_ASSERT(dialogInfo.uri instanceof Ci.nsIURI,
-                      "uri property should be a uri object");
+            if (!(dialogInfo.uri instanceof Ci.nsIURI))
+              throw new Error("uri property should be a uri object");
             this._uri = dialogInfo.uri;
             if (typeof(this._title) != "string") {
               this._title = await PlacesUtils.history.fetch(this._uri) ||
@@ -347,7 +349,7 @@ var BookmarkPropertiesPanel = {
     acceptButton.disabled = acceptButtonDisabled;
   },
 
-  // nsIDOMEventListener
+  // EventListener
   handleEvent: function BPP_handleEvent(aEvent) {
     var target = aEvent.target;
     switch (aEvent.type) {
@@ -370,13 +372,7 @@ var BookmarkPropertiesPanel = {
   },
 
   // nsISupports
-  QueryInterface: function BPP_QueryInterface(aIID) {
-    if (aIID.equals(Ci.nsIDOMEventListener) ||
-        aIID.equals(Ci.nsISupports))
-      return this;
-
-    throw Cr.NS_NOINTERFACE;
-  },
+  QueryInterface: ChromeUtils.generateQI([]),
 
   _element: function BPP__element(aID) {
     return document.getElementById("editBMPanel_" + aID);
@@ -401,14 +397,15 @@ var BookmarkPropertiesPanel = {
     // We have to uninit the panel first, otherwise late changes could force it
     // to commit more transactions.
     gEditItemOverlay.uninitPanel(true);
-    window.arguments[0].performed = true;
+    if (this._node.bookmarkGuid) {
+      window.arguments[0].bookmarkGuid = this._node.bookmarkGuid;
+    }
   },
 
   onDialogCancel() {
     // We have to uninit the panel first, otherwise late changes could force it
     // to commit more transactions.
     gEditItemOverlay.uninitPanel(true);
-    window.arguments[0].performed = false;
   },
 
   /**
@@ -502,11 +499,9 @@ var BookmarkPropertiesPanel = {
       throw new Error(`unexpected value for _itemType:  ${this._itemType}`);
     }
 
-    this._itemGuid = itemGuid;
-    this._itemId = await PlacesUtils.promiseItemId(itemGuid);
     return Object.freeze({
-      itemId: this._itemId,
-      bookmarkGuid: this._itemGuid,
+      itemId: await PlacesUtils.promiseItemId(itemGuid),
+      bookmarkGuid: itemGuid,
       title: this._title,
       uri: this._uri ? this._uri.spec : "",
       type: this._itemType == BOOKMARK_ITEM ?

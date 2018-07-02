@@ -49,7 +49,7 @@ CreateSingleTouchData(int32_t aIdentifier, ScreenIntCoord aX, ScreenIntCoord aY)
 
 PinchGestureInput
 CreatePinchGestureInput(PinchGestureInput::PinchGestureType aType,
-                        const ScreenIntPoint& aFocus,
+                        const ScreenPoint& aFocus,
                         float aCurrentSpan, float aPreviousSpan)
 {
   ParentLayerPoint localFocus(aFocus.x, aFocus.y);
@@ -136,9 +136,8 @@ PinchWithPinchInput(const RefPtr<InputReceiver>& aTarget,
   }
   actualStatus = aTarget->ReceiveInputEvent(
       CreatePinchGestureInput(PinchGestureInput::PINCHGESTURE_END,
-                              // note: negative values here tell APZC
-                              //       not to turn the pinch into a pan
-                              ScreenIntPoint(-1, -1), 10.0 * aScale, 10.0 * aScale),
+                              PinchGestureInput::BothFingersLifted<ScreenPixel>(),
+                              10.0 * aScale, 10.0 * aScale),
       nullptr);
   if (aOutEventStatuses) {
     (*aOutEventStatuses)[2] = actualStatus;
@@ -249,7 +248,7 @@ Wheel(const RefPtr<InputReceiver>& aTarget, const ScreenIntPoint& aPoint,
 {
   ScrollWheelInput input(MillisecondsSinceStartup(aTime), aTime, 0,
       ScrollWheelInput::SCROLLMODE_INSTANT, ScrollWheelInput::SCROLLDELTA_PIXEL,
-      aPoint, aDelta.x, aDelta.y, false);
+      aPoint, aDelta.x, aDelta.y, false, WheelDeltaAdjustmentStrategy::eNone);
   return aTarget->ReceiveInputEvent(input, nullptr, aOutInputBlockId);
 }
 
@@ -260,7 +259,7 @@ SmoothWheel(const RefPtr<InputReceiver>& aTarget, const ScreenIntPoint& aPoint,
 {
   ScrollWheelInput input(MillisecondsSinceStartup(aTime), aTime, 0,
       ScrollWheelInput::SCROLLMODE_SMOOTH, ScrollWheelInput::SCROLLDELTA_LINE,
-      aPoint, aDelta.x, aDelta.y, false);
+      aPoint, aDelta.x, aDelta.y, false, WheelDeltaAdjustmentStrategy::eNone);
   return aTarget->ReceiveInputEvent(input, nullptr, aOutInputBlockId);
 }
 

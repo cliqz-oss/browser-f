@@ -35,6 +35,7 @@
 #include "nsRegion.h"                   // for nsIntRegion
 #include "nscore.h"                     // for nsAString, etc
 #include "LayerTreeInvalidation.h"
+#include "mozilla/layers/CompositorScreenshotGrabber.h"
 
 class gfxContext;
 
@@ -108,10 +109,6 @@ public:
 
   virtual void ForcePresent() = 0;
   virtual void AddInvalidRegion(const nsIntRegion& aRegion) = 0;
-  virtual void ClearApproximatelyVisibleRegions(uint64_t aLayersId,
-                                                const Maybe<uint32_t>& aPresShellId) = 0;
-  virtual void UpdateApproximatelyVisibleRegion(const ScrollableLayerGuid& aGuid,
-                                                const CSSIntRegion& aRegion) = 0;
 
   virtual void NotifyShadowTreeTransaction() {}
   virtual void BeginTransactionWithDrawTarget(gfx::DrawTarget* aTarget,
@@ -208,10 +205,10 @@ public:
 
   // We maintaining a global mapping from ID to CompositorBridgeParent for
   // async compositables.
-  uint32_t GetCompositorBridgeID() const {
+  uint64_t GetCompositorBridgeID() const {
     return mCompositorBridgeID;
   }
-  void SetCompositorBridgeID(uint32_t aID) {
+  void SetCompositorBridgeID(uint64_t aID) {
     MOZ_ASSERT(mCompositorBridgeID == 0, "The compositor ID must be set only once.");
     mCompositorBridgeID = aID;
   }
@@ -224,7 +221,7 @@ protected:
   float mWarningLevel;
   mozilla::TimeStamp mWarnTime;
   UniquePtr<Diagnostics> mDiagnostics;
-  uint32_t mCompositorBridgeID;
+  uint64_t mCompositorBridgeID;
 
   bool mWindowOverlayChanged;
   TimeDuration mLastPaintTime;
@@ -378,31 +375,6 @@ public:
     mInvalidRegion.Or(mInvalidRegion, aRegion);
   }
 
-  void ClearApproximatelyVisibleRegions(uint64_t aLayersId,
-                                        const Maybe<uint32_t>& aPresShellId) override
-  {
-    for (auto iter = mVisibleRegions.Iter(); !iter.Done(); iter.Next()) {
-      if (iter.Key().mLayersId == aLayersId &&
-          (!aPresShellId || iter.Key().mPresShellId == *aPresShellId)) {
-        iter.Remove();
-      }
-    }
-  }
-
-  void UpdateApproximatelyVisibleRegion(const ScrollableLayerGuid& aGuid,
-                                        const CSSIntRegion& aRegion) override
-  {
-    CSSIntRegion* regionForScrollFrame = mVisibleRegions.LookupOrAdd(aGuid);
-    MOZ_ASSERT(regionForScrollFrame);
-
-    *regionForScrollFrame = aRegion;
-  }
-
-  CSSIntRegion* GetApproximatelyVisibleRegion(const ScrollableLayerGuid& aGuid)
-  {
-    return mVisibleRegions.Get(aGuid);
-  }
-
   Compositor* GetCompositor() const override {
     return mCompositor;
   }
@@ -474,7 +446,6 @@ private:
    */
   void RenderDebugOverlay(const gfx::IntRect& aBounds);
 
-
   RefPtr<CompositingRenderTarget> PushGroupForLayerEffects();
   void PopGroupForLayerEffects(RefPtr<CompositingRenderTarget> aPreviousTarget,
                                gfx::IntRect aClipRect,
@@ -495,14 +466,11 @@ private:
 
   nsIntRegion mInvalidRegion;
 
-  typedef nsClassHashtable<nsGenericHashKey<ScrollableLayerGuid>,
-                           CSSIntRegion> VisibleRegions;
-  VisibleRegions mVisibleRegions;
-
   bool mInTransaction;
   bool mIsCompositorReady;
 
   RefPtr<CompositingRenderTarget> mTwoPassTmpTarget;
+  CompositorScreenshotGrabber mProfilerScreenshotGrabber;
   RefPtr<TextRenderer> mTextRenderer;
 
 #ifdef USE_SKIA

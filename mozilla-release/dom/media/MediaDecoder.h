@@ -134,14 +134,14 @@ public:
   // Seek to the time position in (seconds) from the start of the video.
   // If aDoFastSeek is true, we'll seek to the sync point/keyframe preceeding
   // the seek target.
-  virtual nsresult Seek(double aTime, SeekTarget::Type aSeekType);
+  void Seek(double aTime, SeekTarget::Type aSeekType);
 
   // Initialize state machine and schedule it.
   nsresult InitializeStateMachine();
 
   // Start playback of a video. 'Load' must have previously been
   // called.
-  virtual nsresult Play();
+  virtual void Play();
 
   // Notify activity of the decoder owner is changed.
   virtual void NotifyOwnerActivityChanged(bool aIsDocumentVisible,
@@ -170,9 +170,12 @@ public:
   // The stream is initially blocked. The decoder is responsible for unblocking
   // it while it is playing back.
   virtual void AddOutputStream(ProcessedMediaStream* aStream,
+                               TrackID aNextAvailableTrackID,
                                bool aFinishWhenEnded);
   // Remove an output stream added with AddOutputStream.
   virtual void RemoveOutputStream(MediaStream* aStream);
+  // The next TrackID that can be used without risk of a collision.
+  virtual TrackID NextAvailableTrackIDFor(MediaStream* aOutputStream) const;
 
   // Return the duration of the video in seconds.
   virtual double GetDuration();

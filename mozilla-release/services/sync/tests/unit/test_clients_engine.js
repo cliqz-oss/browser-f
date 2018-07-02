@@ -112,10 +112,12 @@ add_task(async function test_bad_hmac() {
 
     _("First sync, client record is uploaded");
     equal(engine.lastRecordUpload, 0);
+    ok(engine.isFirstSync);
     check_clients_count(0);
     await syncClientsEngine(server);
     check_clients_count(1);
     ok(engine.lastRecordUpload > 0);
+    ok(!engine.isFirstSync);
 
     // Our uploaded record has a version.
     await check_record_version(user, engine.localID);
@@ -248,8 +250,10 @@ add_task(async function test_full_sync() {
 
     _("First sync. 2 records downloaded; our record uploaded.");
     strictEqual(engine.lastRecordUpload, 0);
+    ok(engine.isFirstSync);
     await syncClientsEngine(server);
     ok(engine.lastRecordUpload > 0);
+    ok(!engine.isFirstSync);
     deepEqual(user.collection("clients").keys().sort(),
               [activeID, deletedID, engine.localID].sort(),
               "Our record should be uploaded on first sync");
@@ -298,9 +302,11 @@ add_task(async function test_sync() {
     _("First sync. Client record is uploaded.");
     equal(clientWBO(), undefined);
     equal(engine.lastRecordUpload, 0);
+    ok(engine.isFirstSync);
     await syncClientsEngine(server);
     ok(!!clientWBO().payload);
     ok(engine.lastRecordUpload > 0);
+    ok(!engine.isFirstSync);
 
     _("Let's time travel more than a week back, new record should've been uploaded.");
     engine.lastRecordUpload -= MORE_THAN_CLIENTS_TTL_REFRESH;
@@ -309,6 +315,7 @@ add_task(async function test_sync() {
     await syncClientsEngine(server);
     ok(!!clientWBO().payload);
     ok(engine.lastRecordUpload > lastweek);
+    ok(!engine.isFirstSync);
 
     _("Remove client record.");
     await engine.removeClientData();
@@ -320,6 +327,7 @@ add_task(async function test_sync() {
     await syncClientsEngine(server);
     equal(clientWBO().payload, undefined);
     equal(engine.lastRecordUpload, yesterday);
+    ok(!engine.isFirstSync);
 
   } finally {
     await cleanup();
@@ -645,8 +653,10 @@ add_task(async function test_filter_duplicate_names() {
 
     _("First sync");
     strictEqual(engine.lastRecordUpload, 0);
+    ok(engine.isFirstSync);
     await syncClientsEngine(server);
     ok(engine.lastRecordUpload > 0);
+    ok(!engine.isFirstSync);
     deepEqual(user.collection("clients").keys().sort(),
               [recentID, dupeID, oldID, engine.localID].sort(),
               "Our record should be uploaded on first sync");
@@ -792,11 +802,12 @@ add_task(async function test_command_sync() {
     _("Checking record was uploaded.");
     notEqual(clientWBO(engine.localID).payload, undefined);
     ok(engine.lastRecordUpload > 0);
+    ok(!engine.isFirstSync);
 
     notEqual(clientWBO(remoteId).payload, undefined);
 
     Svc.Prefs.set("client.GUID", remoteId);
-    engine._resetClient();
+    await engine._resetClient();
     equal(engine.localID, remoteId);
     _("Performing sync on resetted client.");
     await syncClientsEngine(server);
@@ -1102,6 +1113,7 @@ add_task(async function test_merge_commands() {
   try {
     _("First sync. 2 records downloaded.");
     strictEqual(engine.lastRecordUpload, 0);
+    ok(engine.isFirstSync);
     await syncClientsEngine(server);
 
     _("Broadcast logout to all clients");
@@ -1155,6 +1167,7 @@ add_task(async function test_duplicate_remote_commands() {
   try {
     _("First sync. 1 record downloaded.");
     strictEqual(engine.lastRecordUpload, 0);
+    ok(engine.isFirstSync);
     await syncClientsEngine(server);
 
     _("Send tab to client");
@@ -1228,6 +1241,7 @@ add_task(async function test_upload_after_reboot() {
   try {
     _("First sync. 2 records downloaded.");
     strictEqual(engine.lastRecordUpload, 0);
+    ok(engine.isFirstSync);
     await syncClientsEngine(server);
 
     _("Send tab to client");
@@ -1325,6 +1339,7 @@ add_task(async function test_keep_cleared_commands_after_reboot() {
   try {
     _("First sync. Download remote and our record.");
     strictEqual(engine.lastRecordUpload, 0);
+    ok(engine.isFirstSync);
 
     const oldUploadOutgoing = SyncEngine.prototype._uploadOutgoing;
     SyncEngine.prototype._uploadOutgoing = async () => engine._onRecordsWritten([], [deviceBID]);
@@ -1386,7 +1401,7 @@ add_task(async function test_keep_cleared_commands_after_reboot() {
     // Reset service (remove mocks)
     engine = Service.clientsEngine = new ClientEngine(Service);
     await engine.initialize();
-    engine._resetClient();
+    await engine._resetClient();
 
     try {
       server.deleteCollections("foo");
@@ -1724,8 +1739,8 @@ add_task(async function test_duplicate_commands_telemetry() {
 add_task(async function test_other_clients_notified_on_first_sync() {
   _("Ensure that other clients are notified when we upload our client record for the first time.");
 
-  engine.resetLastSync();
-  engine._store.wipe();
+  await engine.resetLastSync();
+  await engine._store.wipe();
   await generateNewKeys(Service.collectionKeys);
 
   let server = await serverForFoo(engine);

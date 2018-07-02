@@ -305,12 +305,7 @@ appUpdater.prototype =
     /**
      * See nsISupports.idl
      */
-    QueryInterface(aIID) {
-      if (!aIID.equals(Ci.nsIUpdateCheckListener) &&
-          !aIID.equals(Ci.nsISupports))
-        throw Cr.NS_ERROR_NO_INTERFACE;
-      return this;
-    }
+    QueryInterface: ChromeUtils.generateQI(["nsIUpdateCheckListener"]),
   },
 
   /**
@@ -431,11 +426,5 @@ appUpdater.prototype =
   /**
    * See nsISupports.idl
    */
-  QueryInterface(aIID) {
-    if (!aIID.equals(Ci.nsIProgressEventSink) &&
-        !aIID.equals(Ci.nsIRequestObserver) &&
-        !aIID.equals(Ci.nsISupports))
-      throw Cr.NS_ERROR_NO_INTERFACE;
-    return this;
-  }
+  QueryInterface: ChromeUtils.generateQI(["nsIProgressEventSink", "nsIRequestObserver"]),
 };

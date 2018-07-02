@@ -15,8 +15,6 @@
 
 #include "nsComponentManagerUtils.h"
 #include "nsFrameLoader.h"
-#include "nsIDOMDOMRequest.h"
-#include "nsIDOMElement.h"
 #include "nsIMozBrowserFrame.h"
 #include "nsINode.h"
 #include "nsIPrincipal.h"
@@ -38,13 +36,10 @@ nsBrowserElement::IsBrowserElementOrThrow(ErrorResult& aRv)
 void
 nsBrowserElement::InitBrowserElementAPI()
 {
-  bool isMozBrowser;
-  nsCOMPtr<nsIFrameLoader> frameLoader = GetFrameLoader();
+  RefPtr<nsFrameLoader> frameLoader = GetFrameLoader();
   NS_ENSURE_TRUE_VOID(frameLoader);
-  nsresult rv = frameLoader->GetOwnerIsMozBrowserFrame(&isMozBrowser);
-  NS_ENSURE_SUCCESS_VOID(rv);
 
-  if (!isMozBrowser) {
+  if (!frameLoader->OwnerIsMozBrowserFrame()) {
     return;
   }
 
@@ -186,7 +181,7 @@ nsBrowserElement::Download(const nsAString& aUrl,
 {
   NS_ENSURE_TRUE(IsBrowserElementOrThrow(aRv), nullptr);
 
-  nsCOMPtr<nsIDOMDOMRequest> req;
+  RefPtr<DOMRequest> req;
   nsCOMPtr<nsIXPConnectWrappedJS> wrappedObj = do_QueryInterface(mBrowserElementAPI);
   MOZ_ASSERT(wrappedObj, "Failed to get wrapped JS from XPCOM component.");
   AutoJSAPI jsapi;
@@ -208,7 +203,7 @@ nsBrowserElement::Download(const nsAString& aUrl,
     return nullptr;
   }
 
-  return req.forget().downcast<DOMRequest>();
+  return req.forget();
 }
 
 already_AddRefed<DOMRequest>
@@ -216,7 +211,7 @@ nsBrowserElement::PurgeHistory(ErrorResult& aRv)
 {
   NS_ENSURE_TRUE(IsBrowserElementOrThrow(aRv), nullptr);
 
-  nsCOMPtr<nsIDOMDOMRequest> req;
+  RefPtr<DOMRequest> req;
   nsresult rv = mBrowserElementAPI->PurgeHistory(getter_AddRefs(req));
 
   if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -224,7 +219,7 @@ nsBrowserElement::PurgeHistory(ErrorResult& aRv)
     return nullptr;
   }
 
-  return req.forget().downcast<DOMRequest>();
+  return req.forget();
 }
 
 already_AddRefed<DOMRequest>
@@ -235,7 +230,7 @@ nsBrowserElement::GetScreenshot(uint32_t aWidth,
 {
   NS_ENSURE_TRUE(IsBrowserElementOrThrow(aRv), nullptr);
 
-  nsCOMPtr<nsIDOMDOMRequest> req;
+  RefPtr<DOMRequest> req;
   nsresult rv = mBrowserElementAPI->GetScreenshot(aWidth, aHeight, aMimeType,
                                                   getter_AddRefs(req));
 
@@ -248,7 +243,7 @@ nsBrowserElement::GetScreenshot(uint32_t aWidth,
     return nullptr;
   }
 
-  return req.forget().downcast<DOMRequest>();
+  return req.forget();
 }
 
 void
@@ -268,7 +263,7 @@ nsBrowserElement::GetCanGoBack(ErrorResult& aRv)
 {
   NS_ENSURE_TRUE(IsBrowserElementOrThrow(aRv), nullptr);
 
-  nsCOMPtr<nsIDOMDOMRequest> req;
+  RefPtr<DOMRequest> req;
   nsresult rv = mBrowserElementAPI->GetCanGoBack(getter_AddRefs(req));
 
   if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -276,7 +271,7 @@ nsBrowserElement::GetCanGoBack(ErrorResult& aRv)
     return nullptr;
   }
 
-  return req.forget().downcast<DOMRequest>();
+  return req.forget();
 }
 
 already_AddRefed<DOMRequest>
@@ -284,7 +279,7 @@ nsBrowserElement::GetCanGoForward(ErrorResult& aRv)
 {
   NS_ENSURE_TRUE(IsBrowserElementOrThrow(aRv), nullptr);
 
-  nsCOMPtr<nsIDOMDOMRequest> req;
+  RefPtr<DOMRequest> req;
   nsresult rv = mBrowserElementAPI->GetCanGoForward(getter_AddRefs(req));
 
   if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -292,7 +287,7 @@ nsBrowserElement::GetCanGoForward(ErrorResult& aRv)
     return nullptr;
   }
 
-  return req.forget().downcast<DOMRequest>();
+  return req.forget();
 }
 
 already_AddRefed<DOMRequest>
@@ -300,7 +295,7 @@ nsBrowserElement::GetContentDimensions(ErrorResult& aRv)
 {
   NS_ENSURE_TRUE(IsBrowserElementOrThrow(aRv), nullptr);
 
-  nsCOMPtr<nsIDOMDOMRequest> req;
+  RefPtr<DOMRequest> req;
   nsresult rv = mBrowserElementAPI->GetContentDimensions(getter_AddRefs(req));
 
   if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -308,7 +303,7 @@ nsBrowserElement::GetContentDimensions(ErrorResult& aRv)
     return nullptr;
   }
 
-  return req.forget().downcast<DOMRequest>();
+  return req.forget();
 }
 
 void
@@ -405,7 +400,7 @@ nsBrowserElement::ExecuteScript(const nsAString& aScript,
 {
   NS_ENSURE_TRUE(IsBrowserElementOrThrow(aRv), nullptr);
 
-  nsCOMPtr<nsIDOMDOMRequest> req;
+  RefPtr<DOMRequest> req;
   nsCOMPtr<nsIXPConnectWrappedJS> wrappedObj = do_QueryInterface(mBrowserElementAPI);
   MOZ_ASSERT(wrappedObj, "Failed to get wrapped JS from XPCOM component.");
   AutoJSAPI jsapi;
@@ -432,7 +427,7 @@ nsBrowserElement::ExecuteScript(const nsAString& aScript,
     return nullptr;
   }
 
-  return req.forget().downcast<DOMRequest>();
+  return req.forget();
 }
 
 already_AddRefed<DOMRequest>
@@ -440,7 +435,7 @@ nsBrowserElement::GetWebManifest(ErrorResult& aRv)
 {
   NS_ENSURE_TRUE(IsBrowserElementOrThrow(aRv), nullptr);
 
-  nsCOMPtr<nsIDOMDOMRequest> req;
+  RefPtr<DOMRequest> req;
   nsresult rv = mBrowserElementAPI->GetWebManifest(getter_AddRefs(req));
 
   if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -448,7 +443,7 @@ nsBrowserElement::GetWebManifest(ErrorResult& aRv)
     return nullptr;
   }
 
-  return req.forget().downcast<DOMRequest>();
+  return req.forget();
 }
 
 

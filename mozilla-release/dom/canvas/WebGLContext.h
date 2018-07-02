@@ -14,6 +14,7 @@
 #include "mozilla/CheckedInt.h"
 #include "mozilla/dom/BindingDeclarations.h"
 #include "mozilla/dom/HTMLCanvasElement.h"
+#include "mozilla/dom/Nullable.h"
 #include "mozilla/dom/TypedArray.h"
 #include "mozilla/EnumeratedArray.h"
 #include "mozilla/ErrorResult.h"
@@ -90,7 +91,6 @@ class Element;
 class ImageData;
 class OwningHTMLCanvasElementOrOffscreenCanvas;
 struct WebGLContextAttributes;
-template<typename> struct Nullable;
 } // namespace dom
 
 namespace gfx {
@@ -380,7 +380,7 @@ public:
     virtual already_AddRefed<mozilla::gfx::SourceSurface>
     GetSurfaceSnapshot(gfxAlphaType* out_alphaType) override;
 
-    virtual void SetIsOpaque(bool) override {};
+    virtual void SetOpaqueValueFromOpaqueAttr(bool) override {};
     bool GetIsOpaque() override { return !mOptions.alpha; }
     NS_IMETHOD SetContextOptions(JSContext* cx,
                                  JS::Handle<JS::Value> options,
@@ -514,7 +514,7 @@ public:
 
     // WebIDL WebGLRenderingContext API
     void Commit();
-    void GetCanvas(Nullable<dom::OwningHTMLCanvasElementOrOffscreenCanvas>& retval);
+    void GetCanvas(dom::Nullable<dom::OwningHTMLCanvasElementOrOffscreenCanvas>& retval);
 private:
     gfx::IntSize DrawingBufferSize(const char* funcName);
 public:
@@ -973,6 +973,7 @@ protected:
     WebGLRefPtr<WebGLBuffer> mBoundCopyWriteBuffer;
     WebGLRefPtr<WebGLBuffer> mBoundPixelPackBuffer;
     WebGLRefPtr<WebGLBuffer> mBoundPixelUnpackBuffer;
+    WebGLRefPtr<WebGLBuffer> mBoundTransformFeedbackBuffer;
     WebGLRefPtr<WebGLBuffer> mBoundUniformBuffer;
 
     std::vector<IndexedBufferBinding> mIndexedUniformBufferBindings;
@@ -1011,7 +1012,6 @@ public:
     void Disable(GLenum cap) { SetEnabled("disabled", cap, false); }
     void Enable(GLenum cap) { SetEnabled("enabled", cap, true); }
     bool GetStencilBits(GLint* const out_stencilBits) const;
-    bool GetChannelBits(const char* funcName, GLenum pname, GLint* const out_val);
     virtual JS::Value GetParameter(JSContext* cx, GLenum pname, ErrorResult& rv);
 
     void GetParameter(JSContext* cx, GLenum pname,
@@ -1637,7 +1637,7 @@ protected:
     bool ValidateAttribPointer(bool integerMode, GLuint index, GLint size, GLenum type,
                                WebGLboolean normalized, GLsizei stride,
                                WebGLintptr byteOffset, const char* info);
-    bool ValidateStencilParamsForDrawCall();
+    bool ValidateStencilParamsForDrawCall(const char* funcName) const;
 
     bool ValidateCopyTexImage(TexInternalFormat srcFormat, TexInternalFormat dstformat,
                               WebGLTexImageFunc func, WebGLTexDimensions dims);

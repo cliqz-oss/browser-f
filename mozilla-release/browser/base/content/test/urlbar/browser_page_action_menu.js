@@ -14,15 +14,6 @@ const mockRemoteClients = [
   { id: "2", name: "baz", type: "mobile", serverLastModified: lastModifiedFixture },
 ];
 
-add_task(async function init() {
-  // Disable panel animations.  They cause intermittent timeouts on Linux when
-  // the test tries to synthesize clicks on items in newly opened panels.
-  BrowserPageActions._disablePanelAnimations = true;
-  registerCleanupFunction(() => {
-    BrowserPageActions._disablePanelAnimations = false;
-  });
-});
-
 add_task(async function bookmark() {
   // Open a unique page.
   let url = "http://example.com/browser_page_action_menu";
@@ -213,7 +204,7 @@ add_task(async function sendToDevice_syncNotReady_other_states() {
     await promiseSyncReady();
     const sandbox = sinon.sandbox.create();
     sandbox.stub(gSync, "syncReady").get(() => false);
-    sandbox.stub(Weave.Service.clientsEngine, "lastSync").get(() => 0);
+    sandbox.stub(Weave.Service.clientsEngine, "isFirstSync").get(() => true);
     sandbox.stub(UIState, "get").returns({ status: UIState.STATUS_NOT_VERIFIED });
     sandbox.stub(gSync, "isSendableURI").returns(true);
 
@@ -236,7 +227,7 @@ add_task(async function sendToDevice_syncNotReady_other_states() {
 
     let expectedItems = [
       {
-        id: "pageAction-panel-sendToDevice-notReady",
+        className: "pageAction-sendToDevice-notReady",
         display: "none",
         disabled: true,
       },
@@ -270,7 +261,7 @@ add_task(async function sendToDevice_syncNotReady_configured() {
     await promiseSyncReady();
     const sandbox = sinon.sandbox.create();
     const syncReady = sandbox.stub(gSync, "syncReady").get(() => false);
-    const lastSync = sandbox.stub(Weave.Service.clientsEngine, "lastSync").get(() => 0);
+    const lastSync = sandbox.stub(Weave.Service.clientsEngine, "isFirstSync").get(() => true);
     sandbox.stub(UIState, "get").returns({ status: UIState.STATUS_SIGNED_IN });
     sandbox.stub(gSync, "isSendableURI").returns(true);
 
@@ -278,6 +269,7 @@ add_task(async function sendToDevice_syncNotReady_configured() {
       syncReady.get(() => true);
       lastSync.get(() => Date.now());
       sandbox.stub(gSync, "remoteClients").get(() => mockRemoteClients);
+      sandbox.stub(Weave.Service.clientsEngine, "getClientType").callsFake(id => mockRemoteClients.find(c => c.id == id).type);
     });
 
     let onShowingSubview = BrowserPageActions.sendToDevice.onShowingSubview;
@@ -309,7 +301,7 @@ add_task(async function sendToDevice_syncNotReady_configured() {
         // "Syncing devices" should be shown.
         checkSendToDeviceItems([
           {
-            id: "pageAction-panel-sendToDevice-notReady",
+            className: "pageAction-sendToDevice-notReady",
             disabled: true,
           },
         ]);
@@ -317,7 +309,7 @@ add_task(async function sendToDevice_syncNotReady_configured() {
         // The devices should be shown in the subview.
         let expectedItems = [
           {
-            id: "pageAction-panel-sendToDevice-notReady",
+            className: "pageAction-sendToDevice-notReady",
             display: "none",
             disabled: true,
           },
@@ -328,7 +320,7 @@ add_task(async function sendToDevice_syncNotReady_configured() {
               clientId: client.id,
               label: client.name,
               clientType: client.type,
-              tooltiptext: gSync.formatLastSyncDate(lastModifiedFixture * 1000)
+              tooltiptext: gSync.formatLastSyncDate(new Date(lastModifiedFixture * 1000))
             },
           });
         }
@@ -373,7 +365,7 @@ add_task(async function sendToDevice_notSignedIn() {
 
     let expectedItems = [
       {
-        id: "pageAction-panel-sendToDevice-notReady",
+        className: "pageAction-sendToDevice-notReady",
         display: "none",
         disabled: true,
       },
@@ -410,10 +402,11 @@ add_task(async function sendToDevice_noDevices() {
     await promiseSyncReady();
     const sandbox = sinon.sandbox.create();
     sandbox.stub(gSync, "syncReady").get(() => true);
-    sandbox.stub(Weave.Service.clientsEngine, "lastSync").get(() => Date.now());
+    sandbox.stub(Weave.Service.clientsEngine, "isFirstSync").get(() => false);
     sandbox.stub(UIState, "get").returns({ status: UIState.STATUS_SIGNED_IN });
     sandbox.stub(gSync, "isSendableURI").returns(true);
     sandbox.stub(gSync, "remoteClients").get(() => []);
+    sandbox.stub(Weave.Service.clientsEngine, "getClientType").callsFake(id => mockRemoteClients.find(c => c.id == id).type);
 
     let cleanUp = () => {
       sandbox.restore();
@@ -434,7 +427,7 @@ add_task(async function sendToDevice_noDevices() {
 
     let expectedItems = [
       {
-        id: "pageAction-panel-sendToDevice-notReady",
+        className: "pageAction-sendToDevice-notReady",
         display: "none",
         disabled: true,
       },
@@ -475,10 +468,11 @@ add_task(async function sendToDevice_devices() {
     await promiseSyncReady();
     const sandbox = sinon.sandbox.create();
     sandbox.stub(gSync, "syncReady").get(() => true);
-    sandbox.stub(Weave.Service.clientsEngine, "lastSync").get(() => Date.now());
+    sandbox.stub(Weave.Service.clientsEngine, "isFirstSync").get(() => false);
     sandbox.stub(UIState, "get").returns({ status: UIState.STATUS_SIGNED_IN });
     sandbox.stub(gSync, "isSendableURI").returns(true);
     sandbox.stub(gSync, "remoteClients").get(() => mockRemoteClients);
+    sandbox.stub(Weave.Service.clientsEngine, "getClientType").callsFake(id => mockRemoteClients.find(c => c.id == id).type);
 
     let cleanUp = () => {
       sandbox.restore();
@@ -500,7 +494,7 @@ add_task(async function sendToDevice_devices() {
     // The devices should be shown in the subview.
     let expectedItems = [
       {
-        id: "pageAction-panel-sendToDevice-notReady",
+        className: "pageAction-sendToDevice-notReady",
         display: "none",
         disabled: true,
       },
@@ -539,10 +533,11 @@ add_task(async function sendToDevice_inUrlbar() {
     await promiseSyncReady();
     const sandbox = sinon.sandbox.create();
     sandbox.stub(gSync, "syncReady").get(() => true);
-    sandbox.stub(Weave.Service.clientsEngine, "lastSync").get(() => Date.now());
+    sandbox.stub(Weave.Service.clientsEngine, "isFirstSync").get(() => false);
     sandbox.stub(UIState, "get").returns({ status: UIState.STATUS_SIGNED_IN });
     sandbox.stub(gSync, "isSendableURI").returns(true);
     sandbox.stub(gSync, "remoteClients").get(() => mockRemoteClients);
+    sandbox.stub(Weave.Service.clientsEngine, "getClientType").callsFake(id => mockRemoteClients.find(c => c.id == id).type);
 
     let cleanUp = () => {
       sandbox.restore();
@@ -570,7 +565,7 @@ add_task(async function sendToDevice_inUrlbar() {
     // The devices should be shown in the subview.
     let expectedItems = [
       {
-        id: "pageAction-urlbar-sendToDevice-notReady",
+        className: "pageAction-sendToDevice-notReady",
         display: "none",
         disabled: true,
       },
@@ -771,6 +766,13 @@ function checkSendToDeviceItems(expectedItems, forUrlbar = false) {
     }
     if ("id" in expected) {
       Assert.equal(actual.id, expected.id);
+    }
+    if ("className" in expected) {
+      let expectedNames = expected.className.split(/\s+/);
+      for (let name of expectedNames) {
+        Assert.ok(actual.classList.contains(name),
+                  `classList contains: ${name}`);
+      }
     }
     let display = "display" in expected ? expected.display : "-moz-box";
     Assert.equal(getComputedStyle(actual).display, display);

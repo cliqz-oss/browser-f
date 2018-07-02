@@ -60,6 +60,7 @@ struct ModuleEnvironment
     const ModuleKind          kind;
     const CompileMode         mode;
     const Shareable           sharedMemoryEnabled;
+    const HasGcTypes          gcTypesEnabled;
     const Tier                tier;
 
     // Module fields decoded from the module environment (or initialized while
@@ -84,15 +85,17 @@ struct ModuleEnvironment
     NameInBytecodeVector      funcNames;
     CustomSectionVector       customSections;
 
-    explicit ModuleEnvironment(CompileMode mode = CompileMode::Once,
-                               Tier tier = Tier::Ion,
-                               DebugEnabled debug = DebugEnabled::False,
-                               Shareable sharedMemoryEnabled = Shareable::False,
+    explicit ModuleEnvironment(CompileMode mode,
+                               Tier tier,
+                               DebugEnabled debug,
+                               HasGcTypes hasGcTypes,
+                               Shareable sharedMemoryEnabled,
                                ModuleKind kind = ModuleKind::Wasm)
       : debug(debug),
         kind(kind),
         mode(mode),
         sharedMemoryEnabled(sharedMemoryEnabled),
+        gcTypesEnabled(hasGcTypes),
         tier(tier),
         memoryUsage(MemoryUsage::None),
         minMemoryLength(0)
@@ -351,6 +354,7 @@ class Decoder
     const uint8_t* cur_;
     const size_t offsetInModule_;
     UniqueChars* error_;
+    UniqueCharsVector* warnings_;
     bool resilientMode_;
 
     template <class T>
@@ -436,28 +440,32 @@ class Decoder
 
   public:
     Decoder(const uint8_t* begin, const uint8_t* end, size_t offsetInModule, UniqueChars* error,
-            bool resilientMode = false)
+            UniqueCharsVector* warnings = nullptr, bool resilientMode = false)
       : beg_(begin),
         end_(end),
         cur_(begin),
         offsetInModule_(offsetInModule),
         error_(error),
+        warnings_(warnings),
         resilientMode_(resilientMode)
     {
         MOZ_ASSERT(begin <= end);
     }
-    explicit Decoder(const Bytes& bytes, size_t offsetInModule = 0, UniqueChars* error = nullptr)
+    explicit Decoder(const Bytes& bytes, size_t offsetInModule = 0, UniqueChars* error = nullptr,
+                     UniqueCharsVector* warnings = nullptr)
       : beg_(bytes.begin()),
         end_(bytes.end()),
         cur_(bytes.begin()),
         offsetInModule_(offsetInModule),
         error_(error),
+        warnings_(warnings),
         resilientMode_(false)
     {}
 
     // These convenience functions use currentOffset() as the errorOffset.
     bool fail(const char* msg) { return fail(currentOffset(), msg); }
     bool failf(const char* msg, ...) MOZ_FORMAT_PRINTF(2, 3);
+    void warnf(const char* msg, ...) MOZ_FORMAT_PRINTF(2, 3);
 
     // Report an error at the given offset (relative to the whole module).
     bool fail(size_t errorOffset, const char* msg);
@@ -591,6 +599,7 @@ class Decoder
                                          size_t expectedLength,
                                          ModuleEnvironment* env,
                                          MaybeSectionRange* range);
+
     template <size_t NameSizeWith0>
     MOZ_MUST_USE bool startCustomSection(const char (&name)[NameSizeWith0],
                                          ModuleEnvironment* env,
@@ -599,13 +608,17 @@ class Decoder
         MOZ_ASSERT(name[NameSizeWith0 - 1] == '\0');
         return startCustomSection(name, NameSizeWith0 - 1, env, range);
     }
-    void finishCustomSection(const SectionRange& range);
+
+    void finishCustomSection(const char* name, const SectionRange& range);
+    void skipAndFinishCustomSection(const SectionRange& range);
+
     MOZ_MUST_USE bool skipCustomSection(ModuleEnvironment* env);
 
     // The Name section has its own optional subsections.
 
     MOZ_MUST_USE bool startNameSubsection(NameType nameType, Maybe<uint32_t>* endOffset);
     MOZ_MUST_USE bool finishNameSubsection(uint32_t endOffset);
+    MOZ_MUST_USE bool skipNameSubsection();
 
     // The infallible "unchecked" decoding functions can be used when we are
     // sure that the bytes are well-formed (by construction or due to previous
@@ -696,7 +709,7 @@ MOZ_MUST_USE bool
 EncodeLocalEntries(Encoder& d, const ValTypeVector& locals);
 
 MOZ_MUST_USE bool
-DecodeLocalEntries(Decoder& d, ModuleKind kind, ValTypeVector* locals);
+DecodeLocalEntries(Decoder& d, ModuleKind kind, HasGcTypes gcTypesEnabled, ValTypeVector* locals);
 
 // Returns whether the given [begin, end) prefix of a module's bytecode starts a
 // code section and, if so, returns the SectionRange of that code section.

@@ -4,12 +4,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#ifdef XP_WIN
+// Include Windows headers required for enabling high precision timers.
+#include "windows.h"
+#include "mmsystem.h"
+#endif
+
 #include "MediaQueue.h"
 #include "VideoSink.h"
-#include "MediaPrefs.h"
 #include "VideoUtils.h"
 
 #include "mozilla/IntegerPrintfMacros.h"
+#include "mozilla/StaticPrefs.h"
 
 namespace mozilla {
 
@@ -44,13 +50,20 @@ VideoSink::VideoSink(AbstractThread* aThread,
   , mHasVideo(false)
   , mUpdateScheduler(aThread)
   , mVideoQueueSendToCompositorSize(aVQueueSentToCompositerSize)
-  , mMinVideoQueueSize(MediaPrefs::RuinAvSync() ? 1 : 0)
+  , mMinVideoQueueSize(StaticPrefs::MediaRuinAvSyncEnabled() ? 1 : 0)
+#ifdef XP_WIN
+  , mHiResTimersRequested(false)
+#endif
+
 {
   MOZ_ASSERT(mAudioSink, "AudioSink should exist.");
 }
 
 VideoSink::~VideoSink()
 {
+#ifdef XP_WIN
+  MOZ_ASSERT(!mHiResTimersRequested);
+#endif
 }
 
 const MediaSink::PlaybackParams&
@@ -138,6 +151,30 @@ VideoSink::SetPreservesPitch(bool aPreservesPitch)
 }
 
 void
+VideoSink::EnsureHighResTimersOnOnlyIfPlaying()
+{
+#ifdef XP_WIN
+  const bool needed = IsPlaying();
+  if (needed == mHiResTimersRequested) {
+    return;
+  }
+  if (needed) {
+    // Ensure high precision timers are enabled on Windows, otherwise the VideoSink
+    // isn't woken up at reliable intervals to set the next frame, and we
+    // drop frames while painting. Note that each call must be matched by a
+    // corresponding timeEndPeriod() call. Enabling high precision timers causes
+    // the CPU to wake up more frequently on Windows 7 and earlier, which causes
+    // more CPU load and battery use. So we only enable high precision timers
+    // when we're actually playing.
+    timeBeginPeriod(1);
+  } else {
+    timeEndPeriod(1);
+  }
+  mHiResTimersRequested = needed;
+#endif
+}
+
+void
 VideoSink::SetPlaying(bool aPlaying)
 {
   AssertOwnerThread();
@@ -161,6 +198,8 @@ VideoSink::SetPlaying(bool aPlaying)
     // full already.
     TryUpdateRenderedVideoFrames();
   }
+
+  EnsureHighResTimersOnOnlyIfPlaying();
 }
 
 void
@@ -224,6 +263,8 @@ VideoSink::Stop()
     mEndPromise = nullptr;
   }
   mVideoFrameEndTime = TimeUnit::Zero();
+
+  EnsureHighResTimersOnOnlyIfPlaying();
 }
 
 bool
@@ -522,7 +563,7 @@ VideoSink::GetDebugInfo()
     mVideoSinkEndRequest.Exists(),
     mEndPromiseHolder.IsEmpty());
   AppendStringIfNotEmpty(str, mAudioSink->GetDebugInfo());
-  return str;
+  return Move(str);
 }
 
 } // namespace media

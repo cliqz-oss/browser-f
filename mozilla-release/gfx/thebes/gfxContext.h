@@ -135,11 +135,6 @@ public:
     void MoveTo(const gfxPoint& pt);
 
     /**
-     * Returns the current point in the current path.
-     */
-    gfxPoint CurrentPoint();
-
-    /**
      * Draws a line from the current point to pt.
      *
      * @see MoveTo
@@ -262,6 +257,15 @@ public:
      *         set as the current source (pattern, surface, etc)
      */
     bool GetDeviceColor(mozilla::gfx::Color& aColorOut);
+
+    /**
+     * Returns true if color is neither opaque nor transparent (i.e. alpha is not 0
+     * or 1), and false otherwise. If true, aColorOut is set on output.
+     */
+    bool HasNonOpaqueNonTransparentColor(mozilla::gfx::Color& aColorOut) {
+        return GetDeviceColor(aColorOut) &&
+               0.f < aColorOut.a && aColorOut.a < 1.f;
+    }
 
     /**
      * Set a solid color in the sRGB color space to use for drawing.

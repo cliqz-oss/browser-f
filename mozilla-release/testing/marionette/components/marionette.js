@@ -11,6 +11,10 @@ XPCOMUtils.defineLazyServiceGetter(
     this, "env", "@mozilla.org/process/environment;1", "nsIEnvironment");
 ChromeUtils.defineModuleGetter(this, "Log",
     "resource://gre/modules/Log.jsm");
+const {
+  EnvironmentPrefs,
+  MarionettePrefs,
+} = ChromeUtils.import("chrome://marionette/content/prefs.js", {});
 ChromeUtils.defineModuleGetter(this, "Preferences",
     "resource://gre/modules/Preferences.jsm");
 XPCOMUtils.defineLazyGetter(this, "log", () => {
@@ -19,20 +23,13 @@ XPCOMUtils.defineLazyGetter(this, "log", () => {
   return log;
 });
 
-const PREF_ENABLED = "marionette.enabled";
-const PREF_LOG_LEVEL_FALLBACK = "marionette.logging";
-const PREF_LOG_LEVEL = "marionette.log.level";
-const PREF_PORT_FALLBACK = "marionette.defaultPrefs.port";
-const PREF_PORT = "marionette.port";
-const PREF_RECOMMENDED = "marionette.prefs.recommended";
-
-const DEFAULT_LOG_LEVEL = "info";
 const NOTIFY_RUNNING = "remote-active";
 
 // Complements -marionette flag for starting the Marionette server.
 // We also set this if Marionette is running in order to start the server
 // again after a Firefox restart.
 const ENV_ENABLED = "MOZ_MARIONETTE";
+const PREF_ENABLED = "marionette.enabled";
 
 // Besides starting based on existing prefs in a profile and a command
 // line flag, we also support inheriting prefs out of an env var, and to
@@ -53,6 +50,9 @@ const ENV_PRESERVE_PREFS = "MOZ_MARIONETTE_PREF_STATE_ACROSS_RESTARTS";
 // Marionette to prevent them from affecting startup, since some of these
 // are checked before Marionette initialises.
 const RECOMMENDED_PREFS = new Map([
+
+  // Make sure Shield doesn't hit the network.
+  ["app.normandy.api_url", ""],
 
   // Disable automatic downloading of new releases.
   //
@@ -79,18 +79,6 @@ const RECOMMENDED_PREFS = new Map([
   // whichever download test runs first doesn't show the popup
   // inconsistently.
   ["browser.download.panel.shown", true],
-
-  // Do not show the EULA notification.
-  //
-  // This should also be set in the profile prior to starting Firefox,
-  // as it is picked up at runtime.
-  ["browser.EULA.override", true],
-
-  // Never start the browser in offline mode
-  //
-  // This should also be set in the profile prior to starting Firefox,
-  // as it is picked up at runtime.
-  ["browser.offline", false],
 
   // Background thumbnails in particular cause grief, and disabling
   // thumbnails in general cannot hurt
@@ -120,19 +108,25 @@ const RECOMMENDED_PREFS = new Map([
   // as it is picked up at runtime.
   ["browser.shell.checkDefaultBrowser", false],
 
-  // Start with a blank page (about:blank)
-  ["browser.startup.page", 0],
+  // Do not warn when quitting with multiple tabs
+  ["browser.showQuitWarning", false],
 
   // Do not redirect user when a milstone upgrade of Firefox is detected
   ["browser.startup.homepage_override.mstone", "ignore"],
 
-  // Disable browser animations
+  // Disable browser animations (tabs, fullscreen, sliding alerts)
   ["toolkit.cosmeticAnimations.enabled", false],
 
-  // Do not allow background tabs to be zombified, otherwise for tests
-  // that open additional tabs, the test harness tab itself might get
+  // Do not close the window when the last tab gets closed
+  ["browser.tabs.closeWindowWithLastTab", false],
+
+  // Do not allow background tabs to be zombified on Android, otherwise for
+  // tests that open additional tabs, the test harness tab itself might get
   // unloaded
   ["browser.tabs.disableBackgroundZombification", false],
+
+  // Do not warn when closing all open tabs
+  ["browser.tabs.warnOnClose", false],
 
   // Do not warn when closing all other open tabs
   ["browser.tabs.warnOnCloseOtherTabs", false],
@@ -152,9 +146,8 @@ const RECOMMENDED_PREFS = new Map([
   // network connections.
   ["browser.urlbar.suggest.searches", false],
 
-  // Turn off the location bar search suggestions opt-in.  It interferes with
-  // tests that don't expect it to be there.
-  ["browser.urlbar.userMadeSearchSuggestionsChoice", true],
+  // Do not warn on quitting Firefox
+  ["browser.warnOnQuit", false],
 
   // Do not show datareporting policy notifications which can
   // interfere with tests
@@ -169,6 +162,9 @@ const RECOMMENDED_PREFS = new Map([
   ["datareporting.policy.dataSubmissionEnabled", false],
   ["datareporting.policy.dataSubmissionPolicyAccepted", false],
   ["datareporting.policy.dataSubmissionPolicyBypassNotification", true],
+
+  // Automatically unload beforeunload alerts
+  ["dom.disable_beforeunload", true],
 
   // Disable popup-blocker
   ["dom.disable_open_during_load", false],
@@ -196,11 +192,6 @@ const RECOMMENDED_PREFS = new Map([
   // Disable installing any distribution extensions or add-ons.
   // Should be set in profile.
   ["extensions.installDistroAddons", false],
-
-  // Make sure Shield doesn't hit the network.
-  ["extensions.shield-recipe-client.api_url", ""],
-
-  ["extensions.showMismatchUI", false],
 
   // Turn off extension updates so they do not bother tests
   ["extensions.update.enabled", false],
@@ -230,6 +221,9 @@ const RECOMMENDED_PREFS = new Map([
 
   // Show chrome errors and warnings in the error console
   ["javascript.options.showInConsole", true],
+
+  // Do not prompt with long usernames or passwords in URLs
+  ["network.http.phishy-userpass-length", 255],
 
   // Do not prompt for temporary redirects
   ["network.http.prompt-temp-redirect", false],
@@ -274,97 +268,6 @@ const RECOMMENDED_PREFS = new Map([
 const isRemote = Services.appinfo.processType ==
     Services.appinfo.PROCESS_TYPE_CONTENT;
 
-const LogLevel = {
-  get(level) {
-    let levels = new Map([
-      ["fatal", Log.Level.Fatal],
-      ["error", Log.Level.Error],
-      ["warn", Log.Level.Warn],
-      ["info", Log.Level.Info],
-      ["config", Log.Level.Config],
-      ["debug", Log.Level.Debug],
-      ["trace", Log.Level.Trace],
-    ]);
-
-    let s = String(level).toLowerCase();
-    if (!levels.has(s)) {
-      return DEFAULT_LOG_LEVEL;
-    }
-    return levels.get(s);
-  },
-};
-
-function getPrefVal(pref) {
-  const {PREF_STRING, PREF_BOOL, PREF_INT, PREF_INVALID} = Ci.nsIPrefBranch;
-
-  let type = Services.prefs.getPrefType(pref);
-  switch (type) {
-    case PREF_STRING:
-      return Services.prefs.getStringPref(pref);
-
-    case PREF_BOOL:
-      return Services.prefs.getBoolPref(pref);
-
-    case PREF_INT:
-      return Services.prefs.getIntPref(pref);
-
-    case PREF_INVALID:
-      return undefined;
-
-    default:
-      throw new TypeError(`Unexpected preference type (${type}) for ${pref}`);
-  }
-}
-
-// Get preference value of |preferred|, falling back to |fallback|
-// if |preferred| is not user-modified and |fallback| exists.
-function getPref(preferred, fallback) {
-  if (!Services.prefs.prefHasUserValue(preferred) &&
-      Services.prefs.getPrefType(fallback) != Ci.nsIPrefBranch.PREF_INVALID) {
-    return getPrefVal(fallback, getPrefVal(preferred));
-  }
-  return getPrefVal(preferred);
-}
-
-// Marionette preferences recently changed names.  This is an abstraction
-// that first looks for the new name, but falls back to using the old name
-// if the new does not exist.
-//
-// This shim can be removed when Firefox 55 ships.
-const prefs = {
-  get port() {
-    return getPref(PREF_PORT, PREF_PORT_FALLBACK);
-  },
-
-  get logLevel() {
-    let s = getPref(PREF_LOG_LEVEL, PREF_LOG_LEVEL_FALLBACK);
-    return LogLevel.get(s);
-  },
-
-  readFromEnvironment(key) {
-    const env = Cc["@mozilla.org/process/environment;1"]
-        .getService(Ci.nsIEnvironment);
-
-    if (env.exists(key)) {
-      let prefs;
-      try {
-        prefs = JSON.parse(env.get(key));
-      } catch (e) {
-        Cu.reportError(
-            "Invalid Marionette preferences in environment; " +
-            "preferences will not have been applied");
-        Cu.reportError(e);
-      }
-
-      if (prefs) {
-        for (let prefName of Object.keys(prefs)) {
-          Preferences.set(prefName, prefs[prefName]);
-        }
-      }
-    }
-  },
-};
-
 class MarionetteMainProcess {
   constructor() {
     this.server = null;
@@ -377,7 +280,7 @@ class MarionetteMainProcess {
     // and that we are ready to start the Marionette server
     this.finalUIStartup = false;
 
-    log.level = prefs.logLevel;
+    log.level = MarionettePrefs.logLevel;
 
     this.enabled = env.exists(ENV_ENABLED);
     this.alteredPrefs = new Set();
@@ -391,11 +294,11 @@ class MarionetteMainProcess {
   }
 
   set enabled(value) {
-    Services.prefs.setBoolPref(PREF_ENABLED, value);
+    MarionettePrefs.enabled = value;
   }
 
   get enabled() {
-    return Services.prefs.getBoolPref(PREF_ENABLED);
+    return MarionettePrefs.enabled;
   }
 
   receiveMessage({name}) {
@@ -414,7 +317,7 @@ class MarionetteMainProcess {
 
     switch (topic) {
       case "nsPref:changed":
-        if (Services.prefs.getBoolPref(PREF_ENABLED)) {
+        if (this.enabled) {
           this.init();
         } else {
           this.uninit();
@@ -425,7 +328,9 @@ class MarionetteMainProcess {
         Services.obs.addObserver(this, "command-line-startup");
         Services.obs.addObserver(this, "sessionstore-windows-restored");
 
-        prefs.readFromEnvironment(ENV_PRESERVE_PREFS);
+        for (let [pref, value] of EnvironmentPrefs.from(ENV_PRESERVE_PREFS)) {
+          Preferences.set(pref, value);
+        }
         break;
 
       // In safe mode the command line handlers are getting parsed after the
@@ -521,7 +426,7 @@ class MarionetteMainProcess {
       }
       await startupRecorder;
 
-      if (Preferences.get(PREF_RECOMMENDED)) {
+      if (MarionettePrefs.recommendedPrefs) {
         for (let [k, v] of RECOMMENDED_PREFS) {
           if (!Preferences.isSet(k)) {
             log.debug(`Setting recommended pref ${k} to ${v}`);
@@ -532,14 +437,15 @@ class MarionetteMainProcess {
       }
 
       try {
-        ChromeUtils.import("chrome://marionette/content/server.js");
-        let listener = new server.TCPListener(prefs.port);
+        const {TCPListener} = ChromeUtils.import("chrome://marionette/content/server.js", {});
+        let listener = new TCPListener(MarionettePrefs.port);
         listener.start();
         this.server = listener;
       } catch (e) {
         log.fatal("Remote protocol server failed to start", e);
         this.uninit();
         Services.startup.quit(Ci.nsIAppStartup.eForceQuit);
+        return;
       }
 
       env.set(ENV_ENABLED, "1");
@@ -549,19 +455,20 @@ class MarionetteMainProcess {
   }
 
   uninit() {
+    for (let k of this.alteredPrefs) {
+      log.debug(`Resetting recommended pref ${k}`);
+      Preferences.reset(k);
+    }
+    this.alteredPrefs.clear();
+
     if (this.running) {
       this.server.stop();
-      for (let k of this.alteredPrefs) {
-        log.debug(`Resetting recommended pref ${k}`);
-        Preferences.reset(k);
-      }
-      this.alteredPrefs.clear();
       Services.obs.notifyObservers(this, NOTIFY_RUNNING);
     }
   }
 
   get QueryInterface() {
-    return XPCOMUtils.generateQI([
+    return ChromeUtils.generateQI([
       Ci.nsICommandLineHandler,
       Ci.nsIMarionette,
       Ci.nsIObserver,
@@ -580,7 +487,7 @@ class MarionetteContentProcess {
   }
 
   get QueryInterface() {
-    return XPCOMUtils.generateQI([Ci.nsIMarionette]);
+    return ChromeUtils.generateQI([Ci.nsIMarionette]);
   }
 }
 

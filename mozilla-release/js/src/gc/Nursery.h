@@ -50,13 +50,13 @@ class NativeObject;
 class Nursery;
 struct NurseryChunk;
 class HeapSlot;
-class ZoneGroup;
 class JSONPrinter;
 
 void SetGCZeal(JSRuntime*, uint8_t, uint32_t);
 
 namespace gc {
 class AutoMaybeStartBackgroundAllocation;
+class AutoTraceSession;
 struct Cell;
 class MinorCollectionTracer;
 class RelocationOverlay;
@@ -333,20 +333,14 @@ class Nursery
     JS::gcreason::Reason minorGCTriggerReason() const { return minorGCTriggerReason_; }
     void clearMinorGCRequest() { minorGCTriggerReason_ = JS::gcreason::NO_REASON; }
 
-    bool needIdleTimeCollection() const {
-        return minorGCRequested() ||
-               (freeSpace() < kIdleTimeCollectionThreshold);
-    }
+    bool needIdleTimeCollection() const;
 
     bool enableProfiling() const { return enableProfiling_; }
 
-  private:
     /* The amount of space in the mapped nursery available to allocations. */
     static const size_t NurseryChunkUsableSize = gc::ChunkSize - gc::ChunkTrailerSize;
 
-    /* Attemp to run a minor GC in the idle time if the free space falls below this threshold. */
-    static constexpr size_t kIdleTimeCollectionThreshold = NurseryChunkUsableSize / 4;
-
+  private:
     JSRuntime* runtime_;
 
     /* Vector of allocated chunks to allocate from. */
@@ -425,7 +419,6 @@ class Nursery
     ProfileTimes startTimes_;
     ProfileDurations profileDurations_;
     ProfileDurations totalDurations_;
-    uint64_t minorGcCount_;
 
     /*
      * This data is initialised only if the nursery is enabled and after at
@@ -518,8 +511,7 @@ class Nursery
     /* Common internal allocator function. */
     void* allocate(size_t size);
 
-    void doCollection(JS::gcreason::Reason reason,
-                        gc::TenureCountCache& tenureCounts);
+    void doCollection(JS::gcreason::Reason reason, gc::TenureCountCache& tenureCounts);
 
     /*
      * Move the object at |src| in the Nursery to an already-allocated cell

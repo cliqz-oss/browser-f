@@ -18,7 +18,7 @@
 class nsITimer;
 class nsSliderFrame;
 
-nsIFrame* NS_NewSliderFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
+nsIFrame* NS_NewSliderFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle);
 
 class nsSliderMediator final : public nsIDOMEventListener
 {
@@ -32,7 +32,7 @@ public:
 
   virtual void SetSlider(nsSliderFrame* aSlider) { mSlider = aSlider; }
 
-  NS_IMETHOD HandleEvent(nsIDOMEvent* aEvent) override;
+  NS_DECL_NSIDOMEVENTLISTENER
 
 protected:
   virtual ~nsSliderMediator() {}
@@ -46,7 +46,7 @@ public:
 
   friend class nsSliderMediator;
 
-  explicit nsSliderFrame(nsStyleContext* aContext);
+  explicit nsSliderFrame(ComputedStyle* aStyle);
   virtual ~nsSliderFrame();
 
 #ifdef DEBUG_FRAME_DUMP
@@ -93,7 +93,7 @@ public:
   virtual void RemoveFrame(ChildListID     aListID,
                            nsIFrame*       aOldFrame) override;
 
-  nsresult StartDrag(nsIDOMEvent* aEvent);
+  nsresult StartDrag(mozilla::dom::Event* aEvent);
   nsresult StopDrag();
 
   void StartAPZDrag(mozilla::WidgetGUIEvent* aEvent);

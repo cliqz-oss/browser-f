@@ -71,8 +71,6 @@
 }
 
 // component implementing nsIURI, nsISerializable, and nsIClassInfo.
-#define NS_SIMPLEURI_CONTRACTID \
-    "@mozilla.org/network/simple-uri;1"
 #define NS_SIMPLEURI_CID                              \
 { /* e0da1d70-2f7b-11d3-8cd0-0060b0fc14a3 */          \
      0xe0da1d70,                                      \
@@ -101,6 +99,14 @@
      { 0xa7, 0x85, 0x85, 0xc3, 0x94, 0x01, 0x25, 0x03 }  \
 }
 
+#define NS_SIMPLENESTEDURIMUTATOR_CID                    \
+{ /* 9c4e9d49-ce64-4ca3-acef-3075c5e5aba7 */             \
+     0x9c4e9d49,                                         \
+     0xce64,                                             \
+     0x4ca3,                                             \
+     { 0xac, 0xef, 0x30, 0x75, 0xc5, 0xe5, 0xab, 0xa7 }  \
+}
+
 // component inheriting from the nested simple URI component and also
 // carrying along its base URI
 #define NS_NESTEDABOUTURI_CID                            \
@@ -111,10 +117,16 @@
      { 0xb9, 0x36, 0x41, 0x32, 0x6b, 0xa4, 0x8a, 0xae }  \
 }
 
+#define NS_NESTEDABOUTURIMUTATOR_CID                     \
+{ /* b0054ef3-b096-483d-8242-4ee36b7b2115 */             \
+     0xb0054ef3,                                         \
+     0xb096,                                             \
+     0x483d,                                             \
+     { 0x82, 0x42, 0x4e, 0xe3, 0x6b, 0x7b, 0x21, 0x15 }  \
+}
+
 // component implementing nsIStandardURL, nsIURI, nsIURL, nsISerializable,
 // and nsIClassInfo.
-#define NS_STANDARDURL_CONTRACTID \
-    "@mozilla.org/network/standard-url;1"
 #define NS_STANDARDURL_CID                           \
 { /* de9472d0-8034-11d3-9399-00104ba0fd40 */         \
     0xde9472d0,                                      \
@@ -694,6 +706,13 @@
   0x18cf,                                            \
   0x4984,                                            \
   { 0xbd, 0xe9, 0xcc, 0xef, 0x5d, 0x8a, 0xb4, 0x73 } \
+}
+
+#define NS_SUBSTITUTINGURLMUTATOR_CID                \
+{ 0xb3cfeb91,                                        \
+  0x332a,                                            \
+  0x46c9,                                            \
+  { 0xad, 0x97, 0x93, 0xff, 0x39, 0x84, 0x14, 0x94 } \
 }
 
 /******************************************************************************

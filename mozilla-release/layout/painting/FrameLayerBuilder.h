@@ -45,6 +45,13 @@ class PaintedLayerData;
 class ContainerState;
 class PaintedDisplayItemLayerUserData;
 
+enum class DisplayItemEntryType {
+  ITEM,
+  PUSH_OPACITY,
+  PUSH_OPACITY_WITH_BG,
+  POP_OPACITY
+};
+
 /**
   * Retained data storage:
   *
@@ -90,7 +97,7 @@ public:
       return mRefCnt;
     }
     ++mRefCnt;
-    NS_LOG_ADDREF(this, mRefCnt, "nsStyleContext", sizeof(nsStyleContext));
+    NS_LOG_ADDREF(this, mRefCnt, "ComputedStyle", sizeof(ComputedStyle));
     return mRefCnt;
   }
 
@@ -100,7 +107,7 @@ public:
       return mRefCnt;
     }
     --mRefCnt;
-    NS_LOG_RELEASE(this, mRefCnt, "nsStyleContext");
+    NS_LOG_RELEASE(this, mRefCnt, "ComputedStyle");
     if (mRefCnt == 0) {
       Destroy();
       return 0;
@@ -215,7 +222,9 @@ struct AssignedDisplayItem
   AssignedDisplayItem(nsDisplayItem* aItem,
                       const DisplayItemClip& aClip,
                       LayerState aLayerState,
-                      DisplayItemData* aData);
+                      DisplayItemData* aData,
+                      DisplayItemEntryType aType,
+                      const bool aHasOpacity);
   ~AssignedDisplayItem();
 
   nsDisplayItem* mItem;
@@ -232,6 +241,9 @@ struct AssignedDisplayItem
 
   bool mReused;
   bool mMerged;
+
+  DisplayItemEntryType mType;
+  bool mHasOpacity;
 };
 
 
@@ -666,8 +678,7 @@ protected:
                   nsDisplayListBuilder* aBuilder,
                   nsPresContext* aPresContext,
                   const nsIntPoint& aOffset,
-                  float aXScale, float aYScale,
-                  int32_t aCommonClipCount);
+                  float aXScale, float aYScale);
 
   /**
    * We accumulate ClippedDisplayItem elements in a hashtable during

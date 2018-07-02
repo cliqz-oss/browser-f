@@ -12,37 +12,38 @@ const { initPerformanceInNewTab, teardownToolboxAndRemoveTab } = require("devtoo
 const { startRecording, stopRecording } = require("devtools/client/performance/test/helpers/actions");
 const { once } = require("devtools/client/performance/test/helpers/event-utils");
 
-add_task(function* () {
-  let { panel } = yield initPerformanceInNewTab({
+add_task(async function() {
+  startTelemetry();
+
+  let { panel } = await initPerformanceInNewTab({
     url: SIMPLE_URL,
     win: window
   });
 
   let { EVENTS, PerformanceController } = panel.panelWin;
 
-  let telemetry = PerformanceController._telemetry;
-  let logs = telemetry.getLogs();
-  let EXPORTED = "DEVTOOLS_PERFTOOLS_RECORDING_EXPORT_FLAG";
-  let IMPORTED = "DEVTOOLS_PERFTOOLS_RECORDING_IMPORT_FLAG";
-
-  yield startRecording(panel);
-  yield stopRecording(panel);
+  await startRecording(panel);
+  await stopRecording(panel);
 
   let file = FileUtils.getFile("TmpD", ["tmpprofile.json"]);
   file.createUnique(Ci.nsIFile.NORMAL_FILE_TYPE, parseInt("666", 8));
 
   let exported = once(PerformanceController, EVENTS.RECORDING_EXPORTED);
-  yield PerformanceController.exportRecording("",
-    PerformanceController.getCurrentRecording(), file);
-  yield exported;
-
-  ok(logs[EXPORTED], `A telemetry entry for ${EXPORTED} exists after exporting.`);
+  await PerformanceController.exportRecording(PerformanceController.getCurrentRecording(),
+    file);
+  await exported;
 
   let imported = once(PerformanceController, EVENTS.RECORDING_IMPORTED);
-  yield PerformanceController.importRecording(null, file);
-  yield imported;
+  await PerformanceController.importRecording(file);
+  await imported;
 
-  ok(logs[IMPORTED], `A telemetry entry for ${IMPORTED} exists after importing.`);
-
-  yield teardownToolboxAndRemoveTab(panel);
+  checkResults();
+  await teardownToolboxAndRemoveTab(panel);
 });
+
+function checkResults() {
+  // For help generating these tests use generateTelemetryTests("DEVTOOLS_PERFTOOLS_")
+  // here.
+  checkTelemetry("DEVTOOLS_PERFTOOLS_RECORDING_IMPORT_FLAG", "", [0, 1, 0], "array");
+  checkTelemetry("DEVTOOLS_PERFTOOLS_RECORDING_EXPORT_FLAG", "", [0, 1, 0], "array");
+}

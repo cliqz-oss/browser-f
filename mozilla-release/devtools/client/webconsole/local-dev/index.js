@@ -40,7 +40,7 @@ pref("devtools.webconsole.timestampMessages", false);
 pref("devtools.webconsole.autoMultiline", true);
 pref("devtools.webconsole.sidebarToggle", true);
 
-const NewConsoleOutputWrapper = require("../new-console-output/new-console-output-wrapper");
+const NewConsoleOutputWrapper = require("../new-console-output-wrapper");
 const NewWebConsoleFrame = require("../new-webconsole").NewWebConsoleFrame;
 
 // Copied from netmonitor/index.js:
@@ -84,14 +84,14 @@ function onConnect(connection) {
     NewConsoleOutputWrapper,
   };
   consoleFrame = new NewWebConsoleFrame(owner);
-  consoleFrame.init().then(function () {
+  consoleFrame.init().then(function() {
     console.log("NewWebConsoleFrame initialized");
   });
 }
 
 // This is just a hack until the local dev environment includes jsterm
-window.evaluateJS = function (input) {
-  consoleFrame.webConsoleClient.evaluateJSAsync(`${input}`, function (r) {
+window.evaluateJS = function(input) {
+  consoleFrame.webConsoleClient.evaluateJSAsync(`${input}`, function(r) {
     consoleFrame.newConsoleOutput.dispatchMessageAdd(r);
   }, {});
 };

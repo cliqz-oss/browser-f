@@ -12,6 +12,7 @@ DIRS += [
 if not CONFIG['JS_STANDALONE']:
   DIRS += [
     'common',
+    'faulty',
     'messagemanager',
     'shmem',
   ]

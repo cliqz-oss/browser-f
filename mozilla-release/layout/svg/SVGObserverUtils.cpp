@@ -9,7 +9,6 @@
 
 // Keep others in (case-insensitive) order:
 #include "mozilla/RestyleManager.h"
-#include "mozilla/RestyleManagerInlines.h"
 #include "nsCSSFrameConstructor.h"
 #include "nsISupportsImpl.h"
 #include "nsSVGClipPathFrame.h"
@@ -423,7 +422,7 @@ nsSVGMaskProperty::ResolveImage(uint32_t aIndex)
     mozilla::css::ImageLoader* imageLoader =
       mFrame->PresContext()->Document()->StyleImageLoader();
     if (imgRequestProxy* req = image.GetImageData()) {
-      imageLoader->AssociateRequestToFrame(req, mFrame);
+      imageLoader->AssociateRequestToFrame(req, mFrame, 0);
     }
   }
 }
@@ -627,7 +626,7 @@ SVGObserverUtils::GetPaintServer(nsIFrame* aTargetFrame,
   // least look up past a text frame, and if the text frame's parent is the
   // anonymous block frame, then we look up to its parent (the SVGTextFrame).
   nsIFrame* frame = aTargetFrame;
-  if (frame->GetContent()->IsNodeOfType(nsINode::eTEXT)) {
+  if (frame->GetContent()->IsText()) {
     frame = frame->GetParent();
     nsIFrame* grandparent = frame->GetParent();
     if (grandparent && grandparent->IsSVGTextFrame()) {

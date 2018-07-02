@@ -6,9 +6,8 @@
 
 var Services = require("Services");
 var promise = require("promise");
-var {Task} = require("devtools/shared/task");
 var {XPCOMUtils} = require("resource://gre/modules/XPCOMUtils.jsm");
-var EventEmitter = require("devtools/shared/old-event-emitter");
+var EventEmitter = require("devtools/shared/event-emitter");
 
 var {StyleEditorUI} = require("resource://devtools/client/styleeditor/StyleEditorUI.jsm");
 var {getString} = require("resource://devtools/client/styleeditor/StyleEditorUtil.jsm");
@@ -40,10 +39,10 @@ StyleEditorPanel.prototype = {
   /**
    * open is effectively an asynchronous constructor
    */
-  open: Task.async(function* () {
+  async open() {
     // We always interact with the target as if it were remote
     if (!this.target.isRemote) {
-      yield this.target.makeRemote();
+      await this.target.makeRemote();
     }
 
     this.target.on("close", this.destroy);
@@ -51,29 +50,27 @@ StyleEditorPanel.prototype = {
     this._debuggee = this._toolbox.initStyleSheetsFront();
 
     // Initialize the CSS properties database.
-    const {cssProperties} = yield initCssProperties(this._toolbox);
+    const {cssProperties} = await initCssProperties(this._toolbox);
 
     // Initialize the UI
     this.UI = new StyleEditorUI(this._debuggee, this.target, this._panelDoc,
                                 cssProperties);
     this.UI.on("error", this._showError);
-    yield this.UI.initialize();
+    await this.UI.initialize();
 
     this.isReady = true;
 
     return this;
-  }),
+  },
 
   /**
    * Show an error message from the style editor in the toolbox
    * notification box.
    *
-   * @param  {string} event
-   *         Type of event
    * @param  {string} data
    *         The parameters to customize the error message
    */
-  _showError: function (event, data) {
+  _showError: function(data) {
     if (!this._toolbox) {
       // could get an async error after we've been destroyed
       return;
@@ -114,7 +111,7 @@ StyleEditorPanel.prototype = {
    *         Promise that will resolve when the editor is selected and ready
    *         to be used.
    */
-  selectStyleSheet: function (href, line, col) {
+  selectStyleSheet: function(href, line, col) {
     if (!this._debuggee || !this.UI) {
       return null;
     }
@@ -124,7 +121,7 @@ StyleEditorPanel.prototype = {
   /**
    * Destroy the style editor.
    */
-  destroy: function () {
+  destroy: function() {
     if (!this._destroyed) {
       this._destroyed = true;
 
@@ -145,7 +142,7 @@ StyleEditorPanel.prototype = {
 };
 
 XPCOMUtils.defineLazyGetter(StyleEditorPanel.prototype, "strings",
-  function () {
+  function() {
     return Services.strings.createBundle(
             "chrome://devtools/locale/styleeditor.properties");
   });

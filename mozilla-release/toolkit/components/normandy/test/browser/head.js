@@ -7,7 +7,6 @@ ChromeUtils.import("resource://normandy/lib/SandboxManager.jsm", this);
 ChromeUtils.import("resource://normandy/lib/NormandyDriver.jsm", this);
 ChromeUtils.import("resource://normandy/lib/NormandyApi.jsm", this);
 ChromeUtils.import("resource://normandy/lib/TelemetryEvents.jsm", this);
-ChromeUtils.import("resource://normandy/lib/Utils.jsm", this);
 
 // Load mocking/stubbing library, sinon
 // docs: http://sinonjs.org/docs/
@@ -129,7 +128,7 @@ this.withMockNormandyApi = function(testFunction) {
       async action => {
         const impl = mockApi.implementations[action.name];
         if (!impl) {
-          throw new Error("Missing");
+          throw new Error(`Missing implementation for ${action.name}`);
         }
         return impl;
       }
@@ -318,4 +317,40 @@ this.studyEndObserved = function(recipeId) {
     "shield-study-ended",
     (subject, endedRecipeId) => Number.parseInt(endedRecipeId) === recipeId,
   );
+};
+
+this.withSendEventStub = function(testFunction) {
+  return async function wrappedTestFunction(...args) {
+
+    /* Checks that calls match the event schema. */
+    function checkEventMatchesSchema(method, object, value, extra) {
+      let match = true;
+      const spec = Array.from(Object.values(TelemetryEvents.eventSchema))
+        .filter(spec => spec.methods.includes(method))[0];
+
+      if (spec) {
+        if (!spec.objects.includes(object)) {
+          match = false;
+        }
+
+        for (const key of Object.keys(extra)) {
+          if (!spec.extra_keys.includes(key)) {
+            match = false;
+          }
+        }
+      } else {
+        match = false;
+      }
+
+      ok(match, `sendEvent(${method}, ${object}, ${value}, ${JSON.stringify(extra)}) should match spec`);
+    }
+
+    const stub = sinon.stub(TelemetryEvents, "sendEvent");
+    stub.callsFake(checkEventMatchesSchema);
+    try {
+      await testFunction(...args, stub);
+    } finally {
+      stub.restore();
+    }
+  };
 };

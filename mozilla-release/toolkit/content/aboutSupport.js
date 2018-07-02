@@ -79,28 +79,6 @@ var snapshotFormatters = {
       $("contentprocesses-row").hidden = true;
     }
 
-    function getReasonStringName(resultValue, defaultValue) {
-      if (resultValue != defaultValue) {
-        return resultValue ? "enabledByUser" : "disabledByUser";
-      }
-      return resultValue ? "enabledByDefault" : "disabledByDefault";
-    }
-    let styloReason;
-    let styloChromeReason;
-    if (!data.styloBuild) {
-      styloReason = "disabledByBuild";
-      styloChromeReason = "disabledByBuild";
-    } else {
-      styloReason = getReasonStringName(data.styloResult, data.styloDefault);
-      styloChromeReason = getReasonStringName(data.styloChromeResult,
-                                              data.styloChromeDefault);
-    }
-    styloReason = strings.GetStringFromName(styloReason);
-    styloChromeReason = strings.GetStringFromName(styloChromeReason);
-    $("stylo-box").textContent =
-      `content = ${data.styloResult} (${styloReason}), ` +
-      `chrome = ${data.styloChromeResult} (${styloChromeReason})`;
-
     if (Services.policies) {
       let policiesText = "";
       switch (data.policiesStatus) {
@@ -219,22 +197,6 @@ var snapshotFormatters = {
         $.new("td", feature.name),
         $.new("td", feature.version),
         $.new("td", feature.id),
-      ]);
-    }));
-  },
-
-  experiments: function experiments(data) {
-    $.append($("experiments-tbody"), data.map(function(experiment) {
-      return $.new("tr", [
-        $.new("td", experiment.name),
-        $.new("td", experiment.id),
-        $.new("td", experiment.description),
-        $.new("td", experiment.active),
-        $.new("td", experiment.endDate),
-        $.new("td", [
-          $.new("a", experiment.detailURL, null, {href: experiment.detailURL, })
-        ]),
-        $.new("td", experiment.branch),
       ]);
     }));
   },
@@ -488,6 +450,7 @@ var snapshotFormatters = {
     addRowFromKey("features", "supportsHardwareH264", "hardwareH264");
     addRowFromKey("features", "direct2DEnabled", "#Direct2D");
     addRowFromKey("features", "usesTiling");
+    addRowFromKey("features", "contentUsesTiling");
     addRowFromKey("features", "offMainThreadPaintEnabled");
     addRowFromKey("features", "offMainThreadPaintWorkerCount");
 
@@ -733,7 +696,6 @@ var snapshotFormatters = {
     // Basic information
     insertBasicInfo("audioBackend", data.currentAudioBackend);
     insertBasicInfo("maxAudioChannels", data.currentMaxAudioChannels);
-    insertBasicInfo("channelLayout", data.currentPreferredChannelLayout);
     insertBasicInfo("sampleRate", data.currentPreferredSampleRate);
 
     // Output devices information
@@ -935,13 +897,10 @@ function copyRawDataToClipboard(button) {
       transferable.setTransferData("text/unicode", str, str.data.length * 2);
       Services.clipboard.setData(transferable, null, Ci.nsIClipboard.kGlobalClipboard);
       if (AppConstants.platform == "android") {
-        // Present a toast notification.
-        let message = {
-          type: "Toast:Show",
-          message: stringBundle().GetStringFromName("rawDataCopied"),
-          duration: "short"
-        };
-        Services.androidBridge.handleGeckoMessage(message);
+        // Present a snackbar notification.
+        ChromeUtils.import("resource://gre/modules/Snackbars.jsm");
+        Snackbars.show(stringBundle().GetStringFromName("rawDataCopied"),
+                       Snackbars.LENGTH_SHORT);
       }
     });
   } catch (err) {
@@ -986,13 +945,10 @@ function copyContentsToClipboard() {
   Services.clipboard.setData(transferable, null, Services.clipboard.kGlobalClipboard);
 
   if (AppConstants.platform == "android") {
-    // Present a toast notification.
-    let message = {
-      type: "Toast:Show",
-      message: stringBundle().GetStringFromName("textCopied"),
-      duration: "short"
-    };
-    Services.androidBridge.handleGeckoMessage(message);
+    // Present a snackbar notification.
+    ChromeUtils.import("resource://gre/modules/Snackbars.jsm");
+    Snackbars.show(stringBundle().GetStringFromName("textCopied"),
+                   Snackbars.LENGTH_SHORT);
   }
 }
 

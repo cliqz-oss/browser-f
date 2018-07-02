@@ -76,6 +76,7 @@ import android.media.AudioManager;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Looper;
@@ -654,6 +655,7 @@ public class GeckoAppShell
         sHapticFeedbackDelegate = (delegate != null) ? delegate : DEFAULT_LISTENERS;
     }
 
+    @SuppressWarnings("fallthrough")
     @WrapForJNI(calledFrom = "gecko")
     private static void enableSensor(int aSensortype) {
         final SensorManager sm = (SensorManager)
@@ -765,6 +767,7 @@ public class GeckoAppShell
         }
     }
 
+    @SuppressWarnings("fallthrough")
     @WrapForJNI(calledFrom = "gecko")
     private static void disableSensor(int aSensortype) {
         final SensorManager sm = (SensorManager)
@@ -1872,6 +1875,21 @@ public class GeckoAppShell
 
     @WrapForJNI
     public static String getDefaultLocale() {
-        return Locale.getDefault().toString();
+        final Locale locale = Locale.getDefault();
+        if (Build.VERSION.SDK_INT >= 21) {
+            return locale.toLanguageTag();
+        }
+
+        final StringBuilder out = new StringBuilder(locale.getLanguage());
+        final String country = locale.getCountry();
+        final String variant = locale.getVariant();
+        if (!TextUtils.isEmpty(country)) {
+            out.append('-').append(country);
+        }
+        if (!TextUtils.isEmpty(variant)) {
+            out.append('-').append(variant);
+        }
+        // e.g. "en", "en-US", or "en-US-POSIX".
+        return out.toString();
     }
 }

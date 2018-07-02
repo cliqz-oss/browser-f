@@ -3,7 +3,7 @@ fuzzy-if(Android,8,1000) == size-1.html size-1-ref.html
 
 == empty-transaction-1.html empty-transaction-1-ref.html
 
-== image-rendering-test.html image-rendering-ref.html
+fails-if(webrender&&winWidget) == image-rendering-test.html image-rendering-ref.html
 == image-shadow.html image-shadow-ref.html
 
 asserts-if(cocoaWidget,0-2) == size-change-1.html size-change-1-ref.html
@@ -110,3 +110,4 @@ fuzzy-if(winWidget,94,1575) fuzzy-if(cocoaWidget,1,24) == 1304353-text-global-co
 
 == 1347147-1.html 1347147-1-ref.html
 == 1353000-1.html 1353000-1-ref.html
+== 1447035-1.html 1447035-1-ref.html

@@ -7,7 +7,7 @@
  * Tests if beacons from other tabs are properly ignored.
  */
 
-add_task(async function () {
+add_task(async function() {
   let { tab, monitor } = await initNetMonitor(SIMPLE_URL);
   let { store, windowRequire } = monitor.panelWin;
   let Actions = windowRequire("devtools/client/netmonitor/src/actions/index");
@@ -23,8 +23,8 @@ add_task(async function () {
   is(store.getState().requests.requests.size, 0, "The requests menu should be empty.");
 
   let wait = waitForNetworkEvents(monitor, 1);
-  await ContentTask.spawn(beaconTab.linkedBrowser, {}, async function () {
-    content.wrappedJSObject.performRequest();
+  await ContentTask.spawn(beaconTab.linkedBrowser, {}, async function() {
+    content.wrappedJSObject.performRequests();
   });
   tab.linkedBrowser.reload();
   await wait;

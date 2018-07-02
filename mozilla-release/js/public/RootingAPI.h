@@ -196,9 +196,6 @@ namespace JS {
 template <typename T> class Rooted;
 template <typename T> class PersistentRooted;
 
-/* This is exposing internal state of the GC for inlining purposes. */
-JS_FRIEND_API(bool) isGCEnabled();
-
 JS_FRIEND_API(void) HeapObjectPostBarrier(JSObject** objp, JSObject* prev, JSObject* next);
 JS_FRIEND_API(void) HeapStringPostBarrier(JSString** objp, JSString* prev, JSString* next);
 
@@ -874,8 +871,8 @@ class JS_PUBLIC_API(AutoGCRooter)
 
     /* Implemented in gc/RootMarking.cpp. */
     inline void trace(JSTracer* trc);
-    static void traceAll(const js::CooperatingContext& target, JSTracer* trc);
-    static void traceAllWrappers(const js::CooperatingContext& target, JSTracer* trc);
+    static void traceAll(JSContext* cx, JSTracer* trc);
+    static void traceAllWrappers(JSContext* cx, JSTracer* trc);
 
   protected:
     AutoGCRooter * const down;
@@ -895,7 +892,6 @@ class JS_PUBLIC_API(AutoGCRooter)
 #if defined(JS_BUILD_BINAST)
         BINPARSER =    -4, /* js::frontend::BinSource */
 #endif // defined(JS_BUILD_BINAST)
-        IONMASM =     -19, /* js::jit::MacroAssembler */
         WRAPVECTOR =  -20, /* js::AutoWrapperVector */
         WRAPPER =     -21, /* js::AutoWrapperRooter */
         CUSTOM =      -26  /* js::CustomAutoRooter */

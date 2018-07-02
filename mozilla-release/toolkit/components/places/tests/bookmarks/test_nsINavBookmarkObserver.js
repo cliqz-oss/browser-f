@@ -48,7 +48,7 @@ var gBookmarksObserver = {
   },
 
   // nsISupports
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsINavBookmarkObserver]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsINavBookmarkObserver]),
 };
 
 var gBookmarkSkipObserver = {
@@ -92,32 +92,13 @@ var gBookmarkSkipObserver = {
   },
 
   // nsISupports
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsINavBookmarkObserver]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsINavBookmarkObserver]),
 };
 
 
 add_task(function setup() {
   PlacesUtils.bookmarks.addObserver(gBookmarksObserver);
   PlacesUtils.bookmarks.addObserver(gBookmarkSkipObserver);
-});
-
-add_task(async function batch() {
-  let promise = Promise.all([
-    gBookmarksObserver.setup([
-      { name: "onBeginUpdateBatch",
-       args: [] },
-      { name: "onEndUpdateBatch",
-       args: [] },
-    ]),
-    gBookmarkSkipObserver.setup([
-      "onBeginUpdateBatch", "onEndUpdateBatch"
-  ])]);
-  PlacesUtils.bookmarks.runInBatchMode({
-    runBatched() {
-      // Nothing.
-    }
-  }, null);
-  await promise;
 });
 
 add_task(async function onItemAdded_bookmark() {

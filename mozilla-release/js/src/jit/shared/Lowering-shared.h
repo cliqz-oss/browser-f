@@ -22,7 +22,7 @@ class MDefinition;
 class MInstruction;
 class LOsiPoint;
 
-class LIRGeneratorShared : public MDefinitionVisitor
+class LIRGeneratorShared
 {
   protected:
     MIRGenerator* gen;
@@ -33,7 +33,6 @@ class LIRGeneratorShared : public MDefinitionVisitor
     LRecoverInfo* cachedRecoverInfo_;
     LOsiPoint* osiPoint_;
 
-  public:
     LIRGeneratorShared(MIRGenerator* gen, MIRGraph& graph, LIRGraph& lirGraph)
       : gen(gen),
         graph(graph),
@@ -63,8 +62,6 @@ class LIRGeneratorShared : public MDefinitionVisitor
         gen->setOffThreadStatus(reason_);
     }
 
-  protected:
-
     static void ReorderCommutative(MDefinition** lhsp, MDefinition** rhsp, MInstruction* ins);
     static bool ShouldReorderCommutative(MDefinition* lhs, MDefinition* rhs, MInstruction* ins);
 
@@ -82,6 +79,8 @@ class LIRGeneratorShared : public MDefinitionVisitor
     // The lowest-level calls to use, those that do not wrap another call to
     // use(), must prefix grabbing virtual register IDs by these calls.
     inline void ensureDefined(MDefinition* mir);
+
+    void visitEmittedAtUses(MInstruction* ins);
 
     // These all create a use of a virtual register, with an optional
     // allocation policy.
@@ -279,7 +278,6 @@ class LIRGeneratorShared : public MDefinitionVisitor
     void assignSafepoint(LInstruction* ins, MInstruction* mir,
                          BailoutKind kind = Bailout_DuringVMCall);
 
-  public:
     void lowerConstantDouble(double d, MInstruction* mir) {
         define(new(alloc()) LDouble(d), mir);
     }
@@ -287,29 +285,11 @@ class LIRGeneratorShared : public MDefinitionVisitor
         define(new(alloc()) LFloat32(f), mir);
     }
 
-    void visitConstant(MConstant* ins) override;
-    void visitWasmFloatConstant(MWasmFloatConstant* ins) override;
-
+  public:
     // Whether to generate typed reads for element accesses with hole checks.
     static bool allowTypedElementHoleCheck() {
         return false;
     }
-
-    // Provide NYI default implementations of the SIMD visitor functions.
-    // Many targets don't implement SIMD at all, and we don't want to duplicate
-    // these stubs in the specific sub-classes.
-    // Some SIMD visitors are implemented in LIRGenerator in Lowering.cpp. These
-    // shared implementations are not included here.
-    void visitSimdInsertElement(MSimdInsertElement*) override { MOZ_CRASH("NYI"); }
-    void visitSimdExtractElement(MSimdExtractElement*) override { MOZ_CRASH("NYI"); }
-    void visitSimdBinaryArith(MSimdBinaryArith*) override { MOZ_CRASH("NYI"); }
-    void visitSimdSelect(MSimdSelect*) override { MOZ_CRASH("NYI"); }
-    void visitSimdSplat(MSimdSplat*) override { MOZ_CRASH("NYI"); }
-    void visitSimdValueX4(MSimdValueX4*) override { MOZ_CRASH("NYI"); }
-    void visitSimdBinarySaturating(MSimdBinarySaturating*) override { MOZ_CRASH("NYI"); }
-    void visitSimdSwizzle(MSimdSwizzle*) override { MOZ_CRASH("NYI"); }
-    void visitSimdShuffle(MSimdShuffle*) override { MOZ_CRASH("NYI"); }
-    void visitSimdGeneralShuffle(MSimdGeneralShuffle*) override { MOZ_CRASH("NYI"); }
 };
 
 } // namespace jit

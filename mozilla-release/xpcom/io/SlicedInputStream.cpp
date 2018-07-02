@@ -6,6 +6,7 @@
 
 #include "SlicedInputStream.h"
 #include "mozilla/ipc/InputStreamUtils.h"
+#include "mozilla/ScopeExit.h"
 #include "nsISeekableStream.h"
 #include "nsStreamUtils.h"
 
@@ -43,6 +44,7 @@ SlicedInputStream::SlicedInputStream(already_AddRefed<nsIInputStream> aInputStre
   , mClosed(false)
   , mAsyncWaitFlags(0)
   , mAsyncWaitRequestedCount(0)
+  , mMutex("SlicedInputStream::mMutex")
 {
   nsCOMPtr<nsIInputStream> inputStream = mozilla::Move(aInputStream);
   SetSourceStream(inputStream.forget());
@@ -59,6 +61,7 @@ SlicedInputStream::SlicedInputStream()
   , mClosed(false)
   , mAsyncWaitFlags(0)
   , mAsyncWaitRequestedCount(0)
+  , mMutex("SlicedInputStream::mMutex")
 {}
 
 SlicedInputStream::~SlicedInputStream()
@@ -270,39 +273,44 @@ SlicedInputStream::AsyncWait(nsIInputStreamCallback* aCallback,
   NS_ENSURE_STATE(mInputStream);
   NS_ENSURE_STATE(mWeakAsyncInputStream);
 
-  if (mAsyncWaitCallback && aCallback) {
-    return NS_ERROR_FAILURE;
-  }
+  nsCOMPtr<nsIInputStreamCallback> callback = aCallback ? this : nullptr;
 
-  mAsyncWaitCallback = aCallback;
+  uint32_t flags = aFlags;
+  uint32_t requestedCount = aRequestedCount;
 
-  if (!mAsyncWaitCallback) {
-    return NS_OK;
-  }
+  {
+    MutexAutoLock lock(mMutex);
 
-  // If we haven't started retrieving data, let's see if we can seek.
-  // If we cannot seek, we will do consecutive reads.
-  if (mCurPos < mStart && mWeakSeekableInputStream) {
-    nsresult rv =
-      mWeakSeekableInputStream->Seek(nsISeekableStream::NS_SEEK_SET, mStart);
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return rv;
+    if (mAsyncWaitCallback && aCallback) {
+      return NS_ERROR_FAILURE;
     }
 
-    mCurPos = mStart;
+    mAsyncWaitCallback = aCallback;
+
+    // If we haven't started retrieving data, let's see if we can seek.
+    // If we cannot seek, we will do consecutive reads.
+    if (mCurPos < mStart && mWeakSeekableInputStream) {
+      nsresult rv =
+        mWeakSeekableInputStream->Seek(nsISeekableStream::NS_SEEK_SET, mStart);
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        return rv;
+      }
+
+      mCurPos = mStart;
+    }
+
+    mAsyncWaitFlags = aFlags;
+    mAsyncWaitRequestedCount = aRequestedCount;
+    mAsyncWaitEventTarget = aEventTarget;
+
+    // If we are not at the right position, let's do an asyncWait just internal.
+    if (mCurPos < mStart) {
+      flags = 0;
+      requestedCount = mStart - mCurPos;
+    }
   }
 
-  mAsyncWaitFlags = aFlags;
-  mAsyncWaitRequestedCount = aRequestedCount;
-  mAsyncWaitEventTarget = aEventTarget;
-
-  // If we are not at the right position, let's do an asyncWait just internal.
-  if (mCurPos < mStart) {
-    return mWeakAsyncInputStream->AsyncWait(this, 0, mStart - mCurPos,
-                                            aEventTarget);
-  }
-
-  return mWeakAsyncInputStream->AsyncWait(this, aFlags, aRequestedCount,
+  return mWeakAsyncInputStream->AsyncWait(callback, flags, requestedCount,
                                           aEventTarget);
 }
 
@@ -315,52 +323,77 @@ SlicedInputStream::OnInputStreamReady(nsIAsyncInputStream* aStream)
   MOZ_ASSERT(mWeakAsyncInputStream);
   MOZ_ASSERT(mWeakAsyncInputStream == aStream);
 
-  // We have been canceled in the meanwhile.
-  if (!mAsyncWaitCallback) {
-    return NS_OK;
-  }
+  nsCOMPtr<nsIInputStreamCallback> callback;
+  uint32_t asyncWaitFlags = 0;
+  uint32_t asyncWaitRequestedCount = 0;
+  nsCOMPtr<nsIEventTarget> asyncWaitEventTarget;
 
-  if (mCurPos < mStart) {
-    char buf[4096];
-    while (mCurPos < mStart) {
-      uint32_t bytesRead;
-      uint64_t bufCount = XPCOM_MIN(mStart - mCurPos, (uint64_t)sizeof(buf));
-      nsresult rv = mInputStream->Read(buf, bufCount, &bytesRead);
-      if (NS_SUCCEEDED(rv) && bytesRead == 0) {
-        mClosed = true;
-        return RunAsyncWaitCallback();
-      }
+  {
+    MutexAutoLock lock(mMutex);
 
-      if (rv == NS_BASE_STREAM_WOULD_BLOCK) {
-        return mWeakAsyncInputStream->AsyncWait(this, 0, mStart - mCurPos,
-                                                mAsyncWaitEventTarget);
-      }
-
-      if (NS_WARN_IF(NS_FAILED(rv))) {
-        return RunAsyncWaitCallback();
-      }
-
-      mCurPos += bytesRead;
+    // We have been canceled in the meanwhile.
+    if (!mAsyncWaitCallback) {
+      return NS_OK;
     }
 
-    // Now we are ready to do the 'real' asyncWait.
-    return mWeakAsyncInputStream->AsyncWait(this, mAsyncWaitFlags,
-                                            mAsyncWaitRequestedCount,
-                                            mAsyncWaitEventTarget);
+    auto raii = MakeScopeExit([&] {
+      mMutex.AssertCurrentThreadOwns();
+      mAsyncWaitCallback = nullptr;
+      mAsyncWaitEventTarget = nullptr;
+    });
+
+    asyncWaitFlags = mAsyncWaitFlags;
+    asyncWaitRequestedCount = mAsyncWaitRequestedCount;
+    asyncWaitEventTarget = mAsyncWaitEventTarget;
+
+    // If at the end of this locked block, the callback is not null, it will be
+    // executed, otherwise, we are going to exec another AsyncWait().
+    callback = mAsyncWaitCallback;
+
+    if (mCurPos < mStart) {
+      char buf[4096];
+      nsresult rv = NS_OK;
+      while (mCurPos < mStart) {
+        uint32_t bytesRead;
+        uint64_t bufCount = XPCOM_MIN(mStart - mCurPos, (uint64_t)sizeof(buf));
+        rv = mInputStream->Read(buf, bufCount, &bytesRead);
+        if (NS_SUCCEEDED(rv) && bytesRead == 0) {
+          mClosed = true;
+          break;
+        }
+
+        if (rv == NS_BASE_STREAM_WOULD_BLOCK) {
+          asyncWaitFlags = 0;
+          asyncWaitRequestedCount = mStart - mCurPos;
+          // Here we want to exec another AsyncWait().
+          callback = nullptr;
+          break;
+        }
+
+        if (NS_WARN_IF(NS_FAILED(rv))) {
+          break;
+        }
+
+        mCurPos += bytesRead;
+      }
+
+      // Now we are ready to do the 'real' asyncWait.
+      if (mCurPos >= mStart) {
+        // We don't want to nullify the callback now, because it will be needed
+        // at the next ::OnInputStreamReady.
+        raii.release();
+        callback = nullptr;
+      }
+    }
   }
 
-  return RunAsyncWaitCallback();
-}
+  if (callback) {
+    return callback->OnInputStreamReady(this);
+  }
 
-nsresult
-SlicedInputStream::RunAsyncWaitCallback()
-{
-  nsCOMPtr<nsIInputStreamCallback> callback = mAsyncWaitCallback;
-
-  mAsyncWaitCallback = nullptr;
-  mAsyncWaitEventTarget = nullptr;
-
-  return callback->OnInputStreamReady(this);
+  return mWeakAsyncInputStream->AsyncWait(this, asyncWaitFlags,
+                                          asyncWaitRequestedCount,
+                                          asyncWaitEventTarget);
 }
 
 // nsIIPCSerializableInputStream

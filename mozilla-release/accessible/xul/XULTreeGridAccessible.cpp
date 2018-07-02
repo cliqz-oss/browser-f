@@ -20,8 +20,10 @@
 #include "nsIPersistentProperties2.h"
 #include "nsITreeSelection.h"
 #include "nsComponentManagerUtils.h"
+#include "mozilla/dom/Element.h"
 
 using namespace mozilla::a11y;
+using namespace mozilla;
 
 XULTreeGridAccessible::~XULTreeGridAccessible()
 {
@@ -495,20 +497,22 @@ XULTreeGridCellAccessible::Name(nsString& aName)
 }
 
 nsIntRect
-XULTreeGridCellAccessible::Bounds() const
+XULTreeGridCellAccessible::BoundsInCSSPixels() const
 {
   // Get bounds for tree cell and add x and y of treechildren element to
   // x and y of the cell.
   nsCOMPtr<nsIBoxObject> boxObj = nsCoreUtils::GetTreeBodyBoxObject(mTree);
-  if (!boxObj)
+  if (!boxObj) {
     return nsIntRect();
+  }
 
   int32_t x = 0, y = 0, width = 0, height = 0;
   nsresult rv = mTree->GetCoordsForCellItem(mRow, mColumn,
                                             NS_LITERAL_STRING("cell"),
                                             &x, &y, &width, &height);
-  if (NS_FAILED(rv))
+  if (NS_FAILED(rv)) {
     return nsIntRect();
+  }
 
   int32_t tcX = 0, tcY = 0;
   boxObj->GetScreenX(&tcX);
@@ -516,11 +520,18 @@ XULTreeGridCellAccessible::Bounds() const
   x += tcX;
   y += tcY;
 
+  return nsIntRect(x, y, width, height);
+}
+
+nsRect
+XULTreeGridCellAccessible::BoundsInAppUnits() const
+{
+  nsIntRect bounds = BoundsInCSSPixels();
   nsPresContext* presContext = mDoc->PresContext();
-  return nsIntRect(presContext->CSSPixelsToDevPixels(x),
-                   presContext->CSSPixelsToDevPixels(y),
-                   presContext->CSSPixelsToDevPixels(width),
-                   presContext->CSSPixelsToDevPixels(height));
+  return nsRect(presContext->CSSPixelsToAppUnits(bounds.X()),
+                presContext->CSSPixelsToAppUnits(bounds.Y()),
+                presContext->CSSPixelsToAppUnits(bounds.Width()),
+                presContext->CSSPixelsToAppUnits(bounds.Height()));
 }
 
 uint8_t
@@ -622,11 +633,10 @@ XULTreeGridCellAccessible::RowIdx() const
 void
 XULTreeGridCellAccessible::ColHeaderCells(nsTArray<Accessible*>* aHeaderCells)
 {
-  nsCOMPtr<nsIDOMElement> columnElm;
+  RefPtr<dom::Element> columnElm;
   mColumn->GetElement(getter_AddRefs(columnElm));
 
-  nsCOMPtr<nsIContent> columnContent(do_QueryInterface(columnElm));
-  Accessible* headerCell = mDoc->GetAccessible(columnContent);
+  Accessible* headerCell = mDoc->GetAccessible(columnElm);
   if (headerCell)
     aHeaderCells->AppendElement(headerCell);
 }
@@ -817,16 +827,15 @@ XULTreeGridCellAccessible::IsEditable() const
   if (NS_FAILED(rv) || !isEditable)
     return false;
 
-  nsCOMPtr<nsIDOMElement> columnElm;
+  RefPtr<dom::Element> columnElm;
   mColumn->GetElement(getter_AddRefs(columnElm));
   if (!columnElm)
     return false;
 
-  nsCOMPtr<Element> columnContent(do_QueryInterface(columnElm));
-  if (!columnContent->AttrValueIs(kNameSpaceID_None,
-                                  nsGkAtoms::editable,
-                                  nsGkAtoms::_true,
-                                  eCaseMatters))
+  if (!columnElm->AttrValueIs(kNameSpaceID_None,
+                              nsGkAtoms::editable,
+                              nsGkAtoms::_true,
+                              eCaseMatters))
     return false;
 
   return mContent->AsElement()->AttrValueIs(kNameSpaceID_None,

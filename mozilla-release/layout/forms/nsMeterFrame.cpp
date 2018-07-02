@@ -20,11 +20,6 @@
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/HTMLMeterElement.h"
 #include "nsCSSPseudoElements.h"
-#ifdef MOZ_OLD_STYLE
-#include "nsStyleSet.h"
-#endif
-#include "mozilla/StyleSetHandle.h"
-#include "mozilla/StyleSetHandleInlines.h"
 #include "nsThemeConstants.h"
 #include <algorithm>
 
@@ -33,15 +28,15 @@ using mozilla::dom::Element;
 using mozilla::dom::HTMLMeterElement;
 
 nsIFrame*
-NS_NewMeterFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewMeterFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsMeterFrame(aContext);
+  return new (aPresShell) nsMeterFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsMeterFrame)
 
-nsMeterFrame::nsMeterFrame(nsStyleContext* aContext)
-  : nsContainerFrame(aContext, kClassID)
+nsMeterFrame::nsMeterFrame(ComputedStyle* aStyle)
+  : nsContainerFrame(aStyle, kClassID)
   , mBarDiv(nullptr)
 {
 }

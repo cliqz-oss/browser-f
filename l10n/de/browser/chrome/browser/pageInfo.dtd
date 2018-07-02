@@ -81,6 +81,9 @@
 <!ENTITY  securityView.privacy.cookies                  "Speichert diese Website Daten (Cookies) auf meinem Computer?">
 <!ENTITY  securityView.privacy.viewCookies              "Cookies anzeigen">
 <!ENTITY  securityView.privacy.viewCookies.accessKey    "k">
+<!ENTITY  securityView.privacy.siteData                 "Speichert diese Website Daten auf meinem Computer?">
+<!ENTITY  securityView.privacy.clearSiteData            "Cookies und Website-Daten löschen">
+<!ENTITY  securityView.privacy.clearSiteData.accessKey  "C">
 <!ENTITY  securityView.privacy.passwords                "Habe ich Passwörter für diese Website gespeichert?">
 <!ENTITY  securityView.privacy.viewPasswords            "Gespeicherte Passwörter anzeigen">
 <!ENTITY  securityView.privacy.viewPasswords.accessKey  "G">

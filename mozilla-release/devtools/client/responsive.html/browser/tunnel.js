@@ -448,7 +448,7 @@ MessageManagerTunnel.prototype = {
 
   OUTER_TO_INNER_FRAME_SCRIPTS: [
     // DevTools server for OOP frames
-    "resource://devtools/server/child.js"
+    "resource://devtools/server/startup/frame.js"
   ],
 
   get outer() {
@@ -553,6 +553,15 @@ MessageManagerTunnel.prototype = {
       debug("Outer messageManager has closed");
       this.destroy();
     }
+  },
+
+  /**
+   * Expose the inner frame's value for `processMessageManager`.  This is done mainly to
+   * allow Browser Content Toolbox (which needs to find a tab's process) to work for RDM
+   * tabs.  (The property is quite rarely used in general.)
+   */
+  get processMessageManager() {
+    return this.innerParentMM.processMessageManager;
   },
 
   loadFrameScript(url, ...args) {

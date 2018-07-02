@@ -31,16 +31,9 @@ let overrider = new GlobalOverrider();
 describe("SnippetsFeed", () => {
   let sandbox;
   let clock;
-  let fakeDB;
   beforeEach(() => {
     clock = sinon.useFakeTimers();
     sandbox = sinon.sandbox.create();
-    fakeDB = {
-      objectStore: sandbox.stub().returns({
-        get: sandbox.stub().returns(Promise.resolve()),
-        set: sandbox.stub().returns(Promise.resolve())
-      })
-    };
     overrider.set({
       ProfileAge: class ProfileAge {
         constructor() {
@@ -49,16 +42,7 @@ describe("SnippetsFeed", () => {
         }
       },
       FxAccounts: {config: {promiseSignUpURI: sandbox.stub().returns(Promise.resolve(signUpUrl))}},
-      NewTabUtils: {activityStreamProvider: {getTotalBookmarksCount: () => Promise.resolve(42)}},
-      ActivityStreamStorage: class ActivityStreamStorage {
-        constructor() {
-          this.init = sandbox.stub.callsFake(Promise.resolve());
-        }
-        init() {
-          return Promise.resolve();
-        }
-      },
-      IndexedDB: {open: () => Promise.resolve(fakeDB)}
+      NewTabUtils: {activityStreamProvider: {getTotalBookmarksCount: () => Promise.resolve(42)}}
     });
   });
   afterEach(() => {
@@ -81,22 +65,30 @@ describe("SnippetsFeed", () => {
       .withArgs("devtools.selfxss.count")
       .returns(5);
     sandbox.stub(global.AddonManager, "getActiveAddons")
-      .returns(Promise.resolve({
+      .resolves({
         addons: [
           Object.assign({id: "foo"}, FAKE_ADDONS.foo),
           Object.assign({id: "bar"}, FAKE_ADDONS.bar)
         ],
         fullData: true
-      }));
+      });
 
+    const getStub = sandbox.stub();
+    getStub.withArgs("previousSessionEnd").resolves(42);
+    getStub.withArgs("blockList").resolves([1]);
     const feed = new SnippetsFeed();
-    feed.store = {dispatch: sandbox.stub()};
+    feed.store = {
+      dispatch: sandbox.stub(),
+      dbStorage: {getDbTable: sandbox.stub().returns({get: getStub})}
+    };
 
     clock.tick(WEEK_IN_MS * 2);
 
     await feed.init();
 
     assert.calledOnce(feed.store.dispatch);
+    assert.calledOnce(feed.store.dbStorage.getDbTable);
+    assert.calledWithExactly(feed.store.dbStorage.getDbTable, "snippets");
 
     const [action] = feed.store.dispatch.firstCall.args;
     assert.propertyVal(action, "type", at.SNIPPETS_DATA);
@@ -113,6 +105,8 @@ describe("SnippetsFeed", () => {
     assert.propertyVal(action.data, "defaultBrowser", true);
     assert.propertyVal(action.data, "isDevtoolsUser", true);
     assert.deepEqual(action.data.addonInfo, FAKE_ADDONS);
+    assert.deepEqual(action.data.blockList, [1]);
+    assert.propertyVal(action.data, "previousSessionEnd", 42);
   });
   it("should call .init on an INIT action", () => {
     const feed = new SnippetsFeed();
@@ -125,7 +119,6 @@ describe("SnippetsFeed", () => {
   it("should call .uninit on an UNINIT action", () => {
     const feed = new SnippetsFeed();
     sandbox.stub(feed, "uninit");
-    feed.store = {dispatch: sandbox.stub()};
 
     feed.onAction({type: at.UNINIT});
     assert.calledOnce(feed.uninit);
@@ -133,6 +126,7 @@ describe("SnippetsFeed", () => {
   it("should broadcast a SNIPPETS_RESET on uninit", () => {
     const feed = new SnippetsFeed();
     feed.store = {dispatch: sandbox.stub()};
+    feed._storage = {set: sandbox.stub()};
 
     feed.uninit();
 
@@ -140,15 +134,14 @@ describe("SnippetsFeed", () => {
   });
   it("should update the blocklist on SNIPPETS_BLOCKLIST_UPDATED", async () => {
     const feed = new SnippetsFeed();
-    const saveBlockList = sandbox.stub(feed._storage, "set");
-    sandbox.stub(feed._storage, "get").returns(["bar"]);
     feed.store = {dispatch: sandbox.stub()};
+    feed._storage = {set: sandbox.stub(), get: sandbox.stub().returns(["bar"])};
 
     await feed._saveBlockedSnippet("foo");
 
-    assert.calledOnce(saveBlockList);
-    assert.equal(saveBlockList.args[0][0], "blockList");
-    assert.deepEqual(saveBlockList.args[0][1], ["bar", "foo"]);
+    assert.calledOnce(feed._storage.set);
+    assert.equal(feed._storage.set.args[0][0], "blockList");
+    assert.deepEqual(feed._storage.set.args[0][1], ["bar", "foo"]);
   });
   it("should broadcast a SNIPPET_BLOCKED when a SNIPPETS_BLOCKLIST_UPDATED is received", () => {
     const feed = new SnippetsFeed();
@@ -168,12 +161,12 @@ describe("SnippetsFeed", () => {
   });
   it("should set blockList to [] on SNIPPETS_BLOCKLIST_CLEARED", async () => {
     const feed = new SnippetsFeed();
-    const stub = sandbox.stub(feed._storage, "set");
+    feed._storage = {set: sandbox.stub()};
 
     await feed._clearBlockList();
 
-    assert.calledOnce(stub);
-    assert.calledWithExactly(stub, "blockList", []);
+    assert.calledOnce(feed._storage.set);
+    assert.calledWithExactly(feed._storage.set, "blockList", []);
   });
   it("should dispatch an update event when the Search observer is called", async () => {
     const feed = new SnippetsFeed();
@@ -203,10 +196,10 @@ describe("SnippetsFeed", () => {
   });
   it("should call .getTotalBookmarksCount when TOTAL_BOOKMARKS_REQUEST is received", async () => {
     const feed = new SnippetsFeed();
-    const browser = {};
+    const portId = "1234";
     sandbox.spy(feed, "getTotalBookmarksCount");
-    feed.onAction({type: at.TOTAL_BOOKMARKS_REQUEST, _target: {browser}});
-    assert.calledWith(feed.getTotalBookmarksCount, browser);
+    feed.onAction({type: at.TOTAL_BOOKMARKS_REQUEST, meta: {fromTarget: portId}});
+    assert.calledWith(feed.getTotalBookmarksCount, portId);
   });
   it("should dispatch a TOTAL_BOOKMARKS_RESPONSE action when .getTotalBookmarksCount is called", async () => {
     const feed = new SnippetsFeed();
@@ -245,5 +238,16 @@ describe("SnippetsFeed", () => {
     const feed = new SnippetsFeed();
     const result = feed.isDevtoolsUser();
     assert.isFalse(result);
+  });
+  it("should set _previousSessionEnd on uninit", async () => {
+    const feed = new SnippetsFeed();
+    feed.store = {dispatch: sandbox.stub()};
+    feed._storage = {set: sandbox.stub()};
+    feed._previousSessionEnd = null;
+
+    feed.uninit();
+
+    assert.calledOnce(feed._storage.set);
+    assert.calledWithExactly(feed._storage.set, "previousSessionEnd", Date.now());
   });
 });

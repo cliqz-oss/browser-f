@@ -462,9 +462,17 @@ public class GeckoPreferences
     }
 
     @TargetApi(11)
-    public void switchToHeader(int id) {
+    public void trySwitchToHeader(int id) {
+        /**
+         * Can't switch to an unknown header.
+         * See {@link GeckoPreferenceFragment#getHeader()}
+         */
+        if (id == GeckoPreferenceFragment.HEADER_ID_UNDEFINED) {
+            return;
+        }
+
+        // Can't switch to a header if there are no headers!
         if (mHeaders == null) {
-            // Can't switch to a header if there are no headers!
             return;
         }
 
@@ -881,8 +889,8 @@ public class GeckoPreferences
         return super.onOptionsItemSelected(item);
     }
 
-    final private int DIALOG_CREATE_MASTER_PASSWORD = 0;
-    final private int DIALOG_REMOVE_MASTER_PASSWORD = 1;
+    private static final int DIALOG_CREATE_MASTER_PASSWORD = 0;
+    private static final int DIALOG_REMOVE_MASTER_PASSWORD = 1;
 
     public static void setCharEncodingState(boolean enabled) {
         sIsCharEncodingEnabled = enabled;

@@ -9,11 +9,12 @@
 #include "mozilla/DebugOnly.h"
 #include "mozilla/EndianUtils.h"
 
+#include <type_traits>
+
 #include "jit/JitSpewer.h"
 #include "jit/LIR.h"
 #include "jit/MIR.h"
 #include "jit/MIRGraph.h"
-#include "wasm/WasmSignalHandlers.h"
 
 #include "jit/shared/Lowering-shared-inl.h"
 #include "vm/BytecodeUtil-inl.h"
@@ -90,52 +91,9 @@ LIRGenerator::visitIsConstructing(MIsConstructing* ins)
     define(new(alloc()) LIsConstructing(), ins);
 }
 
-static void
-TryToUseImplicitInterruptCheck(MIRGraph& graph, MBasicBlock* backedge)
-{
-    // Implicit interrupt checks require wasm signal handlers to be installed.
-    if (!wasm::HaveSignalHandlers() || JitOptions.ionInterruptWithoutSignals)
-        return;
-
-    // To avoid triggering expensive interrupts (backedge patching) in
-    // requestMajorGC and requestMinorGC, use an implicit interrupt check only
-    // if the loop body can not trigger GC or affect GC state like the store
-    // buffer. We do this by checking there are no safepoints attached to LIR
-    // instructions inside the loop.
-
-    MBasicBlockIterator block = graph.begin(backedge->loopHeaderOfBackedge());
-    LInterruptCheck* check = nullptr;
-    while (true) {
-        LBlock* lir = block->lir();
-        for (LInstructionIterator iter = lir->begin(); iter != lir->end(); iter++) {
-            if (iter->isInterruptCheck()) {
-                if (!check) {
-                    MOZ_ASSERT(*block == backedge->loopHeaderOfBackedge());
-                    check = iter->toInterruptCheck();
-                }
-                continue;
-            }
-
-            MOZ_ASSERT_IF(iter->isPostWriteBarrierO() || iter->isPostWriteBarrierV() || iter->isPostWriteBarrierS(),
-                          iter->safepoint());
-
-            if (iter->safepoint())
-                return;
-        }
-        if (*block == backedge)
-            break;
-        block++;
-    }
-
-    check->setImplicit();
-}
-
 void
 LIRGenerator::visitGoto(MGoto* ins)
 {
-    if (!gen->compilingWasm() && ins->block()->isLoopBackedge())
-        TryToUseImplicitInterruptCheck(graph, ins->block());
-
     add(new(alloc()) LGoto(ins->target()));
 }
 
@@ -183,7 +141,7 @@ LIRGenerator::visitTableSwitch(MTableSwitch* tableswitch)
 void
 LIRGenerator::visitCheckOverRecursed(MCheckOverRecursed* ins)
 {
-    LCheckOverRecursed* lir = new(alloc()) LCheckOverRecursed(temp());
+    LCheckOverRecursed* lir = new(alloc()) LCheckOverRecursed();
     add(lir, ins);
     assignSafepoint(lir, ins);
 }
@@ -2532,13 +2490,13 @@ LIRGenerator::visitBinarySharedStub(MBinarySharedStub* ins)
 }
 
 void
-LIRGenerator::visitUnarySharedStub(MUnarySharedStub* ins)
+LIRGenerator::visitUnaryCache(MUnaryCache* ins)
 {
     MDefinition* input = ins->getOperand(0);
     MOZ_ASSERT(ins->type() == MIRType::Value);
 
-    LUnarySharedStub* lir = new(alloc()) LUnarySharedStub(useBoxFixedAtStart(input, R0));
-    defineSharedStubReturn(lir, ins);
+    LUnaryCache* lir = new(alloc()) LUnaryCache(useBox(input));
+    defineBox(lir, ins);
     assignSafepoint(lir, ins);
 }
 
@@ -2732,9 +2690,16 @@ LIRGenerator::visitHomeObjectSuperBase(MHomeObjectSuperBase* ins)
 void
 LIRGenerator::visitInterruptCheck(MInterruptCheck* ins)
 {
-    LInstruction* lir = new(alloc()) LInterruptCheck(temp());
+    LInstruction* lir = new(alloc()) LInterruptCheck();
     add(lir, ins);
     assignSafepoint(lir, ins);
+}
+
+void
+LIRGenerator::visitWasmInterruptCheck(MWasmInterruptCheck* ins)
+{
+    auto* lir = new(alloc()) LWasmInterruptCheck(useRegisterAtStart(ins->tlsPtr()));
+    add(lir, ins);
 }
 
 void
@@ -4547,6 +4512,16 @@ LIRGenerator::visitHasClass(MHasClass* ins)
 }
 
 void
+LIRGenerator::visitGuardToClass(MGuardToClass* ins)
+{
+    MOZ_ASSERT(ins->object()->type() == MIRType::Object);
+    MOZ_ASSERT(ins->type() == MIRType::ObjectOrNull|| ins->type() == MIRType::Object);
+    LGuardToClass* lir = new(alloc()) LGuardToClass(useRegister(ins->object()), temp());
+    assignSnapshot(lir, Bailout_TypeBarrierO);
+    define(lir, ins);
+}
+
+void
 LIRGenerator::visitObjectClassToString(MObjectClassToString* ins)
 {
     MOZ_ASSERT(ins->object()->type() == MIRType::Object);
@@ -4617,16 +4592,17 @@ LIRGenerator::visitWasmAlignmentCheck(MWasmAlignmentCheck* ins)
 void
 LIRGenerator::visitWasmLoadGlobalVar(MWasmLoadGlobalVar* ins)
 {
+    LDefinition addrTemp = ins->isIndirect() ? temp() : LDefinition::BogusTemp();
     if (ins->type() == MIRType::Int64) {
 #ifdef JS_PUNBOX64
         LAllocation tlsPtr = useRegisterAtStart(ins->tlsPtr());
 #else
         LAllocation tlsPtr = useRegister(ins->tlsPtr());
 #endif
-        defineInt64(new(alloc()) LWasmLoadGlobalVarI64(tlsPtr), ins);
+        defineInt64(new(alloc()) LWasmLoadGlobalVarI64(tlsPtr, addrTemp), ins);
     } else {
         LAllocation tlsPtr = useRegisterAtStart(ins->tlsPtr());
-        define(new(alloc()) LWasmLoadGlobalVar(tlsPtr), ins);
+        define(new(alloc()) LWasmLoadGlobalVar(tlsPtr, addrTemp), ins);
     }
 }
 
@@ -4634,6 +4610,7 @@ void
 LIRGenerator::visitWasmStoreGlobalVar(MWasmStoreGlobalVar* ins)
 {
     MDefinition* value = ins->value();
+    LDefinition addrTemp = ins->isIndirect() ? temp() : LDefinition::BogusTemp();
     if (value->type() == MIRType::Int64) {
 #ifdef JS_PUNBOX64
         LAllocation tlsPtr = useRegisterAtStart(ins->tlsPtr());
@@ -4642,11 +4619,11 @@ LIRGenerator::visitWasmStoreGlobalVar(MWasmStoreGlobalVar* ins)
         LAllocation tlsPtr = useRegister(ins->tlsPtr());
         LInt64Allocation valueAlloc = useInt64Register(value);
 #endif
-        add(new(alloc()) LWasmStoreGlobalVarI64(valueAlloc, tlsPtr), ins);
+        add(new(alloc()) LWasmStoreGlobalVarI64(valueAlloc, tlsPtr, addrTemp), ins);
     } else {
         LAllocation tlsPtr = useRegisterAtStart(ins->tlsPtr());
         LAllocation valueAlloc = useRegisterAtStart(value);
-        add(new(alloc()) LWasmStoreGlobalVar(valueAlloc, tlsPtr), ins);
+        add(new(alloc()) LWasmStoreGlobalVar(valueAlloc, tlsPtr, addrTemp), ins);
     }
 }
 
@@ -5200,6 +5177,62 @@ LIRGenerator::visitGetPrototypeOf(MGetPrototypeOf* ins)
     assignSafepoint(lir, ins);
 }
 
+void
+LIRGenerator::visitConstant(MConstant* ins)
+{
+    if (!IsFloatingPointType(ins->type()) && ins->canEmitAtUses()) {
+        emitAtUses(ins);
+        return;
+    }
+
+    switch (ins->type()) {
+      case MIRType::Double:
+        define(new(alloc()) LDouble(ins->toDouble()), ins);
+        break;
+      case MIRType::Float32:
+        define(new(alloc()) LFloat32(ins->toFloat32()), ins);
+        break;
+      case MIRType::Boolean:
+        define(new(alloc()) LInteger(ins->toBoolean()), ins);
+        break;
+      case MIRType::Int32:
+        define(new(alloc()) LInteger(ins->toInt32()), ins);
+        break;
+      case MIRType::Int64:
+        defineInt64(new(alloc()) LInteger64(ins->toInt64()), ins);
+        break;
+      case MIRType::String:
+        define(new(alloc()) LPointer(ins->toString()), ins);
+        break;
+      case MIRType::Symbol:
+        define(new(alloc()) LPointer(ins->toSymbol()), ins);
+        break;
+      case MIRType::Object:
+        define(new(alloc()) LPointer(&ins->toObject()), ins);
+        break;
+      default:
+        // Constants of special types (undefined, null) should never flow into
+        // here directly. Operations blindly consuming them require a Box.
+        MOZ_CRASH("unexpected constant type");
+    }
+}
+
+void
+LIRGenerator::visitWasmFloatConstant(MWasmFloatConstant* ins)
+{
+    switch (ins->type()) {
+      case MIRType::Double:
+        define(new(alloc()) LDouble(ins->toDouble()), ins);
+        break;
+      case MIRType::Float32:
+        define(new(alloc()) LFloat32(ins->toFloat32()), ins);
+        break;
+      default:
+        MOZ_CRASH("unexpected constant type");
+    }
+}
+
+#ifdef JS_JITSPEW
 static void
 SpewResumePoint(MBasicBlock* block, MInstruction* ins, MResumePoint* resumePoint)
 {
@@ -5227,6 +5260,31 @@ SpewResumePoint(MBasicBlock* block, MInstruction* ins, MResumePoint* resumePoint
         out.printf("\n");
     }
 }
+#endif
+
+void
+LIRGenerator::visitInstructionDispatch(MInstruction* ins)
+{
+#ifdef JS_CODEGEN_NONE
+    // Don't compile the switch-statement below so that we don't have to define
+    // the platform-specific visit* methods for the none-backend.
+    MOZ_CRASH();
+#else
+    switch (ins->op()) {
+# define MIR_OP(op) case MDefinition::Opcode::op: visit##op(ins->to##op()); break;
+    MIR_OPCODE_LIST(MIR_OP)
+# undef MIR_OP
+      default:
+        MOZ_CRASH("Invalid instruction");
+    }
+#endif
+}
+
+void
+LIRGeneratorShared::visitEmittedAtUses(MInstruction* ins)
+{
+    static_cast<LIRGenerator*>(this)->visitInstructionDispatch(ins);
+}
 
 bool
 LIRGenerator::visitInstruction(MInstruction* ins)
@@ -5238,7 +5296,7 @@ LIRGenerator::visitInstruction(MInstruction* ins)
 
     if (!gen->ensureBallast())
         return false;
-    ins->accept(this);
+    visitInstructionDispatch(ins);
 
     if (ins->possiblyCalls()) {
         gen->setNeedsStaticStackAlignment();
@@ -5282,8 +5340,10 @@ void
 LIRGenerator::updateResumeState(MInstruction* ins)
 {
     lastResumePoint_ = ins->resumePoint();
+#ifdef JS_JITSPEW
     if (JitSpewEnabled(JitSpew_IonSnapshots) && lastResumePoint_)
         SpewResumePoint(nullptr, ins, lastResumePoint_);
+#endif
 }
 
 void
@@ -5301,8 +5361,10 @@ LIRGenerator::updateResumeState(MBasicBlock* block)
     MOZ_ASSERT_IF(block->unreachable(), block->graph().osrBlock() ||
                   !mir()->optimizationInfo().gvnEnabled());
     lastResumePoint_ = block->entryResumePoint();
+#ifdef JS_JITSPEW
     if (JitSpewEnabled(JitSpew_IonSnapshots) && lastResumePoint_)
         SpewResumePoint(block, nullptr, lastResumePoint_);
+#endif
 }
 
 bool
@@ -5436,3 +5498,6 @@ LIRGenerator::visitUnknownValue(MUnknownValue* ins)
 {
     MOZ_CRASH("Can not lower unknown value.");
 }
+
+static_assert(!std::is_polymorphic<LIRGenerator>::value,
+              "LIRGenerator should not have any virtual methods");

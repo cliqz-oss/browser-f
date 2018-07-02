@@ -12,8 +12,6 @@ const { Task } = require("devtools/shared/task");
 const gcli = require("gcli/index");
 const l10n = require("gcli/l10n");
 
-loader.lazyImporter(this, "NetUtil", "resource://gre/modules/NetUtil.jsm");
-
 const PREF_DIR = "devtools.commands.dir";
 
 /**
@@ -78,7 +76,7 @@ function loadItemsFromMozDir() {
   });
 }
 
-exports.mozDirLoader = function (name) {
+exports.mozDirLoader = function(name) {
   return loadItemsFromMozDir().then(items => {
     return { items };
   });
@@ -128,7 +126,7 @@ exports.items = [
     get hidden() {
       return !Services.prefs.prefHasUserValue(PREF_DIR);
     },
-    exec: function (args, context) {
+    exec: function(args, context) {
       gcli.load();
 
       let dirName = Services.prefs.getStringPref(PREF_DIR).trim();
@@ -158,7 +156,7 @@ exports.items = [
       // !Services.prefs.prefHasUserValue(PREF_DIR);
       return true;
     },
-    exec: function (args, context) {
+    exec: function(args, context) {
       Services.prefs.setStringPref(PREF_DIR, args.directory);
 
       gcli.load();

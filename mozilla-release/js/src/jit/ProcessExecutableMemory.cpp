@@ -20,6 +20,9 @@
 #include "jsutil.h"
 
 #include "gc/Memory.h"
+#ifdef JS_CODEGEN_ARM64
+# include "jit/arm64/vixl/Cpu-vixl.h"
+#endif
 #include "threading/LockGuard.h"
 #include "threading/Mutex.h"
 #include "util/Windows.h"
@@ -499,12 +502,13 @@ class ProcessExecutableMemory
                            uintptr_t(p) + bytes <= uintptr_t(base_) + MaxCodeBytesPerProcess);
     }
 
-    void* allocate(size_t bytes, ProtectionSetting protection);
+    void* allocate(size_t bytes, ProtectionSetting protection, MemCheckKind checkKind);
     void deallocate(void* addr, size_t bytes, bool decommit);
 };
 
 void*
-ProcessExecutableMemory::allocate(size_t bytes, ProtectionSetting protection)
+ProcessExecutableMemory::allocate(size_t bytes, ProtectionSetting protection,
+                                  MemCheckKind checkKind)
 {
     MOZ_ASSERT(initialized());
     MOZ_ASSERT(bytes > 0);
@@ -570,6 +574,8 @@ ProcessExecutableMemory::allocate(size_t bytes, ProtectionSetting protection)
         return nullptr;
     }
 
+    SetMemCheckKind(p, bytes, checkKind);
+
     return p;
 }
 
@@ -588,6 +594,7 @@ ProcessExecutableMemory::deallocate(void* addr, size_t bytes, bool decommit)
     size_t numPages = bytes / ExecutableCodePageSize;
 
     // Decommit before taking the lock.
+    MOZ_MAKE_MEM_NOACCESS(addr, bytes);
     if (decommit)
         DecommitPages(addr, bytes);
 
@@ -607,9 +614,9 @@ ProcessExecutableMemory::deallocate(void* addr, size_t bytes, bool decommit)
 static ProcessExecutableMemory execMemory;
 
 void*
-js::jit::AllocateExecutableMemory(size_t bytes, ProtectionSetting protection)
+js::jit::AllocateExecutableMemory(size_t bytes, ProtectionSetting protection, MemCheckKind checkKind)
 {
-    return execMemory.allocate(bytes, protection);
+    return execMemory.allocate(bytes, protection, checkKind);
 }
 
 void
@@ -621,6 +628,10 @@ js::jit::DeallocateExecutableMemory(void* addr, size_t bytes)
 bool
 js::jit::InitProcessExecutableMemory()
 {
+#ifdef JS_CODEGEN_ARM64
+    // Initialize instruction cache flushing.
+    vixl::CPU::SetUp();
+#endif
     return execMemory.init();
 }
 

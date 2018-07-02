@@ -89,13 +89,6 @@ var populateTree = async function populate(parentGuid, ...items) {
         throw new Error(`Unsupported item type: ${item.type}`);
     }
 
-    if (item.exclude) {
-      let itemId = await PlacesUtils.promiseItemId(guid);
-      PlacesUtils.annotations.setItemAnnotation(
-        itemId, PlacesUtils.EXCLUDE_FROM_BACKUP_ANNO, "Don't back this up", 0,
-        PlacesUtils.annotations.EXPIRE_NEVER);
-    }
-
     guids[item.title] = guid;
   }
 
@@ -1530,46 +1523,6 @@ add_task(async function test_insert_annos() {
 });
 
 add_task(async function test_insert_tag_query() {
-  let tagFolder = -1;
-
-  info("Insert tag query for new tag");
-  {
-    deepEqual(PlacesUtils.tagging.allTags, [], "New tag should not exist yet");
-    let query = await PlacesSyncUtils.bookmarks.insert({
-      kind: "query",
-      recordId: makeGuid(),
-      parentRecordId: "toolbar",
-      url: "place:type=7&folder=90",
-      folder: "taggy",
-      title: "Tagged stuff",
-    });
-    notEqual(query.url.href, "place:type=7&folder=90",
-      "Tag query URL for new tag should differ");
-
-    [, tagFolder] = /\bfolder=(\d+)\b/.exec(query.url.pathname);
-    ok(tagFolder > 0, "New tag query URL should contain valid folder");
-    deepEqual(PlacesUtils.tagging.allTags, ["taggy"], "New tag should exist");
-  }
-
-  info("Insert tag query for existing tag");
-  {
-    let url = "place:type=7&folder=90&maxResults=15";
-    let query = await PlacesSyncUtils.bookmarks.insert({
-      kind: "query",
-      url,
-      folder: "taggy",
-      title: "Sorted and tagged",
-      recordId: makeGuid(),
-      parentRecordId: "menu",
-    });
-    notEqual(query.url.href, url, "Tag query URL for existing tag should differ");
-    let params = new URLSearchParams(query.url.pathname);
-    equal(params.get("type"), "7", "Should preserve query type");
-    equal(params.get("maxResults"), "15", "Should preserve additional params");
-    equal(params.get("folder"), tagFolder, "Should update tag folder");
-    deepEqual(PlacesUtils.tagging.allTags, ["taggy"], "Should not duplicate existing tags");
-  }
-
   info("Use the public tagging API to ensure we added the tag correctly");
   await PlacesUtils.bookmarks.insert({
     parentGuid: PlacesUtils.bookmarks.menuGuid,
@@ -1579,7 +1532,47 @@ add_task(async function test_insert_tag_query() {
   });
   PlacesUtils.tagging.tagURI(uri("https://mozilla.org"), ["taggy"]);
   assertURLHasTags("https://mozilla.org/", ["taggy"],
-    "Should set tags using the tagging API");
+                   "Should set tags using the tagging API");
+
+  info("Insert tag query for non existing tag");
+  {
+    let query = await PlacesSyncUtils.bookmarks.insert({
+      kind: "query",
+      recordId: makeGuid(),
+      parentRecordId: "toolbar",
+      url: "place:type=7&folder=90",
+      folder: "nonexisting",
+      title: "Tagged stuff",
+    });
+    let params = new URLSearchParams(query.url.pathname);
+    ok(!params.has("type"), "Should not preserve query type");
+    ok(!params.has("folder"), "Should not preserve folder");
+    equal(params.get("tag"), "nonexisting", "Should add tag");
+    deepEqual(PlacesUtils.tagging.allTags, ["taggy"],
+              "The nonexisting tag should not be added");
+  }
+
+  info("Insert tag query for existing tag");
+  {
+    let url = "place:type=7&folder=90&maxResults=15";
+    let query = await PlacesSyncUtils.bookmarks.insert({
+      kind: "query",
+      recordId: makeGuid(),
+      parentRecordId: "menu",
+      url,
+      folder: "taggy",
+      title: "Sorted and tagged",
+    });
+    let params = new URLSearchParams(query.url.pathname);
+    ok(!params.get("type"), "Should not preserve query type");
+    ok(!params.has("folder"), "Should not preserve folder");
+    equal(params.get("maxResults"), "15", "Should preserve additional params");
+    equal(params.get("tag"), "taggy", "Should add tag");
+    deepEqual(PlacesUtils.tagging.allTags, ["taggy"],
+              "Should not duplicate existing tags");
+  }
+
+
 
   info("Removing the tag should clean up the tag folder");
   PlacesUtils.tagging.untagURI(uri("https://mozilla.org"), null);
@@ -1842,11 +1835,10 @@ add_task(async function test_fetch() {
     kind: "query",
     recordId: makeGuid(),
     parentRecordId: "toolbar",
-    url: "place:type=7&folder=90",
+    url: "place:tag=taggy",
     folder: "taggy",
     title: "Tagged stuff",
   });
-  let [, tagFolderId] = /\bfolder=(\d+)\b/.exec(tagQuery.url.pathname);
   let smartBmk = await PlacesSyncUtils.bookmarks.insert({
     kind: "query",
     recordId: makeGuid(),
@@ -1912,7 +1904,7 @@ add_task(async function test_fetch() {
     deepEqual(Object.keys(item).sort(), ["recordId", "kind", "parentRecordId",
       "url", "title", "folder", "parentTitle", "dateAdded"].sort(),
       "Should include query-specific properties");
-    equal(item.url.href, `place:type=7&folder=${tagFolderId}`, "Should not rewrite outgoing tag queries");
+    equal(item.url.href, `place:tag=taggy`, "Should not rewrite outgoing tag queries");
     equal(item.folder, "taggy", "Should return tag name for tag queries");
   }
 
@@ -2025,7 +2017,7 @@ add_task(async function test_pullChanges_import_html() {
 
   info("Import new bookmarks from HTML");
   let { path } = do_get_file("./sync_utils_bookmarks.html");
-  await BookmarkHTMLUtils.importFromFile(path, false);
+  await BookmarkHTMLUtils.importFromFile(path);
 
   // Bookmarks.html doesn't store IDs, so we need to look these up.
   let mozBmk = await PlacesUtils.bookmarks.fetch({
@@ -2087,7 +2079,7 @@ add_task(async function test_pullChanges_import_json() {
 
   info("Import new bookmarks from JSON");
   let { path } = do_get_file("./sync_utils_bookmarks.json");
-  await BookmarkJSONUtils.importFromFile(path, false);
+  await BookmarkJSONUtils.importFromFile(path);
   {
     let fields = await PlacesTestUtils.fetchBookmarkSyncFields(
       syncedFolder.guid, "NnvGl3CRA4hC", "APzP8MupzA8l");
@@ -2154,13 +2146,13 @@ add_task(async function test_pullChanges_restore_json_tracked() {
 
   info("Restore from JSON, replacing existing items");
   let { path } = do_get_file("./sync_utils_bookmarks.json");
-  await BookmarkJSONUtils.importFromFile(path, true);
+  await BookmarkJSONUtils.importFromFile(path, { replace: true });
   {
     let fields = await PlacesTestUtils.fetchBookmarkSyncFields(
       "NnvGl3CRA4hC", "APzP8MupzA8l");
     ok(fields.every(field =>
-      field.syncStatus == PlacesUtils.bookmarks.SYNC_STATUS.UNKNOWN
-    ), "All bookmarks should be UNKNOWN after restoring from JSON");
+      field.syncStatus == PlacesUtils.bookmarks.SYNC_STATUS.NEW
+    ), "All bookmarks should be NEW after restoring from JSON");
   }
 
   info("Fetch new items restored from JSON");
@@ -2171,7 +2163,6 @@ add_task(async function test_pullChanges_restore_json_tracked() {
       "toolbar",
       "unfiled",
       "mobile",
-      syncedFolder.guid, // Tombstone.
       "NnvGl3CRA4hC",
       "APzP8MupzA8l",
     ].sort(), "Should restore items from JSON backup");
@@ -2180,18 +2171,13 @@ add_task(async function test_pullChanges_restore_json_tracked() {
       PlacesUtils.bookmarks.menuGuid, PlacesUtils.bookmarks.toolbarGuid,
       PlacesUtils.bookmarks.unfiledGuid, PlacesUtils.bookmarks.mobileGuid,
       "NnvGl3CRA4hC", "APzP8MupzA8l");
-    deepEqual(existingFields.map(field => field.syncStatus), [
-      PlacesUtils.bookmarks.SYNC_STATUS.NORMAL,
-      PlacesUtils.bookmarks.SYNC_STATUS.NORMAL,
-      PlacesUtils.bookmarks.SYNC_STATUS.NORMAL,
-      PlacesUtils.bookmarks.SYNC_STATUS.NORMAL,
-      PlacesUtils.bookmarks.SYNC_STATUS.UNKNOWN,
-      PlacesUtils.bookmarks.SYNC_STATUS.UNKNOWN,
-    ], "Pulling items restored from JSON backup should not mark them as syncing");
+    ok(existingFields.every(field =>
+      field.syncStatus == PlacesUtils.bookmarks.SYNC_STATUS.NEW
+    ), "Items restored from JSON backup should not be marked as syncing");
 
     let tombstones = await PlacesTestUtils.fetchSyncTombstones();
-    deepEqual(tombstones.map(({ guid }) => guid), [syncedFolder.guid],
-      "Tombstones should exist after restoring from JSON backup");
+    deepEqual(tombstones, [],
+      "Tombstones should not exist after restoring from JSON backup");
 
     await PlacesSyncUtils.bookmarks.markChangesAsSyncing(changes);
     let normalFields = await PlacesTestUtils.fetchBookmarkSyncFields(
@@ -2199,90 +2185,7 @@ add_task(async function test_pullChanges_restore_json_tracked() {
       PlacesUtils.bookmarks.unfiledGuid, "NnvGl3CRA4hC", "APzP8MupzA8l");
     ok(normalFields.every(field =>
       field.syncStatus == PlacesUtils.bookmarks.SYNC_STATUS.NORMAL
-    ), "NEW and UNKNOWN roots restored from JSON backup should be marked as NORMAL");
-
-    strictEqual(changes[syncedFolder.guid].tombstone, true,
-      `Should include tombstone for overwritten synced bookmark ${
-      syncedFolder.guid}`);
-  }
-
-  await PlacesUtils.bookmarks.eraseEverything();
-  await PlacesSyncUtils.bookmarks.reset();
-});
-
-add_task(async function test_pullChanges_custom_roots() {
-  await ignoreChangedRoots();
-
-  info("Append items to Places root");
-  let unsyncedGuids = await populateTree(PlacesUtils.bookmarks.rootGuid, {
-    kind: "folder",
-    title: "rootFolder",
-    children: [{
-      kind: "bookmark",
-      title: "childBmk",
-      url: "https://example.com",
-    }, {
-      kind: "folder",
-      title: "childFolder",
-      children: [{
-        kind: "bookmark",
-        title: "grandChildBmk",
-        url: "https://example.org",
-      }],
-    }],
-  }, {
-    kind: "bookmark",
-    title: "rootBmk",
-    url: "https://example.net",
-  });
-
-  info("Append items to menu");
-  let syncedGuids = await populateTree(PlacesUtils.bookmarks.menuGuid, {
-    kind: "folder",
-    title: "childFolder",
-    children: [{
-      kind: "bookmark",
-      title: "grandChildBmk",
-      url: "https://example.info",
-    }],
-  });
-
-  {
-    let newChanges = await PlacesSyncUtils.bookmarks.pullChanges();
-    deepEqual(Object.keys(newChanges).sort(), ["menu", syncedGuids.childFolder,
-      syncedGuids.grandChildBmk].sort(),
-      "Pulling changes should ignore custom roots");
-    await setChangesSynced(newChanges);
-  }
-
-  info("Append sibling to custom root");
-  {
-    let unsyncedSibling = await PlacesUtils.bookmarks.insert({
-      parentGuid: unsyncedGuids.rootFolder,
-      url: "https://example.club",
-    });
-    let changes = await PlacesSyncUtils.bookmarks.pullChanges();
-    deepEqual(changes, {}, `Pulling changes should ignore unsynced sibling ${
-      unsyncedSibling.guid}`);
-  }
-
-  info("Remove custom root");
-  {
-    await PlacesUtils.bookmarks.remove(unsyncedGuids.rootFolder);
-    let changes = await PlacesSyncUtils.bookmarks.pullChanges();
-    deepEqual(changes, {}, "Removing custom root should not write tombstone");
-  }
-
-  info("Append sibling to menu");
-  {
-    let syncedSibling = await PlacesUtils.bookmarks.insert({
-      parentGuid: PlacesUtils.bookmarks.menuGuid,
-      url: "https://example.ninja",
-    });
-    let changes = await PlacesSyncUtils.bookmarks.pullChanges();
-    deepEqual(Object.keys(changes).sort(), ["menu", syncedSibling.guid].sort(),
-      "Pulling changes should track synced sibling and parent");
-    await setChangesSynced(changes);
+    ), "Roots and NEW items restored from JSON backup should be marked as NORMAL");
   }
 
   await PlacesUtils.bookmarks.eraseEverything();
@@ -3009,4 +2912,492 @@ add_task(async function test_remove_stale_tombstones() {
 
   await PlacesUtils.bookmarks.eraseEverything();
   await PlacesSyncUtils.bookmarks.reset();
+});
+
+add_task(async function test_bookmarks_resetSyncId() {
+  let syncId = await PlacesSyncUtils.bookmarks.getSyncId();
+  strictEqual(syncId, "", "Should start with empty bookmarks sync ID");
+
+  // Add a tree with a NORMAL bookmark (A), tombstone (B), NEW bookmark (C),
+  // and UNKNOWN bookmark (D).
+  info("Set up local tree before resetting bookmarks sync ID");
+  await ignoreChangedRoots();
+  await PlacesUtils.bookmarks.insertTree({
+    guid: PlacesUtils.bookmarks.menuGuid,
+    source: PlacesUtils.bookmarks.SOURCES.SYNC,
+    children: [{
+      guid: "bookmarkAAAA",
+      title: "A",
+      url: "http://example.com/a",
+    }, {
+      guid: "bookmarkBBBB",
+      title: "B",
+      url: "http://example.com/b",
+    }],
+  });
+  await PlacesUtils.bookmarks.remove("bookmarkBBBB");
+  await PlacesUtils.bookmarks.insert({
+    parentGuid: PlacesUtils.bookmarks.toolbarGuid,
+    guid: "bookmarkCCCC",
+    title: "C",
+    url: "http://example.com/c",
+  });
+  await PlacesUtils.bookmarks.insert({
+    parentGuid: PlacesUtils.bookmarks.unfiledGuid,
+    guid: "bookmarkDDDD",
+    title: "D",
+    url: "http://example.com/d",
+    source: PlacesUtils.bookmarks.SOURCES.RESTORE_ON_STARTUP,
+  });
+
+  info("Assign new bookmarks sync ID for first time");
+  let newSyncId = await PlacesSyncUtils.bookmarks.resetSyncId();
+  syncId = await PlacesSyncUtils.bookmarks.getSyncId();
+  equal(newSyncId, syncId,
+    "Should assign new bookmarks sync ID for first time");
+
+  let syncFields = await PlacesTestUtils.fetchBookmarkSyncFields(
+    PlacesUtils.bookmarks.menuGuid, PlacesUtils.bookmarks.toolbarGuid,
+    PlacesUtils.bookmarks.unfiledGuid, "bookmarkAAAA", "bookmarkCCCC",
+    "bookmarkDDDD");
+  ok(syncFields.every(field =>
+    field.syncStatus == PlacesUtils.bookmarks.SYNC_STATUS.NEW
+  ), "Should change all sync statuses to NEW after resetting bookmarks sync ID");
+
+  let tombstones = await PlacesTestUtils.fetchSyncTombstones();
+  deepEqual(tombstones, [],
+    "Should remove all tombstones after resetting bookmarks sync ID");
+
+  info("Set bookmarks last sync time");
+  let lastSync = Date.now() / 1000;
+  await PlacesSyncUtils.bookmarks.setLastSync(lastSync);
+  equal(await PlacesSyncUtils.bookmarks.getLastSync(), lastSync,
+    "Should record bookmarks last sync time");
+
+  newSyncId = await PlacesSyncUtils.bookmarks.resetSyncId();
+  notEqual(newSyncId, syncId,
+    "Should set new bookmarks sync ID if one already exists");
+  strictEqual(await PlacesSyncUtils.bookmarks.getLastSync(), 0,
+    "Should reset bookmarks last sync time after resetting sync ID");
+
+  await PlacesUtils.bookmarks.eraseEverything();
+  await PlacesSyncUtils.bookmarks.reset();
+});
+
+add_task(async function test_bookmarks_wipe() {
+  info("Add Sync metadata before wipe");
+  let newSyncId = await PlacesSyncUtils.bookmarks.resetSyncId();
+  await PlacesSyncUtils.bookmarks.setLastSync(Date.now() / 1000);
+
+  let existingSyncId = await PlacesSyncUtils.bookmarks.getSyncId();
+  equal(existingSyncId, newSyncId,
+    "Ensure bookmarks sync ID was recorded before wipe");
+
+  info("Set up local tree before wipe");
+  await ignoreChangedRoots();
+  await PlacesUtils.bookmarks.insertTree({
+    guid: PlacesUtils.bookmarks.menuGuid,
+    source: PlacesUtils.bookmarks.SOURCES.SYNC,
+    children: [{
+      guid: "bookmarkAAAA",
+      title: "A",
+      url: "http://example.com/a",
+    }, {
+      guid: "bookmarkBBBB",
+      title: "B",
+      url: "http://example.com/b",
+    }],
+  });
+  await PlacesUtils.bookmarks.remove("bookmarkBBBB");
+  await PlacesUtils.bookmarks.insert({
+    parentGuid: PlacesUtils.bookmarks.toolbarGuid,
+    guid: "bookmarkCCCC",
+    title: "C",
+    url: "http://example.com/c",
+  });
+  await PlacesUtils.bookmarks.insert({
+    parentGuid: PlacesUtils.bookmarks.unfiledGuid,
+    guid: "bookmarkDDDD",
+    title: "D",
+    url: "http://example.com/d",
+    source: PlacesUtils.bookmarks.SOURCES.RESTORE_ON_STARTUP,
+  });
+
+  info("Wipe bookmarks");
+  await PlacesSyncUtils.bookmarks.wipe();
+
+  strictEqual(await PlacesSyncUtils.bookmarks.getSyncId(), "",
+    "Should reset bookmarks sync ID after wipe");
+  strictEqual(await PlacesSyncUtils.bookmarks.getLastSync(), 0,
+    "Should reset bookmarks last sync after wipe");
+  ok(!(await PlacesSyncUtils.bookmarks.shouldWipeRemote()),
+    "Wiping bookmarks locally should not wipe server");
+
+  let tombstones = await PlacesTestUtils.fetchSyncTombstones();
+  deepEqual(tombstones, [], "Should drop tombstones after wipe");
+
+  deepEqual(await PlacesSyncUtils.bookmarks.fetchChildRecordIds("menu"), [],
+    "Should wipe menu children");
+  deepEqual(await PlacesSyncUtils.bookmarks.fetchChildRecordIds("toolbar"), [],
+    "Should wipe toolbar children");
+
+  let rootSyncFields = await PlacesTestUtils.fetchBookmarkSyncFields(
+    PlacesUtils.bookmarks.menuGuid, PlacesUtils.bookmarks.toolbarGuid,
+    PlacesUtils.bookmarks.unfiledGuid);
+  ok(rootSyncFields.every(field =>
+    field.syncStatus == PlacesUtils.bookmarks.SYNC_STATUS.NEW
+  ), "Should reset all sync statuses to NEW after wipe");
+
+  await PlacesUtils.bookmarks.eraseEverything();
+  await PlacesSyncUtils.bookmarks.reset();
+});
+
+add_task(async function test_bookmarks_meta_eraseEverything() {
+  info("Add Sync metadata before erase");
+  let newSyncId = await PlacesSyncUtils.bookmarks.resetSyncId();
+  let lastSync = Date.now() / 1000;
+  await PlacesSyncUtils.bookmarks.setLastSync(lastSync);
+
+  info("Set up local tree before reset");
+  await ignoreChangedRoots();
+  await PlacesUtils.bookmarks.insertTree({
+    guid: PlacesUtils.bookmarks.menuGuid,
+    source: PlacesUtils.bookmarks.SOURCES.SYNC,
+    children: [{
+      guid: "bookmarkAAAA",
+      title: "A",
+      url: "http://example.com/a",
+    }, {
+      guid: "bookmarkBBBB",
+      title: "B",
+      url: "http://example.com/b",
+    }],
+  });
+  await PlacesUtils.bookmarks.remove("bookmarkBBBB");
+  await PlacesUtils.bookmarks.insert({
+    parentGuid: PlacesUtils.bookmarks.toolbarGuid,
+    guid: "bookmarkCCCC",
+    title: "C",
+    url: "http://example.com/c",
+  });
+  await PlacesUtils.bookmarks.insert({
+    parentGuid: PlacesUtils.bookmarks.unfiledGuid,
+    guid: "bookmarkDDDD",
+    title: "D",
+    url: "http://example.com/d",
+    source: PlacesUtils.bookmarks.SOURCES.RESTORE_ON_STARTUP,
+  });
+
+  info("Erase all bookmarks");
+  await PlacesUtils.bookmarks.eraseEverything();
+
+  strictEqual(await PlacesSyncUtils.bookmarks.getSyncId(), newSyncId,
+    "Should not reset bookmarks sync ID after erase");
+  strictEqual(await PlacesSyncUtils.bookmarks.getLastSync(), lastSync,
+    "Should not reset bookmarks last sync after erase");
+  ok(!(await PlacesSyncUtils.bookmarks.shouldWipeRemote()),
+    "Erasing everything should not wipe server");
+
+  deepEqual((await PlacesTestUtils.fetchSyncTombstones()).map(
+    info => info.guid
+  ), ["bookmarkAAAA", "bookmarkBBBB"],
+    "Should keep tombstones after erasing everything");
+
+  let rootSyncFields = await PlacesTestUtils.fetchBookmarkSyncFields(
+    PlacesUtils.bookmarks.menuGuid, PlacesUtils.bookmarks.toolbarGuid,
+    PlacesUtils.bookmarks.unfiledGuid, PlacesUtils.bookmarks.mobileGuid);
+  ok(rootSyncFields.every(field =>
+    field.syncStatus == PlacesUtils.bookmarks.SYNC_STATUS.NORMAL
+  ), "Should not reset sync statuses after erasing everything");
+
+  await PlacesUtils.bookmarks.eraseEverything();
+  await PlacesSyncUtils.bookmarks.reset();
+});
+
+add_task(async function test_bookmarks_reset() {
+  info("Add Sync metadata before reset");
+  await PlacesSyncUtils.bookmarks.resetSyncId();
+  await PlacesSyncUtils.bookmarks.setLastSync(Date.now() / 1000);
+
+  info("Set up local tree before reset");
+  await ignoreChangedRoots();
+  await PlacesUtils.bookmarks.insertTree({
+    guid: PlacesUtils.bookmarks.menuGuid,
+    source: PlacesUtils.bookmarks.SOURCES.SYNC,
+    children: [{
+      guid: "bookmarkAAAA",
+      title: "A",
+      url: "http://example.com/a",
+    }, {
+      guid: "bookmarkBBBB",
+      title: "B",
+      url: "http://example.com/b",
+    }],
+  });
+  await PlacesUtils.bookmarks.remove("bookmarkBBBB");
+  await PlacesUtils.bookmarks.insert({
+    parentGuid: PlacesUtils.bookmarks.toolbarGuid,
+    guid: "bookmarkCCCC",
+    title: "C",
+    url: "http://example.com/c",
+  });
+  await PlacesUtils.bookmarks.insert({
+    parentGuid: PlacesUtils.bookmarks.unfiledGuid,
+    guid: "bookmarkDDDD",
+    title: "D",
+    url: "http://example.com/d",
+    source: PlacesUtils.bookmarks.SOURCES.RESTORE_ON_STARTUP,
+  });
+
+  info("Reset Sync metadata for bookmarks");
+  await PlacesSyncUtils.bookmarks.reset();
+
+  strictEqual(await PlacesSyncUtils.bookmarks.getSyncId(), "",
+    "Should reset bookmarks sync ID after reset");
+  strictEqual(await PlacesSyncUtils.bookmarks.getLastSync(), 0,
+    "Should reset bookmarks last sync after reset");
+  ok(!(await PlacesSyncUtils.bookmarks.shouldWipeRemote()),
+    "Resetting Sync metadata should not wipe server");
+
+  deepEqual(await PlacesTestUtils.fetchSyncTombstones(), [],
+    "Should drop tombstones after reset");
+
+  let itemSyncFields = await PlacesTestUtils.fetchBookmarkSyncFields(
+    "bookmarkAAAA", "bookmarkCCCC");
+  ok(itemSyncFields.every(field =>
+    field.syncStatus == PlacesUtils.bookmarks.SYNC_STATUS.NEW
+  ), "Should reset sync statuses for existing items to NEW after reset");
+
+  await PlacesUtils.bookmarks.eraseEverything();
+  await PlacesSyncUtils.bookmarks.reset();
+});
+
+add_task(async function test_bookmarks_meta_restore() {
+  info("Add Sync metadata before manual restore");
+  await PlacesSyncUtils.bookmarks.resetSyncId();
+  await PlacesSyncUtils.bookmarks.setLastSync(Date.now() / 1000);
+
+  ok(!(await PlacesSyncUtils.bookmarks.shouldWipeRemote()),
+    "Should not wipe server before manual restore");
+
+  info("Manually restore");
+  let { path } = do_get_file("./sync_utils_bookmarks.json");
+  await BookmarkJSONUtils.importFromFile(path, { replace: true });
+
+  strictEqual(await PlacesSyncUtils.bookmarks.getSyncId(), "",
+    "Should reset bookmarks sync ID after manual restore");
+  strictEqual(await PlacesSyncUtils.bookmarks.getLastSync(), 0,
+    "Should reset bookmarks last sync after manual restore");
+  ok(await PlacesSyncUtils.bookmarks.shouldWipeRemote(),
+    "Should wipe server after manual restore");
+
+  let syncFields = await PlacesTestUtils.fetchBookmarkSyncFields(
+    PlacesUtils.bookmarks.menuGuid, "NnvGl3CRA4hC",
+    PlacesUtils.bookmarks.toolbarGuid, "APzP8MupzA8l");
+  ok(syncFields.every(field =>
+    field.syncStatus == PlacesUtils.bookmarks.SYNC_STATUS.NEW
+  ), "Should reset all sync stauses to NEW after manual restore");
+
+  await PlacesUtils.bookmarks.eraseEverything();
+  await PlacesSyncUtils.bookmarks.reset();
+});
+
+add_task(async function test_bookmarks_meta_restore_on_startup() {
+  info("Add Sync metadata before simulated automatic restore");
+  await PlacesSyncUtils.bookmarks.resetSyncId();
+  await PlacesSyncUtils.bookmarks.setLastSync(Date.now() / 1000);
+
+  ok(!(await PlacesSyncUtils.bookmarks.shouldWipeRemote()),
+    "Should not wipe server before automatic restore");
+
+  info("Simulate automatic restore on startup");
+  let { path } = do_get_file("./sync_utils_bookmarks.json");
+  await BookmarkJSONUtils.importFromFile(path, {
+    replace: true,
+    source: PlacesUtils.bookmarks.SOURCES.RESTORE_ON_STARTUP,
+  });
+
+  strictEqual(await PlacesSyncUtils.bookmarks.getSyncId(), "",
+    "Should reset bookmarks sync ID after automatic restore");
+  strictEqual(await PlacesSyncUtils.bookmarks.getLastSync(), 0,
+    "Should reset bookmarks last sync after automatic restore");
+  ok(!(await PlacesSyncUtils.bookmarks.shouldWipeRemote()),
+    "Should not wipe server after manual restore");
+
+  let syncFields = await PlacesTestUtils.fetchBookmarkSyncFields(
+    PlacesUtils.bookmarks.menuGuid, "NnvGl3CRA4hC",
+    PlacesUtils.bookmarks.toolbarGuid, "APzP8MupzA8l");
+  ok(syncFields.every(field =>
+    field.syncStatus == PlacesUtils.bookmarks.SYNC_STATUS.UNKNOWN
+  ), "Should reset all sync stauses to UNKNOWN after automatic restore");
+
+  await PlacesUtils.bookmarks.eraseEverything();
+  await PlacesSyncUtils.bookmarks.reset();
+});
+
+add_task(async function test_bookmarks_ensureCurrentSyncId() {
+  info("Set up local tree");
+  await ignoreChangedRoots();
+  await PlacesUtils.bookmarks.insertTree({
+    guid: PlacesUtils.bookmarks.menuGuid,
+    source: PlacesUtils.bookmarks.SOURCES.SYNC,
+    children: [{
+      guid: "bookmarkAAAA",
+      title: "A",
+      url: "http://example.com/a",
+    }, {
+      guid: "bookmarkBBBB",
+      title: "B",
+      url: "http://example.com/b",
+    }],
+  });
+  await PlacesUtils.bookmarks.remove("bookmarkBBBB");
+  await PlacesUtils.bookmarks.insert({
+    parentGuid: PlacesUtils.bookmarks.toolbarGuid,
+    guid: "bookmarkCCCC",
+    title: "C",
+    url: "http://example.com/c",
+  });
+  await PlacesUtils.bookmarks.insert({
+    parentGuid: PlacesUtils.bookmarks.unfiledGuid,
+    guid: "bookmarkDDDD",
+    title: "D",
+    url: "http://example.com/d",
+    source: PlacesUtils.bookmarks.SOURCES.RESTORE_ON_STARTUP,
+  });
+
+  let existingSyncId = await PlacesSyncUtils.bookmarks.getSyncId();
+  strictEqual(existingSyncId, "", "Should start without bookmarks sync ID");
+
+  info("Assign new bookmarks sync ID");
+  {
+    await PlacesSyncUtils.bookmarks.ensureCurrentSyncId("syncIdAAAAAA");
+
+    let newSyncId = await PlacesSyncUtils.bookmarks.getSyncId();
+    equal(newSyncId, "syncIdAAAAAA",
+      "Should assign bookmarks sync ID if one doesn't exist");
+
+    let tombstones = await PlacesTestUtils.fetchSyncTombstones();
+    deepEqual(tombstones.map(({ guid }) => guid), ["bookmarkBBBB"],
+      "Should keep tombstones after assigning new bookmarks sync ID");
+
+    let syncFields = await PlacesTestUtils.fetchBookmarkSyncFields(
+      PlacesUtils.bookmarks.menuGuid, PlacesUtils.bookmarks.toolbarGuid,
+      PlacesUtils.bookmarks.unfiledGuid, "bookmarkAAAA", "bookmarkCCCC",
+      "bookmarkDDDD");
+    deepEqual(syncFields.map(field => field.syncStatus), [
+      PlacesUtils.bookmarks.SYNC_STATUS.NORMAL,
+      PlacesUtils.bookmarks.SYNC_STATUS.NORMAL,
+      PlacesUtils.bookmarks.SYNC_STATUS.NORMAL,
+      PlacesUtils.bookmarks.SYNC_STATUS.NORMAL,
+      PlacesUtils.bookmarks.SYNC_STATUS.NEW,
+      PlacesUtils.bookmarks.SYNC_STATUS.UNKNOWN,
+    ], "Should not reset sync statuses after assigning new bookmarks sync ID");
+  }
+
+  info("Ensure existing bookmarks sync ID matches");
+  {
+    let lastSync = Date.now() / 1000;
+    await PlacesSyncUtils.bookmarks.setLastSync(lastSync);
+    await PlacesSyncUtils.bookmarks.ensureCurrentSyncId("syncIdAAAAAA");
+
+    equal(await PlacesSyncUtils.bookmarks.getSyncId(), "syncIdAAAAAA",
+      "Should keep existing bookmarks sync ID on match");
+    equal(await PlacesSyncUtils.bookmarks.getLastSync(), lastSync,
+      "Should keep existing bookmarks last sync time on sync ID match");
+
+    let tombstones = await PlacesTestUtils.fetchSyncTombstones();
+    deepEqual(tombstones.map(({ guid }) => guid), ["bookmarkBBBB"],
+      "Should keep tombstones if bookmarks sync IDs match");
+
+    let syncFields = await PlacesTestUtils.fetchBookmarkSyncFields(
+      PlacesUtils.bookmarks.menuGuid, PlacesUtils.bookmarks.toolbarGuid,
+      PlacesUtils.bookmarks.unfiledGuid, "bookmarkAAAA", "bookmarkCCCC",
+      "bookmarkDDDD");
+    deepEqual(syncFields.map(field => field.syncStatus), [
+      PlacesUtils.bookmarks.SYNC_STATUS.NORMAL,
+      PlacesUtils.bookmarks.SYNC_STATUS.NORMAL,
+      PlacesUtils.bookmarks.SYNC_STATUS.NORMAL,
+      PlacesUtils.bookmarks.SYNC_STATUS.NORMAL,
+      PlacesUtils.bookmarks.SYNC_STATUS.NEW,
+      PlacesUtils.bookmarks.SYNC_STATUS.UNKNOWN,
+    ], "Should not reset sync statuses if bookmarks sync IDs match");
+  }
+
+  info("Replace existing bookmarks sync ID with new ID");
+  {
+    await PlacesSyncUtils.bookmarks.ensureCurrentSyncId("syncIdBBBBBB");
+
+    equal(await PlacesSyncUtils.bookmarks.getSyncId(), "syncIdBBBBBB",
+      "Should replace existing bookmarks sync ID on mismatch");
+    strictEqual(await PlacesSyncUtils.bookmarks.getLastSync(), 0,
+      "Should reset bookmarks last sync time on sync ID mismatch");
+
+    let tombstones = await PlacesTestUtils.fetchSyncTombstones();
+    deepEqual(tombstones, [],
+      "Should drop tombstones after bookmarks sync ID mismatch");
+
+    let syncFields = await PlacesTestUtils.fetchBookmarkSyncFields(
+      PlacesUtils.bookmarks.menuGuid, PlacesUtils.bookmarks.toolbarGuid,
+      PlacesUtils.bookmarks.unfiledGuid, "bookmarkAAAA", "bookmarkCCCC",
+      "bookmarkDDDD");
+    ok(syncFields.every(field =>
+      field.syncStatus == PlacesUtils.bookmarks.SYNC_STATUS.UNKNOWN
+    ), "Should reset all sync statuses to UNKNOWN after bookmarks sync ID mismatch");
+  }
+
+  await PlacesUtils.bookmarks.eraseEverything();
+  await PlacesSyncUtils.bookmarks.reset();
+});
+
+add_task(async function test_history_resetSyncId() {
+  let syncId = await PlacesSyncUtils.history.getSyncId();
+  strictEqual(syncId, "", "Should start with empty history sync ID");
+
+  info("Assign new history sync ID for first time");
+  let newSyncId = await PlacesSyncUtils.history.resetSyncId();
+  syncId = await PlacesSyncUtils.history.getSyncId();
+  equal(newSyncId, syncId,
+    "Should assign new history sync ID for first time");
+
+  info("Set history last sync time");
+  let lastSync = Date.now() / 1000;
+  await PlacesSyncUtils.history.setLastSync(lastSync);
+  equal(await PlacesSyncUtils.history.getLastSync(), lastSync,
+    "Should record history last sync time");
+
+  newSyncId = await PlacesSyncUtils.history.resetSyncId();
+  notEqual(newSyncId, syncId,
+    "Should set new history sync ID if one already exists");
+  strictEqual(await PlacesSyncUtils.history.getLastSync(), 0,
+    "Should reset history last sync time after resetting sync ID");
+
+  await PlacesSyncUtils.history.reset();
+});
+
+add_task(async function test_history_ensureCurrentSyncId() {
+  info("Assign new history sync ID");
+  await PlacesSyncUtils.history.ensureCurrentSyncId("syncIdAAAAAA");
+  equal(await PlacesSyncUtils.history.getSyncId(), "syncIdAAAAAA",
+    "Should assign history sync ID if one doesn't exist");
+
+  info("Ensure existing history sync ID matches");
+  let lastSync = Date.now() / 1000;
+  await PlacesSyncUtils.history.setLastSync(lastSync);
+  await PlacesSyncUtils.history.ensureCurrentSyncId("syncIdAAAAAA");
+
+  equal(await PlacesSyncUtils.history.getSyncId(), "syncIdAAAAAA",
+    "Should keep existing history sync ID on match");
+  equal(await PlacesSyncUtils.history.getLastSync(), lastSync,
+    "Should keep existing history last sync time on sync ID match");
+
+  info("Replace existing history sync ID with new ID");
+  await PlacesSyncUtils.history.ensureCurrentSyncId("syncIdBBBBBB");
+
+  equal(await PlacesSyncUtils.history.getSyncId(), "syncIdBBBBBB",
+    "Should replace existing history sync ID on mismatch");
+  strictEqual(await PlacesSyncUtils.history.getLastSync(), 0,
+    "Should reset history last sync time on sync ID mismatch");
+
+  await PlacesSyncUtils.history.reset();
 });

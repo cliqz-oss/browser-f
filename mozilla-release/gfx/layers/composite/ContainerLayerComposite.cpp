@@ -6,7 +6,6 @@
 
 #include "ContainerLayerComposite.h"
 #include <algorithm>                    // for min
-#include "apz/src/AsyncPanZoomController.h"  // for AsyncPanZoomController
 #include "FrameMetrics.h"               // for FrameMetrics
 #include "Units.h"                      // for LayerRect, LayerPixel, etc
 #include "CompositableHost.h"           // for CompositableHost
@@ -19,6 +18,7 @@
 #include "mozilla/gfx/Matrix.h"         // for Matrix4x4
 #include "mozilla/gfx/Point.h"          // for Point, IntPoint
 #include "mozilla/gfx/Rect.h"           // for IntRect, Rect
+#include "mozilla/layers/APZSampler.h"  // for APZSampler
 #include "mozilla/layers/Compositor.h"  // for Compositor, etc
 #include "mozilla/layers/CompositorTypes.h"  // for DiagnosticFlags::CONTAINER
 #include "mozilla/layers/Effects.h"     // for Effect, EffectChain, etc
@@ -286,21 +286,26 @@ ContainerPrepare(ContainerT* aContainer,
 }
 
 template<class ContainerT> void
-RenderMinimap(ContainerT* aContainer, LayerManagerComposite* aManager,
-                   const RenderTargetIntRect& aClipRect, Layer* aLayer)
+RenderMinimap(ContainerT* aContainer,
+              const RefPtr<APZSampler>& aSampler,
+              LayerManagerComposite* aManager,
+              const RenderTargetIntRect& aClipRect, Layer* aLayer)
 {
   Compositor* compositor = aManager->GetCompositor();
+  MOZ_ASSERT(aSampler);
 
   if (aLayer->GetScrollMetadataCount() < 1) {
     return;
   }
 
-  AsyncPanZoomController* controller = aLayer->GetAsyncPanZoomController(0);
-  if (!controller) {
+  LayerMetricsWrapper wrapper(aLayer, 0);
+  if (!wrapper.GetApzc()) {
     return;
   }
+  const FrameMetrics& fm = wrapper.Metrics();
+  MOZ_ASSERT(fm.IsScrollable());
 
-  ParentLayerPoint scrollOffset = controller->GetCurrentAsyncScrollOffset(AsyncPanZoomController::eForCompositing);
+  ParentLayerPoint scrollOffset = aSampler->GetCurrentAsyncScrollOffset(wrapper);
 
   // Options
   const int verticalPadding = 10;
@@ -312,10 +317,8 @@ RenderMinimap(ContainerT* aContainer, LayerManagerComposite* aManager,
   gfx::Color criticalDisplayPortColor(1.f, 1.f, 0);
   gfx::Color displayPortColor(0, 1.f, 0);
   gfx::Color viewPortColor(0, 0, 1.f, 0.3f);
-  gfx::Color visibilityColor(1.f, 0, 0);
 
   // Rects
-  const FrameMetrics& fm = aLayer->GetFrameMetrics(0);
   ParentLayerRect compositionBounds = fm.GetCompositionBounds();
   LayerRect scrollRect = fm.GetScrollableRect() * fm.LayersPixelsPerCSSPixel();
   LayerRect viewRect = ParentLayerRect(scrollOffset, compositionBounds.Size()) / LayerToParentLayerScale(1);
@@ -360,34 +363,6 @@ RenderMinimap(ContainerT* aContainer, LayerManagerComposite* aManager,
   compositor->FillRect(transformedScrollRect, backgroundColor, clipRect, aContainer->GetEffectiveTransform());
   compositor->SlowDrawRect(transformedScrollRect, pageBorderColor, clipRect, aContainer->GetEffectiveTransform());
 
-  // If enabled, render information about visibility.
-  if (gfxPrefs::APZMinimapVisibilityEnabled()) {
-    // Retrieve the APZC scrollable layer guid, which we'll use to get the
-    // appropriate visibility information from the layer manager.
-    AsyncPanZoomController* controller = aLayer->GetAsyncPanZoomController(0);
-    MOZ_ASSERT(controller);
-
-    ScrollableLayerGuid guid = controller->GetGuid();
-
-    // Get the approximately visible region.
-    static CSSIntRegion emptyRegion;
-    CSSIntRegion* visibleRegion = aManager->GetApproximatelyVisibleRegion(guid);
-    if (!visibleRegion) {
-      visibleRegion = &emptyRegion;
-    }
-
-    // Iterate through and draw the rects in the region.
-    for (CSSIntRegion::RectIterator iterator = visibleRegion->RectIter();
-         !iterator.Done();
-         iterator.Next())
-    {
-      CSSIntRect rect = iterator.Get();
-      LayerRect scaledRect = rect * fm.LayersPixelsPerCSSPixel();
-      Rect r = transform.TransformBounds(scaledRect.ToUnknownRect());
-      compositor->FillRect(r, visibilityColor, clipRect, aContainer->GetEffectiveTransform());
-    }
-  }
-
   // Render the displayport.
   Rect r = transform.TransformBounds(dp.ToUnknownRect());
   compositor->FillRect(r, tileActiveColor, clipRect, aContainer->GetEffectiveTransform());
@@ -410,6 +385,11 @@ RenderLayers(ContainerT* aContainer, LayerManagerComposite* aManager,
              const Maybe<gfx::Polygon>& aGeometry)
 {
   Compositor* compositor = aManager->GetCompositor();
+
+  RefPtr<APZSampler> sampler;
+  if (CompositorBridgeParent* cbp = compositor->GetCompositorBridgeParent()) {
+    sampler = cbp->GetAPZSampler();
+  }
 
   for (size_t i = 0u; i < aContainer->mPrepared->mLayers.Length(); i++) {
     PreparedLayer& preparedData = aContainer->mPrepared->mLayers[i];
@@ -479,25 +459,27 @@ RenderLayers(ContainerT* aContainer, LayerManagerComposite* aManager,
     // frames higher up, so loop from the top down, and accumulate an async
     // transform as we go along.
     Matrix4x4 asyncTransform;
-    for (uint32_t i = layer->GetScrollMetadataCount(); i > 0; --i) {
-      if (layer->GetFrameMetrics(i - 1).IsScrollable()) {
-        // Since the composition bounds are in the parent layer's coordinates,
-        // use the parent's effective transform rather than the layer's own.
-        ParentLayerRect compositionBounds = layer->GetFrameMetrics(i - 1).GetCompositionBounds();
-        aManager->GetCompositor()->DrawDiagnostics(DiagnosticFlags::CONTAINER,
-                                                   compositionBounds.ToUnknownRect(),
-                                                   aClipRect.ToUnknownRect(),
-                                                   asyncTransform * aContainer->GetEffectiveTransform());
-        if (AsyncPanZoomController* apzc = layer->GetAsyncPanZoomController(i - 1)) {
+    if (sampler) {
+      for (uint32_t i = layer->GetScrollMetadataCount(); i > 0; --i) {
+        LayerMetricsWrapper wrapper(layer, i - 1);
+        if (wrapper.GetApzc()) {
+          MOZ_ASSERT(wrapper.Metrics().IsScrollable());
+          // Since the composition bounds are in the parent layer's coordinates,
+          // use the parent's effective transform rather than the layer's own.
+          ParentLayerRect compositionBounds = wrapper.Metrics().GetCompositionBounds();
+          aManager->GetCompositor()->DrawDiagnostics(DiagnosticFlags::CONTAINER,
+                                                     compositionBounds.ToUnknownRect(),
+                                                     aClipRect.ToUnknownRect(),
+                                                     asyncTransform * aContainer->GetEffectiveTransform());
           asyncTransform =
-              apzc->GetCurrentAsyncTransformWithOverscroll(AsyncPanZoomController::eForCompositing).ToUnknownMatrix()
-            * asyncTransform;
+              sampler->GetCurrentAsyncTransformWithOverscroll(wrapper).ToUnknownMatrix()
+              * asyncTransform;
         }
       }
-    }
 
-    if (gfxPrefs::APZMinimap()) {
-      RenderMinimap(aContainer, aManager, aClipRect, layer);
+      if (gfxPrefs::APZMinimap()) {
+        RenderMinimap(aContainer, sampler, aManager, aClipRect, layer);
+      }
     }
 
     // invariant: our GL context should be current here, I don't think we can
@@ -634,16 +616,14 @@ ContainerRender(ContainerT* aContainer,
   // to any visible content. Display a warning box (conditioned on the FPS display being
   // enabled).
   if (gfxPrefs::LayersDrawFPS() && aContainer->IsScrollableWithoutContent()) {
+    RefPtr<APZSampler> sampler = aManager->GetCompositor()->GetCompositorBridgeParent()->GetAPZSampler();
     // Since aContainer doesn't have any children we can just iterate from the top metrics
     // on it down to the bottom using GetFirstChild and not worry about walking onto another
     // underlying layer.
     for (LayerMetricsWrapper i(aContainer); i; i = i.GetFirstChild()) {
-      if (AsyncPanZoomController* apzc = i.GetApzc()) {
-        if (!apzc->GetAsyncTransformAppliedToContent()
-            && !AsyncTransformComponentMatrix(apzc->GetCurrentAsyncTransform(AsyncPanZoomController::eForHitTesting)).IsIdentity()) {
-          aManager->UnusedApzTransformWarning();
-          break;
-        }
+      if (sampler->HasUnusedAsyncTransform(i)) {
+        aManager->UnusedApzTransformWarning();
+        break;
       }
     }
   }
@@ -670,9 +650,7 @@ ContainerLayerComposite::~ContainerLayerComposite()
   // LayerManagerComposite::Destroy(), a parent
   // *ContainerLayerComposite::Destroy(), or Disconnect() will trigger
   // cleanup of our resources.
-  while (mFirstChild) {
-    RemoveChild(mFirstChild);
-  }
+  RemoveAllChildren();
 }
 
 void

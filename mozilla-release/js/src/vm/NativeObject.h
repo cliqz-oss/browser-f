@@ -29,6 +29,7 @@ namespace js {
 
 class Shape;
 class TenuringTracer;
+class UnboxedPlainObject;
 
 /*
  * To really poison a set of values, using 'magic' or 'undefined' isn't good
@@ -716,7 +717,6 @@ class NativeObject : public ShapedObject
         uint32_t nslots = lastProperty()->slotSpan(getClass());
         return Min(nslots, numFixedSlots());
     }
-    uint32_t numFixedSlotsForCompilation() const;
 
     uint32_t slotSpan() const {
         if (inDictionaryMode())
@@ -765,14 +765,6 @@ class NativeObject : public ShapedObject
      */
     bool hadElementsAccess() const {
         return hasAllFlags(js::BaseShape::HAD_ELEMENTS_ACCESS);
-    }
-
-    // Mark an object as having its 'new' script information cleared.
-    bool wasNewScriptCleared() const {
-        return hasAllFlags(js::BaseShape::NEW_SCRIPT_CLEARED);
-    }
-    static bool setNewScriptCleared(JSContext* cx, HandleNativeObject obj) {
-        return setFlags(cx, obj, js::BaseShape::NEW_SCRIPT_CLEARED);
     }
 
     bool hasInterestingSymbol() const {
@@ -1606,6 +1598,16 @@ bool IsPackedArray(JSObject* obj);
 
 extern void
 AddPropertyTypesAfterProtoChange(JSContext* cx, NativeObject* obj, ObjectGroup* oldGroup);
+
+// Specializations of 7.3.23 CopyDataProperties(...) for NativeObjects.
+extern bool
+CopyDataPropertiesNative(JSContext* cx, HandlePlainObject target, HandleNativeObject from,
+                         HandlePlainObject excludedItems, bool* optimized);
+
+extern bool
+CopyDataPropertiesNative(JSContext* cx, HandlePlainObject target,
+                         Handle<UnboxedPlainObject*> from, HandlePlainObject excludedItems,
+                         bool* optimized);
 
 } // namespace js
 

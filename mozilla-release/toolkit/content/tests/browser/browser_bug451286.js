@@ -101,7 +101,7 @@ add_task(async function() {
   res = compareSnapshots(noHighlightSnapshot, unhighlightSnapshot, true);
   ok(res[0], "Highlighting in iframe correctly removed");
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 });
 
 function toggleHighlightAndWait(shouldHighlight) {
@@ -135,6 +135,7 @@ function findAgainAndWait() {
 }
 
 async function openFindBarAndWait() {
+  await gFindBarPromise;
   let awaitTransitionEnd = BrowserTestUtils.waitForEvent(gFindBar, "transitionend");
   gFindBar.open();
   await awaitTransitionEnd;

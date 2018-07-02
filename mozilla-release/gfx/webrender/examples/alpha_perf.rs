@@ -29,19 +29,18 @@ impl Example for App {
         _document_id: DocumentId,
     ) {
         let bounds = (0, 0).to(1920, 1080);
-        let info = LayoutPrimitiveInfo {
-            local_clip: LocalClip::Rect(bounds),
-            .. LayoutPrimitiveInfo::new(bounds)
-        };
+        let info = LayoutPrimitiveInfo::new(bounds);
 
         builder.push_stacking_context(
             &info,
+            None,
             ScrollPolicy::Scrollable,
             None,
             TransformStyle::Flat,
             None,
             MixBlendMode::Normal,
             Vec::new(),
+            GlyphRasterSpace::Screen,
         );
 
         for _ in 0 .. self.rect_count {

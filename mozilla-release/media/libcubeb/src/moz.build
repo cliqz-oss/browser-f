@@ -13,7 +13,8 @@ SOURCES += [
     'cubeb_log.cpp',
     'cubeb_mixer.cpp',
     'cubeb_panner.cpp',
-    'cubeb_strings.c'
+    'cubeb_strings.c',
+    'cubeb_utils.cpp'
 ]
 
 if CONFIG['MOZ_ALSA']:
@@ -87,6 +88,7 @@ if CONFIG['OS_TARGET'] == 'Android':
 FINAL_LIBRARY = 'gkmedias'
 
 CFLAGS += CONFIG['MOZ_ALSA_CFLAGS']
+CFLAGS += CONFIG['MOZ_JACK_CFLAGS']
 CFLAGS += CONFIG['MOZ_PULSEAUDIO_CFLAGS']
 
 # We allow warnings for third-party code that can be updated from upstream.

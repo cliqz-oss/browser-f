@@ -15,6 +15,7 @@ The definition for a simple event looks like this:
        "events": [
          {
            "name": "onSomething",
+           "type": "function",
            "description": "Description of the event",
            "parameters": [
              {
@@ -59,7 +60,7 @@ events relatively simple.  A simple event implementation looks like:
 
 .. code-block:: js
 
-   class myapi extends ExtensionAPI {
+   this.myapi = class extends ExtensionAPI {
      getAPI(context) {
        return {
          myapi: {
@@ -126,6 +127,7 @@ the ``extraParameters`` property.  For example:
        "events": [
          {
            "name": "onSomething",
+           "type": "function",
            "description": "Description of the event",
            "parameters": [
              {
@@ -152,7 +154,7 @@ For example, extending our example above:
 
 .. code-block:: js
 
-   class myapi extends ExtensionAPI {
+   this.myapi = class extends ExtensionAPI {
      getAPI(context) {
        return {
          myapi: {
@@ -186,6 +188,7 @@ This can be defined in the schema with the ``returns`` property:
        "events": [
          {
            "name": "onSomething",
+           "type": "function",
            "description": "Description of the event",
            "parameters": [
              {
@@ -208,7 +211,7 @@ which is a Promise that resolves to the listener's return value:
 
 .. code-block:: js
 
-   class myapi extends ExtensionAPI {
+   this.myapi = class extends ExtensionAPI {
      getAPI(context) {
        return {
          myapi: {
@@ -260,7 +263,7 @@ could be written explicitly as:
 
 .. code-block:: js
 
-   class myapi extends ExtensionAPI {
+   this.myapi = class extends ExtensionAPI {
      getAPI(context) {
        return {
          myapi: {

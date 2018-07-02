@@ -27,14 +27,13 @@ public:
 
   explicit HTMLFieldSetElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo);
 
-  NS_IMPL_FROMCONTENT_HTML_WITH_TAG(HTMLFieldSetElement, fieldset)
+  NS_IMPL_FROMNODE_HTML_WITH_TAG(HTMLFieldSetElement, fieldset)
 
   // nsISupports
   NS_DECL_ISUPPORTS_INHERITED
 
   // nsIContent
-  virtual nsresult GetEventTargetParent(
-                     EventChainPreVisitor& aVisitor) override;
+  void GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
   virtual nsresult AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
                                 const nsAttrValue* aValue,
                                 const nsAttrValue* aOldValue,

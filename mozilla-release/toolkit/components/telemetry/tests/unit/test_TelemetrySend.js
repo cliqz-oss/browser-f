@@ -208,6 +208,8 @@ add_task(async function test_sendPendingPings() {
 
   await TelemetrySend.testWaitOnOutgoingPings();
   PingServer.resetPingHandler();
+  // Restore the default ping id generator.
+  fakeGeneratePingId(() => TelemetryUtils.generateUUID());
 });
 
 add_task(async function test_sendDateHeader() {
@@ -315,6 +317,9 @@ add_task(async function test_backoffTimeout() {
                "Should have recorded sending success in histograms.");
   Assert.equal(histogramValueCount(histSendTimeFail.snapshot()), sendAttempts,
                "Should have recorded send failure times in histograms.");
+
+  // Restore the default ping id generator.
+  fakeGeneratePingId(() => TelemetryUtils.generateUUID());
 });
 
 add_task(async function test_discardBigPings() {
@@ -482,6 +487,9 @@ add_task(async function test_persistCurrentPingsOnShutdown() {
   // After a restart the pings should have been found when scanning.
   await TelemetrySend.reset();
   Assert.equal(TelemetrySend.pendingPingCount, PING_COUNT, "Should have the correct pending ping count");
+
+  // Restore the default ping id generator.
+  fakeGeneratePingId(() => TelemetryUtils.generateUUID());
 });
 
 add_task(async function test_sendCheckOverride() {
@@ -534,8 +542,12 @@ add_task(async function testCookies() {
   Services.cookies.setCookieString(uri, null, "cookie-time=yes", null);
 
   const id = await TelemetryController.submitExternalPing(TEST_TYPE, {});
-  let request = await PingServer.promiseNextRequest();
-  let ping = decodeRequestPayload(request);
+  let foundit = false;
+  while (!foundit) {
+    var request = await PingServer.promiseNextRequest();
+    var ping = decodeRequestPayload(request);
+    foundit = id === ping.id;
+  }
   Assert.equal(id, ping.id, "We're testing the right ping's request, right?");
   Assert.equal(false, request.hasHeader("Cookie"), "Request should not have Cookie header");
 });
@@ -612,7 +624,7 @@ add_task(async function test_pref_observer() {
       let keys = new Set(["TelemetryClientId", "TelemetryServerURL"]);
 
       let crs = {
-        QueryInterface: XPCOMUtils.generateQI([Ci.nsICrashReporter]),
+        QueryInterface: ChromeUtils.generateQI([Ci.nsICrashReporter]),
         annotateCrashReport(key, value) {
           if (!keys.delete(key)) {
             MockRegistrar.unregister(gMockCrs);

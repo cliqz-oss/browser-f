@@ -10,16 +10,14 @@
 
 #include "nscore.h"
 #include "nsISupports.h"
-#include "xpt_struct.h"
 #include "xptinfo.h"
 #include "js/Value.h"
+#include "mozilla/Attributes.h"
 #include "mozilla/MemoryReporting.h"
 
 struct nsXPTCMiniVariant
 {
-// No ctors or dtors so that we can use arrays of these on the stack
-// with no penalty.
-    union
+    union U
     {
         int8_t    i8;
         int16_t   i16;
@@ -39,7 +37,13 @@ struct nsXPTCMiniVariant
         // Types below here are unknown to the assembly implementations, and
         // therefore _must_ be passed with indirect semantics. We put them in
         // the union here for type safety, so that we can avoid void* tricks.
-        JS::UninitializedValue j;
+        JS::Value j;
+
+        // |j| has a non-trivial constructor and therefore MUST be
+        // placement-new'd into existence.
+        MOZ_PUSH_DISABLE_NONTRIVIAL_UNION_WARNINGS
+        U() {}
+        MOZ_POP_DISABLE_NONTRIVIAL_UNION_WARNINGS
     } val;
 };
 
@@ -129,6 +133,7 @@ struct nsXPTCVariant : public nsXPTCMiniVariant
               case nsXPTType::T_WCHAR_STR:         /* fall through */
               case nsXPTType::T_INTERFACE:         /* fall through */
               case nsXPTType::T_INTERFACE_IS:      /* fall through */
+              case nsXPTType::T_DOMOBJECT:         /* fall through */
               case nsXPTType::T_ARRAY:             /* fall through */
               case nsXPTType::T_PSTRING_SIZE_IS:   /* fall through */
               case nsXPTType::T_PWSTRING_SIZE_IS:  /* fall through */

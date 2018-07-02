@@ -13,7 +13,7 @@ public class StringHelper {
     private static StringHelper instance;
 
     // This needs to be accessed statically, before an instance of StringHelper can be created.
-    public static String STATIC_ABOUT_HOME_URL = "about:home";
+    public static final String STATIC_ABOUT_HOME_URL = "about:home";
 
     public final String OK;
     public final String CANCEL;

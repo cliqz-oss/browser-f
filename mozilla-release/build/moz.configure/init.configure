@@ -233,7 +233,7 @@ def virtualenv_python(env_python, build_env, mozconfig, help):
     with LineIO(lambda l: log.info(l), 'replace') as out:
         manager = VirtualenvManager(
             topsrcdir, topobjdir,
-            os.path.join(topobjdir, '_virtualenv'), out,
+            os.path.join(topobjdir, '_virtualenvs', 'init'), out,
             os.path.join(topsrcdir, 'build', 'virtualenv_packages.txt'))
 
     if python:
@@ -368,13 +368,13 @@ def shell(value, mozillabuild):
 option(env='PYTHON3', nargs=1, help='Python 3 interpreter (3.5 or later)')
 
 
-@depends('PYTHON3')
+@depends('PYTHON3', 'MOZILLABUILD')
 @checking('for Python 3',
           callback=lambda x: '%s (%s)' % (x.path, x.str_version) if x else 'no')
 @imports(_from='__builtin__', _import='Exception')
 @imports(_from='mozbuild.pythonutil', _import='find_python3_executable')
 @imports(_from='mozbuild.pythonutil', _import='python_executable_version')
-def python3(env_python):
+def python3(env_python, mozillabuild):
     python = env_python[0] if env_python else None
 
     # If Python given by environment variable, it must work.
@@ -384,19 +384,33 @@ def python3(env_python):
         except Exception as e:
             raise FatalCheckError('could not determine version of PYTHON '
                                   '(%s): %s' % (python, e))
+    elif mozillabuild:
+        # MozillaBuild provides a Python 3.
+        python = normsep('%s/python3/python3.exe' % mozillabuild)
 
-        if version < (3, 5, 0):
-            raise FatalCheckError('PYTHON3 must point to Python 3.5 or newer; '
-                                  '%d.%d found' % (version[0], version[1]))
+        try:
+            version = python_executable_version(python).version
+        except Exception as e:
+            raise FatalCheckError('could not determine version of '
+                                  'MozillaBuild python: %s' % e)
     else:
         # Fall back to the search routine.
         python, version = find_python3_executable(min_version='3.5.0')
 
-        if not python:
-            return None
-
         # The API returns a bytes whereas everything in configure is unicode.
-        python = python.decode('utf-8')
+        if python:
+            python = python.decode('utf-8')
+
+    if not python:
+        raise FatalCheckError('Python 3.5 or newer is required to build. '
+                              'Ensure a `python3.x` executable is in your '
+                              'PATH or define PYTHON3 to point to a Python '
+                              '3.5 executable.')
+
+    if version < (3, 5, 0):
+        raise FatalCheckError('Python 3.5 or newer is required to build; '
+                              '%s is Python %d.%d' % (python, version[0],
+                                                      version[1]))
 
     return namespace(
         path=python,

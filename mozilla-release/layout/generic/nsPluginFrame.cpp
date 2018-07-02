@@ -30,7 +30,6 @@
 #include "nsGkAtoms.h"
 #include "nsIPluginInstanceOwner.h"
 #include "nsNPAPIPluginInstance.h"
-#include "nsIDOMElement.h"
 #include "npapi.h"
 #include "nsIObjectLoadingContent.h"
 #include "nsContentUtils.h"
@@ -140,8 +139,8 @@ protected:
   nsPluginFrame* mFrame;
 };
 
-nsPluginFrame::nsPluginFrame(nsStyleContext* aContext)
-  : nsFrame(aContext, kClassID)
+nsPluginFrame::nsPluginFrame(ComputedStyle* aStyle)
+  : nsFrame(aStyle, kClassID)
   , mInstanceOwner(nullptr)
   , mOuterView(nullptr)
   , mInnerView(nullptr)
@@ -221,7 +220,7 @@ nsPluginFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestro
 }
 
 /* virtual */ void
-nsPluginFrame::DidSetStyleContext(nsStyleContext* aOldStyleContext)
+nsPluginFrame::DidSetComputedStyle(ComputedStyle* aOldComputedStyle)
 {
   if (HasView()) {
     nsView* view = GetView();
@@ -233,7 +232,7 @@ nsPluginFrame::DidSetStyleContext(nsStyleContext* aOldStyleContext)
     }
   }
 
-  nsFrame::DidSetStyleContext(aOldStyleContext);
+  nsFrame::DidSetComputedStyle(aOldComputedStyle);
 }
 
 #ifdef DEBUG_FRAME_DUMP
@@ -1442,8 +1441,12 @@ nsPluginFrame::CreateWebRenderCommands(nsDisplayItem* aItem,
   }
   lm->AddDidCompositeObserver(mDidCompositeObserver.get());
 
+  // If the image container is empty, we don't want to fallback. Any other
+  // failure will be due to resource constraints and fallback is unlikely to
+  // help us. Hence we can ignore the return value from PushImage.
   LayoutDeviceRect dest(r.x, r.y, size.width, size.height);
-  return aManager->CommandBuilder().PushImage(aItem, container, aBuilder, aResources, aSc, dest);
+  aManager->CommandBuilder().PushImage(aItem, container, aBuilder, aResources, aSc, dest);
+  return true;
 }
 
 
@@ -1590,15 +1593,16 @@ nsPluginFrame::HandleEvent(nsPresContext* aPresContext,
 
   if (anEvent->mMessage == ePluginActivate) {
     nsIFocusManager* fm = nsFocusManager::GetFocusManager();
-    nsCOMPtr<nsIDOMElement> elem = do_QueryInterface(GetContent());
-    if (fm && elem)
+    if (fm) {
+      RefPtr<Element> elem = GetContent()->AsElement();
       return fm->SetFocus(elem, 0);
+    }
   }
   else if (anEvent->mMessage == ePluginFocus) {
     nsIFocusManager* fm = nsFocusManager::GetFocusManager();
     if (fm) {
-      nsCOMPtr<nsIContent> content = GetContent();
-      return fm->FocusPlugin(content);
+      RefPtr<Element> elem = GetContent()->AsElement();
+      return fm->FocusPlugin(elem);
     }
   }
 
@@ -1813,9 +1817,9 @@ nsPluginFrame::EndSwapDocShells(nsISupports* aSupports, void*)
 }
 
 nsIFrame*
-NS_NewObjectFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewObjectFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsPluginFrame(aContext);
+  return new (aPresShell) nsPluginFrame(aStyle);
 }
 
 bool

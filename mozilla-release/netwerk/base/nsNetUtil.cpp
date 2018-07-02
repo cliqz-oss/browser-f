@@ -61,7 +61,6 @@
 #include "nsStringStream.h"
 #include "nsISyncStreamListener.h"
 #include "nsITransport.h"
-#include "nsIUnicharStreamLoader.h"
 #include "nsIURIWithPrincipal.h"
 #include "nsIURLParser.h"
 #include "nsIUUIDGenerator.h"
@@ -78,6 +77,8 @@
 #include "nsIRedirectHistoryEntry.h"
 #include "nsICertBlocklist.h"
 #include "nsICertOverrideService.h"
+#include "nsQueryObject.h"
+#include "mozIThirdPartyUtil.h"
 
 #include <limits>
 
@@ -1137,23 +1138,6 @@ NS_NewStreamLoader(nsIStreamLoader        **outStream,
 }
 
 nsresult
-NS_NewUnicharStreamLoader(nsIUnicharStreamLoader        **result,
-                          nsIUnicharStreamLoaderObserver *observer)
-{
-    nsresult rv;
-    nsCOMPtr<nsIUnicharStreamLoader> loader =
-        do_CreateInstance(NS_UNICHARSTREAMLOADER_CONTRACTID, &rv);
-    if (NS_SUCCEEDED(rv)) {
-        rv = loader->Init(observer);
-        if (NS_SUCCEEDED(rv)) {
-            *result = nullptr;
-            loader.swap(*result);
-        }
-    }
-    return rv;
-}
-
-nsresult
 NS_NewSyncStreamListener(nsIStreamListener **result,
                          nsIInputStream    **stream)
 {
@@ -1677,8 +1661,7 @@ private:
         nsresult rv = mTaskQueue->Dispatch(runnable.forget());
         NS_ENSURE_SUCCESS(rv, rv);
 
-        rv = lock.Wait();
-        NS_ENSURE_SUCCESS(rv, rv);
+        lock.Wait();
 
         mCompleted = true;
         return mAsyncResult;
@@ -3108,7 +3091,8 @@ NS_ShouldSecureUpgrade(nsIURI* aURI,
                               0, // aLineNumber
                               0, // aColumnNumber
                               nsIScriptError::warningFlag, "CSP",
-                              innerWindowId);
+                              innerWindowId,
+                              !!aLoadInfo->GetOriginAttributes().mPrivateBrowsingId);
           Telemetry::AccumulateCategorical(Telemetry::LABELS_HTTP_SCHEME_UPGRADE_TYPE::CSP);
         } else {
           nsCOMPtr<nsIDocument> doc;
@@ -3172,9 +3156,8 @@ NS_ShouldSecureUpgrade(nsIURI* aURI,
               break;
         }
         return NS_OK;
-      } else {
-        Telemetry::AccumulateCategorical(Telemetry::LABELS_HTTP_SCHEME_UPGRADE_TYPE::PrefBlockedSTS);
       }
+      Telemetry::AccumulateCategorical(Telemetry::LABELS_HTTP_SCHEME_UPGRADE_TYPE::PrefBlockedSTS);
     } else {
       Telemetry::AccumulateCategorical(Telemetry::LABELS_HTTP_SCHEME_UPGRADE_TYPE::NoReasonToUpgrade);
     }

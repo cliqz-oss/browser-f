@@ -17,19 +17,31 @@ namespace mozilla {
 
 using namespace dom;
 
+template already_AddRefed<SplitNodeTransaction>
+SplitNodeTransaction::Create(
+                        EditorBase& aEditorBase,
+                        const EditorDOMPoint& aStartOfRightNode);
+template already_AddRefed<SplitNodeTransaction>
+SplitNodeTransaction::Create(
+                        EditorBase& aEditorBase,
+                        const EditorRawDOMPoint& aStartOfRightNode);
+
 // static
+template<typename PT, typename CT>
 already_AddRefed<SplitNodeTransaction>
-SplitNodeTransaction::Create(EditorBase& aEditorBase,
-                             const EditorRawDOMPoint& aStartOfRightNode)
+SplitNodeTransaction::Create(
+                        EditorBase& aEditorBase,
+                        const EditorDOMPointBase<PT, CT>& aStartOfRightNode)
 {
   RefPtr<SplitNodeTransaction> transaction =
     new SplitNodeTransaction(aEditorBase, aStartOfRightNode);
   return transaction.forget();
 }
 
+template<typename PT, typename CT>
 SplitNodeTransaction::SplitNodeTransaction(
                         EditorBase& aEditorBase,
-                        const EditorRawDOMPoint& aStartOfRightNode)
+                        const EditorDOMPointBase<PT, CT>& aStartOfRightNode)
   : mEditorBase(&aEditorBase)
   , mStartOfRightNode(aStartOfRightNode)
 {
@@ -82,9 +94,9 @@ SplitNodeTransaction::DoTransaction()
   }
 
   // Insert the new node
-  mEditorBase->SplitNodeImpl(EditorDOMPoint(mStartOfRightNode),
-                             *mNewLeftNode, error);
-  // XXX Really odd.  The result of SplitNodeImpl() is respected only when
+  mEditorBase->DoSplitNode(EditorDOMPoint(mStartOfRightNode),
+                           *mNewLeftNode, error);
+  // XXX Really odd.  The result of DoSplitNode() is respected only when
   //     we shouldn't set selection.  Otherwise, it's overridden by the
   //     result of Selection.Collapse().
   if (mEditorBase->GetShouldTxnSetSelection()) {
@@ -124,8 +136,8 @@ SplitNodeTransaction::UndoTransaction()
   // This assumes Do inserted the new node in front of the prior existing node
   // XXX Perhaps, we should reset mStartOfRightNode with current first child
   //     of the right node.
-  return mEditorBase->JoinNodesImpl(mStartOfRightNode.GetContainer(),
-                                    mNewLeftNode, mParent);
+  return mEditorBase->DoJoinNodes(mStartOfRightNode.GetContainer(),
+                                  mNewLeftNode, mParent);
 }
 
 /* Redo cannot simply resplit the right node, because subsequent transactions
@@ -145,10 +157,10 @@ SplitNodeTransaction::RedoTransaction()
   if (mStartOfRightNode.IsInTextNode()) {
     Text* rightNodeAsText = mStartOfRightNode.GetContainerAsText();
     MOZ_DIAGNOSTIC_ASSERT(rightNodeAsText);
-    nsresult rv =
-      rightNodeAsText->DeleteData(0, mStartOfRightNode.Offset());
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return rv;
+    ErrorResult rv;
+    rightNodeAsText->DeleteData(0, mStartOfRightNode.Offset(), rv);
+    if (NS_WARN_IF(rv.Failed())) {
+      return rv.StealNSResult();
     }
   } else {
     nsCOMPtr<nsIContent> child =

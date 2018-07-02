@@ -44,7 +44,7 @@ namespace layers {
 
 // public:
 /* static */ RefPtr<UiCompositorControllerChild>
-UiCompositorControllerChild::CreateForSameProcess(const int64_t& aRootLayerTreeId)
+UiCompositorControllerChild::CreateForSameProcess(const LayersId& aRootLayerTreeId)
 {
   RefPtr<UiCompositorControllerChild> child = new UiCompositorControllerChild(0);
   child->mParent = new UiCompositorControllerParent(aRootLayerTreeId);
@@ -257,9 +257,9 @@ UiCompositorControllerChild::ProcessingError(Result aCode, const char* aReason)
 }
 
 void
-UiCompositorControllerChild::HandleFatalError(const char* aName, const char* aMsg) const
+UiCompositorControllerChild::HandleFatalError(const char* aMsg) const
 {
-  dom::ContentChild::FatalErrorIfNotUsingGPUProcess(aName, aMsg, OtherPid());
+  dom::ContentChild::FatalErrorIfNotUsingGPUProcess(aMsg, OtherPid());
 }
 
 mozilla::ipc::IPCResult

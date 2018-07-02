@@ -17,8 +17,6 @@ from taskgraph.util.partners import (
 
 transforms = TransformSequence()
 
-transforms.add(check_if_partners_enabled)
-
 
 @transforms.add
 def populate_repack_manifests_url(config, tasks):
@@ -72,3 +70,8 @@ def add_command_arguments(config, tasks):
         }
 
         yield task
+
+
+# This needs to be run at the *end*, because the generators are called in
+# reverse order, when each downstream transform references `tasks`.
+transforms.add(check_if_partners_enabled)

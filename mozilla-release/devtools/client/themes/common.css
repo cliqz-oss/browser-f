@@ -27,13 +27,8 @@
   --monospace-font-family: Consolas, monospace;
 }
 
-:root[platform="linux"],
-:root.theme-firebug {
+:root[platform="linux"] {
   --monospace-font-family: monospace;
-}
-
-:root.theme-firebug {
-  --proportional-font-family: Lucida Grande, Tahoma, sans-serif;
 }
 
 .devtools-monospace {
@@ -55,8 +50,7 @@ html|button, html|select {
   box-shadow: 0 1px 0 hsla(209,29%,72%,.25) inset;
   background-color: transparent;
   border-radius: 3px;
-  overflow-x: hidden;
-  max-height: 20rem;
+  overflow: hidden;
 
   /* Devtools autocompletes display technical english keywords and should be displayed
      using LTR direction. */
@@ -73,7 +67,7 @@ html|button, html|select {
   margin: 0;
 }
 
-:root[platform="linux"] .devtools-autocomplete-popup {
+:root[platform="linux"] .devtools-autocomplete-listbox {
   /* Root font size is bigger on Linux, adjust rem-based values. */
   max-height: 16rem;
 }
@@ -84,6 +78,10 @@ html|button, html|select {
   border-width: 0px !important;
   margin: 0;
   padding: 2px;
+  overflow-x: hidden;
+  max-height: 20rem;
+  height: 100%;
+  box-sizing: border-box;
 }
 
 .devtools-autocomplete-listbox .autocomplete-item {
@@ -101,10 +99,46 @@ html|button, html|select {
 .devtools-autocomplete-listbox .autocomplete-item > .autocomplete-value {
   margin: 0;
   padding: 0;
+  float: left;
+}
+
+.devtools-autocomplete-listbox .autocomplete-item > .autocomplete-postlabel {
+  font-style: italic;
+  float: right;
+  padding-right: 3px;
 }
 
 .devtools-autocomplete-listbox .autocomplete-item > .autocomplete-count {
   text-align: end;
+}
+
+.devtools-autocomplete-listbox .autocomplete-swatch {
+  cursor: pointer;
+  border-radius: 50%;
+  width: 1em;
+  height: 1em;
+  vertical-align: middle;
+  /* align the swatch with its value */
+  margin-top: -1px;
+  margin-inline-end: 5px;
+  display: inline-block;
+  position: relative;
+}
+
+.devtools-autocomplete-listbox .autocomplete-colorswatch::before {
+  content: '';
+  background-color: #eee;
+  background-image: linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%, #ccc),
+                    linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%, #ccc);
+  background-size: 12px 12px;
+  background-position: 0 0, 6px 6px;
+  position: absolute;
+  border-radius: 50%;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: -1;
 }
 
 /* Rest of the dark and light theme */
@@ -121,13 +155,6 @@ html|button, html|select {
 .theme-dark .CodeMirror-Tern-tooltip {
   border: 1px solid hsl(210,11%,10%);
   background-image: linear-gradient(to bottom, hsla(209,18%,18%,0.9), hsl(210,11%,16%));
-}
-
-.theme-firebug .devtools-autocomplete-popup {
-  border-color: var(--theme-splitter-color);
-  border-radius: 5px;
-  font-size: var(--theme-autompletion-font-size);
-  background: var(--theme-body-background);
 }
 
 .devtools-autocomplete-listbox .autocomplete-selected,
@@ -235,6 +262,15 @@ checkbox:-moz-focusring {
   outline: none;
 }
 
+/* Tab and button of toolbox does not need to display outline */
+
+.devtools-button:-moz-focusring,
+.devtools-tab:-moz-focusring {
+  outline:none;
+  padding-inline-end: 0;
+  padding-inline-start: 0;
+}
+
 /* Toolbar buttons */
 .devtools-menulist,
 .devtools-toolbarbutton,
@@ -244,7 +280,7 @@ checkbox:-moz-focusring {
   border: 1px solid var(--toolbarbutton-border-color);
   border-radius: 2px;
   color: var(--theme-body-color);
-  transition: background 0.05s ease-in-out;
+  transition: background-color 0.05s ease-in-out;
   -moz-box-align: center;
   text-shadow: none;
   padding: 1px;
@@ -252,6 +288,11 @@ checkbox:-moz-focusring {
 
   /* Button text should not wrap on multiple lines */
   white-space: nowrap;
+}
+
+/* Remove system form border from devtools-button. */
+.devtools-button::-moz-focus-inner {
+  border: 0;
 }
 
 .devtools-toolbarbutton:not([label]) > .toolbarbutton-icon,
@@ -269,7 +310,6 @@ checkbox:-moz-focusring {
 .devtools-button:empty::before {
   content: "";
   display: inline-block;
-  background-size: cover;
   background-repeat: no-repeat;
   vertical-align: middle;
 }
@@ -317,7 +357,7 @@ checkbox:-moz-focusring {
 }
 
 /* Button states */
-.devtools-toolbarbutton[label]:not([type=menu-button]),
+.devtools-toolbarbutton[label],
 .devtools-toolbarbutton[standalone],
 .devtools-button[data-standalone],
 .devtools-button:not(:empty) {
@@ -328,6 +368,10 @@ checkbox:-moz-focusring {
 .devtools-toolbarbutton:not([label]):hover,
 .devtools-button:empty:not(:disabled):hover {
   background: var(--toolbarbutton-background);
+}
+
+.devtools-button:focus {
+  background-color: var(--theme-toolbar-hover);
 }
 
 .devtools-button:not(:empty):not(:disabled):not(.checked):hover,
@@ -345,10 +389,7 @@ checkbox:-moz-focusring {
 
 .devtools-toolbarbutton:not([disabled])[label][checked=true],
 .devtools-toolbarbutton:not([disabled])[label][open],
-.devtools-button:not(:empty).checked,
-.theme-firebug .devtools-toolbarbutton[checked],
-.theme-firebug .devtools-toolbarbutton[open],
-.theme-firebug .devtools-button.checked:empty {
+.devtools-button:not(:empty).checked {
   background: var(--toolbarbutton-checked-background);
   border-color: var(--toolbarbutton-checked-border-color);
   color: var(--toolbarbutton-checked-color);
@@ -497,6 +538,21 @@ checkbox:-moz-focusring {
   /* See bug - 1414609. z-index is greater than 1000 so that searchbox's z-index
   is more than z-index of requests-list-headers-wrapper in netmonitor */
   z-index: 1001;
+}
+
+/* MDN link within the Searchbox */
+.devtools-searchbox .learn-more-link:before {
+  height: 20px;
+}
+
+.devtools-searchbox .learn-more-link {
+  background: transparent !important;
+  cursor: pointer;
+  display: none;
+}
+
+.devtools-searchbox:hover .learn-more-link {
+  display: block;
 }
 
 /* Don't add 'double spacing' for inputs that are at beginning / end
@@ -705,29 +761,36 @@ checkbox:-moz-focusring {
   width: 100%;
   height: 2px;
   background: transparent;
+  transition: transform 250ms var(--animation-easing-function), opacity 250ms var(--animation-easing-function);
+  opacity: 0;
+  transform: scaleX(0);
 }
 
 .devtools-tab:hover .devtools-tab-line,
 .tabs-menu-item:hover .devtools-tab-line {
   background: var(--tab-line-hover-color);
+  opacity: 1;
+  transform: scaleX(1);
 }
 
 .devtools-tab.selected .devtools-tab-line,
 .tabs-menu-item.is-active .devtools-tab-line {
   background: var(--tab-line-selected-color);
+  opacity: 1;
+  transform: scaleX(1);
 }
 
-/* Hide the tab line in the firebug theme */
-.theme-firebug .devtools-tab-line {
-  background: transparent !important;
+.devtools-tab:not(.selected):focus .devtools-tab-line {
+  background: var(--tab-line-hover-color);
+  opacity: 1;
+  transform: scaleX(1);
 }
 
 /* No result message styles */
 
 .devtools-sidepanel-no-result {
   font-style: italic;
-  text-align: center;
-  padding: 0.5em;
+  padding: 0.5em 21px;
   -moz-user-select: none;
   font-size: 12px;
 }

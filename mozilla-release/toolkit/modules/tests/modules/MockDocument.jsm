@@ -6,7 +6,7 @@
 
 var EXPORTED_SYMBOLS = ["MockDocument"];
 
-Cu.importGlobalProperties(["URL"]);
+Cu.importGlobalProperties(["DOMParser", "URL"]);
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 const { NetUtil } = ChromeUtils.import("resource://gre/modules/NetUtil.jsm", {});
@@ -16,9 +16,7 @@ const MockDocument = {
    * Create a document for the given URL containing the given HTML with the ownerDocument of all <form>s having a mocked location.
    */
   createTestDocument(aDocumentURL, aContent = "<form>", aType = "text/html") {
-    let parser = Cc["@mozilla.org/xmlextras/domparser;1"].
-                 createInstance(Ci.nsIDOMParser);
-    parser.init();
+    let parser = new DOMParser();
     let parsedDoc = parser.parseFromString(aContent, aType);
 
     // Assign ownerGlobal to documentElement as well for the form-less
@@ -58,7 +56,7 @@ const MockDocument = {
   mockOwnerGlobalProperty(aElement) {
     Object.defineProperty(aElement, "ownerGlobal", {
       value: {
-        QueryInterface: XPCOMUtils.generateQI([Ci.nsIInterfaceRequestor]),
+        QueryInterface: ChromeUtils.generateQI([Ci.nsIInterfaceRequestor]),
         getInterface: () => ({
           addManuallyManagedState() {},
           removeManuallyManagedState() {},

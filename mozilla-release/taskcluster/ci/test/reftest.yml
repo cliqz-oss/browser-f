@@ -24,7 +24,7 @@ crashtest:
     treeherder-symbol: R(C)
     run-on-projects:
         by-test-platform:
-            .*-qr/.*: ['mozilla-central', 'autoland', 'mozilla-inbound', 'try']  # exclude beta and project branches
+            .*-qr/.*: ['trunk', 'try']  # exclude beta and project branches
             default: built-projects
     instance-size:
         by-test-platform:
@@ -54,6 +54,10 @@ jsreftest:
     suite: reftest/jsreftest
     schedules-component: jsreftest  # scheduling for this reftest is different from the others..
     treeherder-symbol: R(J)
+    run-on-projects:
+        by-test-platform:
+            .*-qr/.*: ['trunk', 'try']  # exclude beta and project branches
+            default: built-projects
     instance-size:
         by-test-platform:
             android.*: xlarge
@@ -69,13 +73,10 @@ jsreftest:
             linux32/debug: 5
             macosx.*: 2
             default: 3
-    e10s:
-        by-test-platform:
-            linux64-jsdcov/opt: false
-            default: true
     max-run-time:
         by-test-platform:
             android.*: 7200
+            windows10-64-ccov/debug: 7200
             default: 3600
     tier:
         by-test-platform:
@@ -87,6 +88,10 @@ reftest:
     description: "Reftest run"
     suite: reftest/reftest
     treeherder-symbol: R(R)
+    run-on-projects:
+        by-test-platform:
+            .*-qr/.*: ['trunk', 'try']  # exclude beta and project branches
+            default: built-projects
     instance-size:
         by-test-platform:
             android.*: xlarge
@@ -103,6 +108,7 @@ reftest:
             macosx64.*/debug: 3
             windows.*/opt: 2
             windows.*/debug: 4
+            windows10-64-ccov/debug: 6
             default: 8
     e10s:
         by-test-platform:
@@ -111,6 +117,7 @@ reftest:
     max-run-time:
         by-test-platform:
             android.*: 7200
+            windows10-64-ccov/debug: 5400
             default: 3600
     mozharness:
         chunked:
@@ -158,10 +165,6 @@ reftest-no-accel:
             macosx.*: 1
             windows.*: 4
             default: 8
-    e10s:
-        by-test-platform:
-            linux64-jsdcov/opt: false
-            default: true
     mozharness:
         chunked:
             by-test-platform:
@@ -172,10 +175,3 @@ reftest-no-accel:
         by-test-platform:
             windows10-64-asan.*: 3
             default: default
-
-reftest-stylo:
-    description: "Reftest run in Stylo vs. Gecko mode"
-    suite: reftest/reftest-stylo
-    treeherder-symbol: R(Rs)
-    virtualization: virtual-with-gpu
-    chunks: 8

@@ -14,6 +14,7 @@
 #include "nsContentUtils.h"
 #include "nsIContent.h"
 #include "nsTArray.h"
+#include "mozilla/dom/Text.h"
 
 using namespace mozilla;
 
@@ -33,7 +34,7 @@ nsCounterUseNode::InitTextFrame(nsGenConList* aList,
       Calc(counterList);
       nsAutoString contentString;
       GetText(contentString);
-      aTextFrame->GetContent()->SetText(contentString, false);
+      aTextFrame->GetContent()->AsText()->SetText(contentString, false);
     } else {
       // In all other cases (list already dirty or node not at the end),
       // just start with an empty string for now and when we recalculate
@@ -53,7 +54,7 @@ nsCounterUseNode::Calc(nsCounterList* aList)
 {
   NS_ASSERTION(!aList->IsDirty(),
                "Why are we calculating with a dirty list?");
-  mValueAfter = aList->ValueBefore(this);
+  mValueAfter = nsCounterList::ValueBefore(this);
 }
 
 // assign the correct |mValueAfter| value to a node that has been inserted
@@ -66,7 +67,7 @@ nsCounterChangeNode::Calc(nsCounterList* aList)
     mValueAfter = mChangeValue;
   } else {
     NS_ASSERTION(mType == INCREMENT, "invalid type");
-    mValueAfter = nsCounterManager::IncrementCounter(aList->ValueBefore(this),
+    mValueAfter = nsCounterManager::IncrementCounter(nsCounterList::ValueBefore(this),
                                                      mChangeValue);
   }
 }
@@ -178,7 +179,7 @@ nsCounterList::RecalcAll()
       if (useNode->mText) {
         nsAutoString text;
         useNode->GetText(text);
-        useNode->mText->SetData(text);
+        useNode->mText->SetData(text, IgnoreErrors());
       }
     }
   }

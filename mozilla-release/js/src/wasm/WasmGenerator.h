@@ -19,6 +19,8 @@
 #ifndef wasm_generator_h
 #define wasm_generator_h
 
+#include "mozilla/MemoryReporting.h"
+
 #include "jit/MacroAssembler.h"
 #include "wasm/WasmCompile.h"
 #include "wasm/WasmModule.h"
@@ -65,10 +67,7 @@ struct CompiledCode
     CallSiteVector       callSites;
     CallSiteTargetVector callSiteTargets;
     TrapSiteVectorArray  trapSites;
-    OldTrapSiteVector    oldTrapSites;
-    OldTrapFarJumpVector oldTrapFarJumps;
     CallFarJumpVector    callFarJumps;
-    MemoryAccessVector   memoryAccesses;
     SymbolicAccessVector symbolicAccesses;
     jit::CodeLabelVector codeLabels;
 
@@ -80,10 +79,7 @@ struct CompiledCode
         callSites.clear();
         callSiteTargets.clear();
         trapSites.clear();
-        oldTrapSites.clear();
-        oldTrapFarJumps.clear();
         callFarJumps.clear();
-        memoryAccesses.clear();
         symbolicAccesses.clear();
         codeLabels.clear();
         MOZ_ASSERT(empty());
@@ -95,13 +91,12 @@ struct CompiledCode
                callSites.empty() &&
                callSiteTargets.empty() &&
                trapSites.empty() &&
-               oldTrapSites.empty() &&
-               oldTrapFarJumps.empty() &&
                callFarJumps.empty() &&
-               memoryAccesses.empty() &&
                symbolicAccesses.empty() &&
                codeLabels.empty();
     }
+
+    size_t sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf) const;
 };
 
 // The CompileTaskState of a ModuleGenerator contains the mutable state shared
@@ -137,6 +132,12 @@ struct CompileTask
         state(state),
         lifo(defaultChunkSize)
     {}
+
+    size_t sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf) const;
+    size_t sizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf) const
+    {
+        return mallocSizeOf(this) + sizeOfExcludingThis(mallocSizeOf);
+    }
 };
 
 // A ModuleGenerator encapsulates the creation of a wasm module. During the
@@ -148,7 +149,6 @@ struct CompileTask
 class MOZ_STACK_CLASS ModuleGenerator
 {
     typedef Vector<CompileTask, 0, SystemAllocPolicy> CompileTaskVector;
-    typedef EnumeratedArray<Trap, Trap::Limit, uint32_t> OldTrapOffsetArray;
     typedef Vector<jit::CodeOffset, 0, SystemAllocPolicy> CodeOffsetVector;
 
     // Constant parameters
@@ -168,11 +168,9 @@ class MOZ_STACK_CLASS ModuleGenerator
     LifoAlloc                       lifo_;
     jit::JitContext                 jcx_;
     jit::TempAllocator              masmAlloc_;
-    jit::MacroAssembler             masm_;
+    jit::WasmMacroAssembler         masm_;
     Uint32Vector                    funcToCodeRange_;
-    OldTrapOffsetArray              oldTrapCodeOffsets_;
     uint32_t                        debugTrapCodeOffset_;
-    OldTrapFarJumpVector            oldTrapFarJumps_;
     CallFarJumpVector               callFarJumps_;
     CallSiteTargetVector            callSiteTargets_;
     uint32_t                        lastPatchedCallSite_;

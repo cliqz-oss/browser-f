@@ -15,15 +15,14 @@ const { formDataURI } = require("../utils/request-utils");
 const {
   getDisplayedRequests,
   getSelectedRequest,
-  getSortedRequests,
   getWaterfallScale,
 } = require("../selectors/index");
 
-loader.lazyGetter(this, "setImageTooltip", function () {
+loader.lazyGetter(this, "setImageTooltip", function() {
   return require("devtools/client/shared/widgets/tooltip/ImageTooltipHelper")
     .setImageTooltip;
 });
-loader.lazyGetter(this, "getImageDimensions", function () {
+loader.lazyGetter(this, "getImageDimensions", function() {
   return require("devtools/client/shared/widgets/tooltip/ImageTooltipHelper")
     .getImageDimensions;
 });
@@ -51,8 +50,8 @@ class RequestListContent extends Component {
       connector: PropTypes.object.isRequired,
       columns: PropTypes.object.isRequired,
       networkDetailsOpen: PropTypes.bool.isRequired,
-      networkDetailsWidth: PropTypes.number.isRequired,
-      networkDetailsHeight: PropTypes.number.isRequired,
+      networkDetailsWidth: PropTypes.number,
+      networkDetailsHeight: PropTypes.number,
       cloneSelectedRequest: PropTypes.func.isRequired,
       displayedRequests: PropTypes.array.isRequired,
       firstRequestStartedMillis: PropTypes.number.isRequired,
@@ -65,7 +64,6 @@ class RequestListContent extends Component {
       openStatistics: PropTypes.func.isRequired,
       scale: PropTypes.number,
       selectedRequest: PropTypes.object,
-      sortedRequests: PropTypes.array.isRequired,
       requestFilterTypes: PropTypes.object.isRequired,
     };
   }
@@ -82,12 +80,6 @@ class RequestListContent extends Component {
   }
 
   componentWillMount() {
-    const { connector, cloneSelectedRequest, openStatistics } = this.props;
-    this.contextMenu = new RequestListContextMenu({
-      connector,
-      cloneSelectedRequest,
-      openStatistics,
-    });
     this.tooltip = new HTMLTooltip(window.parent.document, { type: "arrow" });
     window.addEventListener("resize", this.onResize);
   }
@@ -245,8 +237,18 @@ class RequestListContent extends Component {
 
   onContextMenu(evt) {
     evt.preventDefault();
-    let { selectedRequest, sortedRequests } = this.props;
-    this.contextMenu.open(evt, selectedRequest, sortedRequests);
+    let { selectedRequest, displayedRequests } = this.props;
+
+    if (!this.contextMenu) {
+      const { connector, cloneSelectedRequest, openStatistics } = this.props;
+      this.contextMenu = new RequestListContextMenu({
+        connector,
+        cloneSelectedRequest,
+        openStatistics,
+      });
+    }
+
+    this.contextMenu.open(evt, selectedRequest, displayedRequests);
   }
 
   /**
@@ -317,7 +319,6 @@ module.exports = connect(
     firstRequestStartedMillis: state.requests.firstStartedMillis,
     selectedRequest: getSelectedRequest(state),
     scale: getWaterfallScale(state),
-    sortedRequests: getSortedRequests(state),
     requestFilterTypes: state.filters.requestFilterTypes,
   }),
   (dispatch, props) => ({

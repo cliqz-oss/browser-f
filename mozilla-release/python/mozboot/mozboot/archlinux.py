@@ -20,12 +20,10 @@ class ArchlinuxBootstrapper(StyloInstall, BaseBootstrapper):
     SYSTEM_PACKAGES = [
         'autoconf2.13',
         'base-devel',
-        'ccache',
-        'mercurial',
         'nodejs',
-        'npm',
         'python2',
         'python2-setuptools',
+        'python',  # This is Python 3 on Arch.
         'unzip',
         'zip',
     ]
@@ -57,7 +55,6 @@ class ArchlinuxBootstrapper(StyloInstall, BaseBootstrapper):
         'yasm',
         'gst-libav',
         'gst-plugins-good',
-        'networkmanager',
     ]
 
     BROWSER_AUR_PACKAGES = [

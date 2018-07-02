@@ -13,9 +13,9 @@
 #include <string.h>
 
 #include "jsapi.h"
-#include "jsarray.h"
 #include "jsnum.h"
 
+#include "builtin/Array.h"
 #include "jit/AtomicOperations.h"
 #include "js/Conversions.h"
 #include "js/Wrapper.h"
@@ -92,7 +92,7 @@ DataViewObject::create(JSContext* cx, uint32_t byteOffset, uint32_t byteLength,
             MOZ_ASSERT(arrayBuffer->byteLength() == 0 &&
                        (uintptr_t(ptr.unwrapValue()) & gc::ChunkMask) == 0);
         } else {
-            cx->zone()->group()->storeBuffer().putWholeCell(obj);
+            cx->runtime()->gc.storeBuffer().putWholeCell(obj);
         }
     }
 

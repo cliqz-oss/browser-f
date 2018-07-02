@@ -313,7 +313,7 @@ impl PropertyDeclarationBlock {
         }
 
         self.declarations.iter().enumerate().find(|&(_, decl)| decl.id() == property).map(|(i, decl)| {
-            let importance = if self.declarations_importance.get(i as u32) {
+            let importance = if self.declarations_importance[i] {
                 Importance::Important
             } else {
                 Importance::Normal
@@ -517,7 +517,7 @@ impl PropertyDeclarationBlock {
                     continue;
                 }
 
-                let important = self.declarations_importance.get(i as u32);
+                let important = self.declarations_importance[i];
                 match (important, importance.important()) {
                     (false, true) => {}
 
@@ -538,7 +538,7 @@ impl PropertyDeclarationBlock {
                     // overrides importance.
                     DeclarationSource::CssOm => {
                         *slot = declaration;
-                        self.declarations_importance.set(i as u32, importance.important());
+                        self.declarations_importance.set(i, importance.important());
                         return true;
                     }
                     DeclarationSource::Parsing => {
@@ -569,7 +569,7 @@ impl PropertyDeclarationBlock {
 
             if let Some(index) = index_to_remove {
                 self.declarations.remove(index);
-                self.declarations_importance.remove(index as u32);
+                self.declarations_importance.remove(index);
                 self.declarations.push(declaration);
                 self.declarations_importance.push(importance.important());
                 return true;
@@ -592,8 +592,8 @@ impl PropertyDeclarationBlock {
         for (i, declaration) in self.declarations.iter().enumerate() {
             if declaration.id().is_or_is_longhand_of(property) {
                 let is_important = new_importance.important();
-                if self.declarations_importance.get(i as u32) != is_important {
-                    self.declarations_importance.set(i as u32, is_important);
+                if self.declarations_importance[i] != is_important {
+                    self.declarations_importance.set(i, is_important);
                     updated_at_least_one = true;
                 }
             }
@@ -706,7 +706,7 @@ impl PropertyDeclarationBlock {
         PropertyDeclarationBlock {
             declarations,
             longhands,
-            declarations_importance: SmallBitVec::from_elem(len as u32, false),
+            declarations_importance: SmallBitVec::from_elem(len, false),
         }
     }
 

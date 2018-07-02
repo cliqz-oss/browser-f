@@ -5,6 +5,7 @@
 // Import globals from the files imported by the .xul files.
 /* import-globals-from subdialogs.js */
 /* import-globals-from main.js */
+/* import-globals-from home.js */
 /* import-globals-from search.js */
 /* import-globals-from containers.js */
 /* import-globals-from privacy.js */
@@ -52,6 +53,9 @@ function init_all() {
 
   gSubDialog.init();
   register_module("paneGeneral", gMainPane);
+#if 0
+  register_module("paneHome", gHomePane);
+#endif
   register_module("paneSearch", gSearchPane);
   register_module("panePrivacy", gPrivacyPane);
   register_module("paneContainers", gContainersPane);
@@ -109,6 +113,7 @@ function telemetryBucketForCategory(category) {
   switch (category) {
     case "containers":
     case "general":
+    case "home":
     case "privacy":
     case "search":
     case "sync":
@@ -204,9 +209,7 @@ function search(aQuery, aAttribute) {
   let elements = mainPrefPane.children;
   for (let element of elements) {
     // If the "data-hidden-from-search" is "true", the
-    // element will not get considered during search. This
-    // should only be used when an element is still under
-    // development and should not be shown for any reason.
+    // element will not get considered during search.
     if (element.getAttribute("data-hidden-from-search") != "true" ||
         element.getAttribute("data-subpanel") == "true") {
       let attributeValue = element.getAttribute(aAttribute);
@@ -215,6 +218,9 @@ function search(aQuery, aAttribute) {
       } else {
         element.hidden = true;
       }
+    } else if (element.getAttribute("data-hidden-from-search") == "true" &&
+               !element.hidden) {
+      element.hidden = true;
     }
     element.classList.remove("visually-hidden");
   }

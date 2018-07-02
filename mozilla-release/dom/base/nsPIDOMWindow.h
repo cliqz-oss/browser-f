@@ -249,14 +249,6 @@ public:
   }
 
   /**
-   * Check whether this has had inner objects freed.
-   */
-  bool InnerObjectsFreed() const
-  {
-    return mInnerObjectsFreed;
-  }
-
-  /**
    * Check whether this window is a secure context.
    */
   bool IsSecureContext() const;
@@ -492,10 +484,10 @@ public:
    * DO NOT CALL EITHER OF THESE METHODS DIRECTLY. USE THE FOCUS MANAGER
    * INSTEAD.
    */
-  inline nsIContent* GetFocusedNode() const;
-  virtual void SetFocusedNode(nsIContent* aNode,
-                              uint32_t aFocusMethod = 0,
-                              bool aNeedsFocus = false) = 0;
+  inline mozilla::dom::Element* GetFocusedElement() const;
+  virtual void SetFocusedElement(mozilla::dom::Element* aElement,
+                                 uint32_t aFocusMethod = 0,
+                                 bool aNeedsFocus = false) = 0;
 
   /**
    * Retrieves the method that was used to focus the current node.
@@ -590,7 +582,6 @@ public:
     return mMarkedCCGeneration;
   }
 
-  virtual nsIDOMScreen* GetScreen() = 0;
   mozilla::dom::Navigator* Navigator();
   virtual mozilla::dom::Location* GetLocation() = 0;
 
@@ -605,7 +596,7 @@ public:
   GetComputedStyle(mozilla::dom::Element& aElt, const nsAString& aPseudoElt,
                    mozilla::ErrorResult& aError) = 0;
 
-  virtual already_AddRefed<nsIDOMElement> GetFrameElement() = 0;
+  virtual mozilla::dom::Element* GetFrameElement() = 0;
 
   virtual already_AddRefed<nsIDOMOfflineResourceList> GetApplicationCache() = 0;
 
@@ -662,18 +653,14 @@ protected:
   bool mMayHaveMouseEnterLeaveEventListener;
   bool mMayHavePointerEnterLeaveEventListener;
 
-  // Used to detect whether we have called FreeInnerObjects() (e.g. to ensure
-  // that a call to ResumeTimeouts() after FreeInnerObjects() does nothing).
-  bool mInnerObjectsFreed;
-
   bool mAudioCaptured;
 
   // Our inner window's outer window.
   nsCOMPtr<nsPIDOMWindowOuter> mOuterWindow;
 
-  // the element within the document that is currently focused when this
-  // window is active
-  nsCOMPtr<nsIContent> mFocusedNode;
+  // The element within the document that is currently focused when this
+  // window is active.
+  RefPtr<mozilla::dom::Element> mFocusedElement;
 
   // The AudioContexts created for the current document, if any.
   nsTArray<mozilla::dom::AudioContext*> mAudioContexts; // Weak
@@ -986,10 +973,10 @@ public:
    * DO NOT CALL EITHER OF THESE METHODS DIRECTLY. USE THE FOCUS MANAGER
    * INSTEAD.
    */
-  inline nsIContent* GetFocusedNode() const;
-  virtual void SetFocusedNode(nsIContent* aNode,
-                              uint32_t aFocusMethod = 0,
-                              bool aNeedsFocus = false) = 0;
+  inline mozilla::dom::Element* GetFocusedElement() const;
+  virtual void SetFocusedElement(mozilla::dom::Element* aElement,
+                                 uint32_t aFocusMethod = 0,
+                                 bool aNeedsFocus = false) = 0;
 
   /**
    * Retrieves the method that was used to focus the current node.
@@ -1094,7 +1081,6 @@ public:
 
   // XXX(nika): These feel like they should be inner window only, but they're
   // called on the outer window.
-  virtual nsIDOMScreen* GetScreen() = 0;
   virtual mozilla::dom::Navigator* GetNavigator() = 0;
   virtual mozilla::dom::Location* GetLocation() = 0;
 
@@ -1121,7 +1107,7 @@ public:
   virtual nsresult GetInnerWidth(int32_t* aWidth) = 0;
   virtual nsresult GetInnerHeight(int32_t* aHeight) = 0;
 
-  virtual already_AddRefed<nsIDOMElement> GetFrameElement() = 0;
+  virtual mozilla::dom::Element* GetFrameElement() = 0;
 
   virtual bool Closed() = 0;
   virtual bool GetFullScreen() = 0;

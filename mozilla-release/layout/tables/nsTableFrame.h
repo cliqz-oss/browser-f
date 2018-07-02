@@ -25,7 +25,6 @@ class nsTableRowGroupFrame;
 class nsTableRowFrame;
 class nsTableColGroupFrame;
 class nsITableLayoutStrategy;
-class nsStyleContext;
 namespace mozilla {
 class WritingMode;
 class LogicalMargin;
@@ -34,6 +33,8 @@ namespace layers {
 class StackingContextHelper;
 }
 } // namespace mozilla
+
+using namespace mozilla;
 
 struct BCPropertyData;
 
@@ -143,7 +144,7 @@ public:
     * @return           the frame that was created
     */
   friend nsTableFrame* NS_NewTableFrame(nsIPresShell* aPresShell,
-                                        nsStyleContext* aContext);
+                                        ComputedStyle* aStyle);
 
   /** sets defaults for table-specific style.
     * @see nsIFrame::Init
@@ -191,8 +192,8 @@ public:
   /** @see nsIFrame::DestroyFrom */
   virtual void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
 
-  /** @see nsIFrame::DidSetStyleContext */
-  virtual void DidSetStyleContext(nsStyleContext* aOldStyleContext) override;
+  /** @see nsIFrame::DidSetComputedStyle */
+  virtual void DidSetComputedStyle(ComputedStyle* aOldComputedStyle) override;
 
   virtual void SetInitialChildList(ChildListID     aListID,
                                    nsFrameList&    aChildList) override;
@@ -295,19 +296,21 @@ public:
   friend class nsDelayedCalcBCBorders;
 
   void AddBCDamageArea(const mozilla::TableArea& aValue);
-  bool BCRecalcNeeded(nsStyleContext* aOldStyleContext,
-                        nsStyleContext* aNewStyleContext);
+  bool BCRecalcNeeded(ComputedStyle* aOldComputedStyle,
+                        ComputedStyle* aNewComputedStyle);
   void PaintBCBorders(DrawTarget& aDrawTarget, const nsRect& aDirtyRect);
   void CreateWebRenderCommandsForBCBorders(mozilla::wr::DisplayListBuilder& aBuilder,
                                            const mozilla::layers::StackingContextHelper& aSc,
-                                           const nsPoint& aPt);
+                                           const nsRect& aVisibleRect,
+                                           const nsPoint& aOffsetToReferenceFrame);
 
   virtual void MarkIntrinsicISizesDirty() override;
   // For border-collapse tables, the caller must not add padding and
   // border to the results of these functions.
   virtual nscoord GetMinISize(gfxContext *aRenderingContext) override;
   virtual nscoord GetPrefISize(gfxContext *aRenderingContext) override;
-  virtual IntrinsicISizeOffsetData IntrinsicISizeOffsets() override;
+  IntrinsicISizeOffsetData IntrinsicISizeOffsets(nscoord aPercentageBasis =
+                                                 NS_UNCONSTRAINEDSIZE) override;
 
   virtual mozilla::LogicalSize
   ComputeSize(gfxContext*                 aRenderingContext,
@@ -364,8 +367,8 @@ public:
 
   nsFrameList& GetColGroups();
 
-  virtual nsStyleContext*
-  GetParentStyleContext(nsIFrame** aProviderFrame) const override;
+  virtual ComputedStyle*
+  GetParentComputedStyle(nsIFrame** aProviderFrame) const override;
 
   virtual bool IsFrameOfType(uint32_t aFlags) const override
   {
@@ -595,7 +598,7 @@ protected:
   /** protected constructor.
     * @see NewFrame
     */
-  explicit nsTableFrame(nsStyleContext* aContext, ClassID aID = kClassID);
+  explicit nsTableFrame(ComputedStyle* aStyle, ClassID aID = kClassID);
 
   /** destructor, responsible for mColumnLayoutData */
   virtual ~nsTableFrame();

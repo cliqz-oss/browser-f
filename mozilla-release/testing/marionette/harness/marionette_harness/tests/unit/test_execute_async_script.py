@@ -1,5 +1,7 @@
 from __future__ import absolute_import
 
+import os
+
 from marionette_driver.errors import (
     JavascriptException,
     ScriptTimeoutException,
@@ -61,16 +63,21 @@ class TestExecuteAsyncContent(MarionetteTestCase):
                 let a = 1;
                 foo(bar);
                 """)
-            self.assertFalse(True)
-        except JavascriptException as inst:
-            self.assertTrue('foo(bar)' in inst.stacktrace)
+            self.fail()
+        except JavascriptException as e:
+            self.assertIsNotNone(e.stacktrace)
+            self.assertIn(os.path.relpath(__file__.replace(".pyc", ".py")), e.stacktrace)
 
     def test_execute_async_js_exception(self):
-        self.assertRaises(JavascriptException,
-            self.marionette.execute_async_script, """
-            var callback = arguments[arguments.length - 1];
-            callback(foo());
+        try:
+            self.marionette.execute_async_script("""
+                let [resolve] = arguments;
+                resolve(foo());
             """)
+            self.fail()
+        except JavascriptException as e:
+            self.assertIsNotNone(e.stacktrace)
+            self.assertIn(os.path.relpath(__file__.replace(".pyc", ".py")), e.stacktrace)
 
     def test_script_finished(self):
         self.assertTrue(self.marionette.execute_async_script("""
@@ -135,8 +142,3 @@ marionetteScriptFinished(5);
             var callback = arguments[arguments.length - 1];
             setTimeout("callback(foo())", 50);
             """)
-        self.assertRaises(JavascriptException,
-            self.marionette.execute_async_script, """
-            var callback = arguments[arguments.length - 1];
-            setTimeout("callback(foo())", 50);
-            """, debug_script=True)

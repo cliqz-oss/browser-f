@@ -7,7 +7,6 @@
  * This file contains utilities for creating elements for markers to be displayed,
  * and parsing out the blueprint to generate correct values for markers.
  */
-const { Ci } = require("chrome");
 const { L10N, PREFS } = require("devtools/client/performance/modules/global");
 
 // String used to fill in platform data when it should be hidden.
@@ -41,13 +40,13 @@ exports.Formatters = {
    * Uses the marker name as the label for markers that do not have
    * a blueprint entry. Uses "Other" in the marker filter menu.
    */
-  UnknownLabel: function (marker = {}) {
+  UnknownLabel: function(marker = {}) {
     return marker.name || L10N.getStr("marker.label.unknown");
   },
 
   /* Group 0 - Reflow and Rendering pipeline */
 
-  StylesFields: function (marker) {
+  StylesFields: function(marker) {
     if ("isAnimationOnly" in marker) {
       return {
         [L10N.getStr("marker.field.isAnimationOnly")]: marker.isAnimationOnly
@@ -58,7 +57,7 @@ exports.Formatters = {
 
   /* Group 1 - JS */
 
-  DOMEventFields: function (marker) {
+  DOMEventFields: function(marker) {
     let fields = Object.create(null);
 
     if ("type" in marker) {
@@ -68,13 +67,13 @@ exports.Formatters = {
     if ("eventPhase" in marker) {
       let label;
       switch (marker.eventPhase) {
-        case Ci.nsIDOMEvent.AT_TARGET:
+        case Event.AT_TARGET:
           label = L10N.getStr("marker.value.DOMEventTargetPhase");
           break;
-        case Ci.nsIDOMEvent.CAPTURING_PHASE:
+        case Event.CAPTURING_PHASE:
           label = L10N.getStr("marker.value.DOMEventCapturingPhase");
           break;
-        case Ci.nsIDOMEvent.BUBBLING_PHASE:
+        case Event.BUBBLING_PHASE:
           label = L10N.getStr("marker.value.DOMEventBubblingPhase");
           break;
       }
@@ -84,7 +83,7 @@ exports.Formatters = {
     return fields;
   },
 
-  JSLabel: function (marker = {}) {
+  JSLabel: function(marker = {}) {
     let generic = L10N.getStr("marker.label.javascript");
     if ("causeName" in marker) {
       return JS_MARKER_MAP[marker.causeName] || generic;
@@ -92,7 +91,7 @@ exports.Formatters = {
     return generic;
   },
 
-  JSFields: function (marker) {
+  JSFields: function(marker) {
     if ("causeName" in marker && !JS_MARKER_MAP[marker.causeName]) {
       let label = PREFS["show-platform-data"] ? marker.causeName : GECKO_SYMBOL;
       return {
@@ -102,7 +101,7 @@ exports.Formatters = {
     return null;
   },
 
-  GCLabel: function (marker) {
+  GCLabel: function(marker) {
     if (!marker) {
       return L10N.getStr("marker.label.garbageCollection2");
     }
@@ -114,7 +113,7 @@ exports.Formatters = {
     return L10N.getStr("marker.label.garbageCollection.incremental");
   },
 
-  GCFields: function (marker) {
+  GCFields: function(marker) {
     let fields = Object.create(null);
 
     if ("causeName" in marker) {
@@ -131,7 +130,7 @@ exports.Formatters = {
     return fields;
   },
 
-  MinorGCFields: function (marker) {
+  MinorGCFields: function(marker) {
     let fields = Object.create(null);
 
     if ("causeName" in marker) {
@@ -145,14 +144,14 @@ exports.Formatters = {
     return fields;
   },
 
-  CycleCollectionFields: function (marker) {
+  CycleCollectionFields: function(marker) {
     let label = marker.name.replace(/nsCycleCollector::/g, "");
     return {
       [L10N.getStr("marker.field.type")]: label
     };
   },
 
-  WorkerFields: function (marker) {
+  WorkerFields: function(marker) {
     if ("workerOperation" in marker) {
       let label = L10N.getStr(`marker.worker.${marker.workerOperation}`);
       return {
@@ -162,7 +161,7 @@ exports.Formatters = {
     return null;
   },
 
-  MessagePortFields: function (marker) {
+  MessagePortFields: function(marker) {
     if ("messagePortOperation" in marker) {
       let label = L10N.getStr(`marker.messagePort.${marker.messagePortOperation}`);
       return {
@@ -191,7 +190,7 @@ exports.Formatters = {
  * @param string mainLabel
  * @param string propName
  */
-exports.Formatters.labelForProperty = function (mainLabel, propName) {
+exports.Formatters.labelForProperty = function(mainLabel, propName) {
   return (marker = {}) => marker[propName]
     ? `${mainLabel} (${marker[propName]})`
     : mainLabel;

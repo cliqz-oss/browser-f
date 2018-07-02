@@ -6,7 +6,6 @@
 #ifndef nsHTMLTags_h___
 #define nsHTMLTags_h___
 
-#include "nsStaticAtom.h"
 #include "nsString.h"
 #include "nsDataHashtable.h"
 #include "nsHashKeys.h"
@@ -44,7 +43,6 @@ public:
   using TagStringHash = nsDataHashtable<nsStringHashKey, nsHTMLTag>;
   using TagAtomHash = nsDataHashtable<nsPtrHashKey<nsAtom>, nsHTMLTag>;
 
-  static void RegisterAtoms(void);
   static nsresult AddRefTable(void);
   static void ReleaseTable(void);
 
@@ -76,9 +74,7 @@ public:
 #endif
 
 private:
-  // This would use NS_STATIC_ATOM_DECL if it wasn't an array.
-  static nsStaticAtom* sTagAtomTable[eHTMLTag_userdefined - 1];
-  static const char16_t* const sTagUnicodeTable[];
+  static const char16_t* const sTagNames[];
 
   static int32_t gTableRefCount;
   static TagStringHash* gTagTable;

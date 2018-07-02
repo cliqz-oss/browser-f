@@ -72,6 +72,9 @@ Val::writePayload(uint8_t* dst) const
       case ValType::B32x4:
         memcpy(dst, &u, jit::Simd128DataSize);
         return;
+      case ValType::AnyRef:
+        // TODO
+        MOZ_CRASH("writing imported value of AnyRef in global NYI");
     }
 }
 
@@ -172,7 +175,7 @@ static const unsigned sTotalBits = sizeof(ImmediateType) * 8;
 static const unsigned sTagBits = 1;
 static const unsigned sReturnBit = 1;
 static const unsigned sLengthBits = 4;
-static const unsigned sTypeBits = 2;
+static const unsigned sTypeBits = 3;
 static const unsigned sMaxTypes = (sTotalBits - sTagBits - sReturnBit - sLengthBits) / sTypeBits;
 
 static bool
@@ -183,6 +186,7 @@ IsImmediateType(ValType vt)
       case ValType::I64:
       case ValType::F32:
       case ValType::F64:
+      case ValType::AnyRef:
         return true;
       case ValType::I8x16:
       case ValType::I16x8:
@@ -199,7 +203,7 @@ IsImmediateType(ValType vt)
 static unsigned
 EncodeImmediateType(ValType vt)
 {
-    static_assert(3 < (1 << sTypeBits), "fits");
+    static_assert(4 < (1 << sTypeBits), "fits");
     switch (vt) {
       case ValType::I32:
         return 0;
@@ -209,6 +213,8 @@ EncodeImmediateType(ValType vt)
         return 2;
       case ValType::F64:
         return 3;
+      case ValType::AnyRef:
+        return 4;
       case ValType::I8x16:
       case ValType::I16x8:
       case ValType::I32x4:
@@ -592,6 +598,12 @@ DebugFrame::alignmentStaticAsserts()
                   "Aligned by ABI before pushing DebugFrame");
     static_assert((offsetof(DebugFrame, frame_) + sizeof(Frame)) % Alignment == 0,
                   "Aligned after pushing DebugFrame");
+#ifdef JS_CODEGEN_ARM64
+    // This constraint may or may not be necessary.  If you hit this because
+    // you've changed the frame size then feel free to remove it, but be extra
+    // aware of possible problems.
+    static_assert(sizeof(DebugFrame) % 16 == 0, "ARM64 SP alignment");
+#endif
 }
 
 GlobalObject*
@@ -784,7 +796,6 @@ CodeRange::CodeRange(Kind kind, Offsets offsets)
       case UnalignedExit:
       case TrapExit:
       case Throw:
-      case Interrupt:
         break;
       default:
         MOZ_CRASH("should use more specific constructor");
@@ -817,7 +828,6 @@ CodeRange::CodeRange(Kind kind, CallableOffsets offsets)
     PodZero(&u);
 #ifdef DEBUG
     switch (kind_) {
-      case OldTrapExit:
       case DebugTrap:
       case BuiltinThunk:
         break;
@@ -856,17 +866,6 @@ CodeRange::CodeRange(uint32_t funcIndex, JitExitOffsets offsets)
     u.jitExit.beginToUntrustedFPEnd_ = offsets.untrustedFPEnd - begin_;
     MOZ_ASSERT(jitExitUntrustedFPStart() == offsets.untrustedFPStart);
     MOZ_ASSERT(jitExitUntrustedFPEnd() == offsets.untrustedFPEnd);
-}
-
-CodeRange::CodeRange(Trap trap, CallableOffsets offsets)
-  : begin_(offsets.begin),
-    ret_(offsets.ret),
-    end_(offsets.end),
-    kind_(OldTrapExit)
-{
-    MOZ_ASSERT(begin_ < ret_);
-    MOZ_ASSERT(ret_ < end_);
-    u.trap_ = trap;
 }
 
 CodeRange::CodeRange(uint32_t funcIndex, uint32_t funcLineOrBytecode, FuncOffsets offsets)
@@ -911,4 +910,24 @@ wasm::CreateTlsData(uint32_t globalDataLength)
     tlsData->allocatedBase = allocatedBase;
 
     return UniqueTlsData(tlsData);
+}
+
+void
+TlsData::setInterrupt()
+{
+    interrupt = true;
+    stackLimit = UINTPTR_MAX;
+}
+
+bool
+TlsData::isInterrupted() const
+{
+    return interrupt || stackLimit == UINTPTR_MAX;
+}
+
+void
+TlsData::resetInterrupt(JSContext* cx)
+{
+    interrupt = false;
+    stackLimit = cx->stackLimitForJitCode(JS::StackForUntrustedScript);
 }

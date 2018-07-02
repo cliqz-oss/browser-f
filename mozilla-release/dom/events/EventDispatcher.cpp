@@ -9,6 +9,7 @@
 #include "nsError.h"
 #include <new>
 #include "nsIContent.h"
+#include "nsIContentInlines.h"
 #include "nsIDocument.h"
 #include "nsINode.h"
 #include "nsPIDOMWindow.h"
@@ -422,7 +423,7 @@ void
 EventTargetChainItem::GetEventTargetParent(EventChainPreVisitor& aVisitor)
 {
   aVisitor.Reset();
-  Unused << mTarget->GetEventTargetParent(aVisitor);
+  mTarget->GetEventTargetParent(aVisitor);
   SetForceContentDispatch(aVisitor.mForceContentDispatch);
   SetWantsWillHandleEvent(aVisitor.mWantsWillHandleEvent);
   SetMayHaveListenerManager(aVisitor.mMayHaveListenerManager);
@@ -655,11 +656,31 @@ MayRetargetToChromeIfCanNotHandleEvent(
   return nullptr;
 }
 
+static bool
+ShouldClearTargets(WidgetEvent* aEvent)
+{
+  nsCOMPtr<nsIContent> finalTarget;
+  nsCOMPtr<nsIContent> finalRelatedTarget;
+  if ((finalTarget = do_QueryInterface(aEvent->mTarget)) &&
+      finalTarget->SubtreeRoot()->IsShadowRoot()) {
+    return true;
+  }
+
+  if ((finalRelatedTarget =
+         do_QueryInterface(aEvent->mRelatedTarget)) &&
+      finalRelatedTarget->SubtreeRoot()->IsShadowRoot()) {
+    return true;
+  }
+  //XXXsmaug Check also all the touch objects.
+
+  return false;
+}
+
 /* static */ nsresult
 EventDispatcher::Dispatch(nsISupports* aTarget,
                           nsPresContext* aPresContext,
                           WidgetEvent* aEvent,
-                          nsIDOMEvent* aDOMEvent,
+                          Event* aDOMEvent,
                           nsEventStatus* aEventStatus,
                           EventDispatchingCallback* aCallback,
                           nsTArray<EventTarget*>* aTargets)
@@ -745,16 +766,32 @@ EventDispatcher::Dispatch(nsISupports* aTarget,
   }
 
 #ifdef DEBUG
-  if (aEvent->mMessage != eVoidEvent &&
+  if (NS_IsMainThread() &&
+      aEvent->mMessage != eVoidEvent &&
       !nsContentUtils::IsSafeToRunScript()) {
-    nsresult rv = NS_ERROR_FAILURE;
-    if (target->GetContextForEventHandlers(&rv) ||
-        NS_FAILED(rv)) {
-      nsCOMPtr<nsINode> node = do_QueryInterface(target);
-      if (node && nsContentUtils::IsChromeDoc(node->OwnerDoc())) {
-        NS_WARNING("Fix the caller!");
-      } else {
-        NS_ERROR("This is unsafe! Fix the caller!");
+    nsCOMPtr<nsINode> node = do_QueryInterface(target);
+    if (!node) {
+      // If the target is not a node, just go ahead and assert that this is
+      // unsafe.  There really shouldn't be any other event targets in documents
+      // that are not being rendered or scripted.
+      NS_ERROR("This is unsafe! Fix the caller!");
+    } else {
+      // If this is a node, it's possible that this is some sort of DOM tree
+      // that is never accessed by script (for example an SVG image or XBL
+      // binding document or whatnot).  We really only want to warn/assert here
+      // if there might be actual scripted listeners for this event, so restrict
+      // the warnings/asserts to the case when script can or once could touch
+      // this node's document.
+      nsIDocument* doc = node->OwnerDoc();
+      bool hasHadScriptHandlingObject;
+      nsIGlobalObject* global =
+        doc->GetScriptHandlingObject(hasHadScriptHandlingObject);
+      if (global || hasHadScriptHandlingObject) {
+        if (nsContentUtils::IsChromeDoc(doc)) {
+          NS_WARNING("Fix the caller!");
+        } else {
+          NS_ERROR("This is unsafe! Fix the caller!");
+        }
       }
     }
   }
@@ -792,7 +829,7 @@ EventDispatcher::Dispatch(nsISupports* aTarget,
     return NS_ERROR_FAILURE;
   }
 
-  // Make sure that nsIDOMEvent::target and nsIDOMEvent::originalTarget
+  // Make sure that Event::target and Event::originalTarget
   // point to the last item in the chain.
   if (!aEvent->mTarget) {
     // Note, CurrentTarget() points always to the object returned by
@@ -819,6 +856,8 @@ EventDispatcher::Dispatch(nsISupports* aTarget,
 
   aEvent->mOriginalRelatedTarget = aEvent->mRelatedTarget;
 
+  bool clearTargets = false;
+
   nsCOMPtr<nsIContent> content = do_QueryInterface(aEvent->mOriginalTarget);
   bool isInAnon = content && content->IsInAnonymousSubtree();
 
@@ -842,6 +881,8 @@ EventDispatcher::Dispatch(nsISupports* aTarget,
     for (uint32_t i = 0; i < chain.Length(); ++i) {
       chain[i].PreHandleEvent(preVisitor);
     }
+
+    clearTargets = ShouldClearTargets(aEvent);
   } else {
     // At least the original target can handle the event.
     // Setting the retarget to the |target| simplifies retargeting code.
@@ -910,6 +951,9 @@ EventDispatcher::Dispatch(nsISupports* aTarget,
         for (uint32_t i = 0; i < chain.Length(); ++i) {
           chain[i].PreHandleEvent(preVisitor);
         }
+
+        clearTargets = ShouldClearTargets(aEvent);
+
         // Handle the chain.
         EventChainPostVisitor postVisitor(preVisitor);
         MOZ_RELEASE_ASSERT(!aEvent->mPath);
@@ -934,15 +978,16 @@ EventDispatcher::Dispatch(nsISupports* aTarget,
   aEvent->mFlags.mDispatchedAtLeastOnce = true;
 
   // https://dom.spec.whatwg.org/#concept-event-dispatch
-  // Step 18
-  // "If target's root is a shadow root, then set event's target attribute and
-  //  event's relatedTarget to null."
-  nsCOMPtr<nsIContent> finalTarget = do_QueryInterface(aEvent->mTarget);
-  if (finalTarget && finalTarget->SubtreeRoot()->IsShadowRoot()) {
+  // step 10. If clearTargets, then:
+  //          1. Set event's target to null.
+  //          2. Set event's relatedTarget to null.
+  //          3. Set event's touch target list to the empty list.
+  if (clearTargets) {
     aEvent->mTarget = nullptr;
     aEvent->mOriginalTarget = nullptr;
     aEvent->mRelatedTarget = nullptr;
     aEvent->mOriginalRelatedTarget = nullptr;
+    //XXXsmaug Check also all the touch objects.
   }
 
   if (!externalDOMEvent && preVisitor.mDOMEvent) {
@@ -970,7 +1015,7 @@ EventDispatcher::Dispatch(nsISupports* aTarget,
 /* static */ nsresult
 EventDispatcher::DispatchDOMEvent(nsISupports* aTarget,
                                   WidgetEvent* aEvent,
-                                  nsIDOMEvent* aDOMEvent,
+                                  Event* aDOMEvent,
                                   nsPresContext* aPresContext,
                                   nsEventStatus* aEventStatus)
 {
@@ -983,7 +1028,7 @@ EventDispatcher::DispatchDOMEvent(nsISupports* aTarget,
       innerEvent->mTarget = nullptr;
       innerEvent->mOriginalTarget = nullptr;
     } else {
-      aDOMEvent->GetIsTrusted(&dontResetTrusted);
+      dontResetTrusted = aDOMEvent->IsTrusted();
     }
 
     if (!dontResetTrusted) {

@@ -8,7 +8,7 @@ add_task(async function setup() {
 
 add_task(async function test_support_theme_frame() {
   const FRAME_COLOR = [71, 105, 91];
-  const TAB_TEXT_COLOR = [207, 221, 192, .9];
+  const TAB_TEXT_COLOR = [207, 221, 192];
   let extension = ExtensionTestUtils.loadExtension({
     manifest: {
       "theme": {
@@ -26,9 +26,10 @@ add_task(async function test_support_theme_frame() {
     },
   });
 
-  await extension.startup();
-
   let docEl = window.document.documentElement;
+  let transitionPromise = waitForTransition(docEl, "background-color");
+  await extension.startup();
+  await transitionPromise;
 
   Assert.ok(docEl.hasAttribute("lwtheme"), "LWT attribute should be set");
   Assert.equal(docEl.getAttribute("lwthemetextcolor"), "bright",
@@ -39,7 +40,7 @@ add_task(async function test_support_theme_frame() {
             `The backgroundImage should use face.png. Actual value is: ${style.backgroundImage}`);
   Assert.equal(style.backgroundColor, "rgb(" + FRAME_COLOR.join(", ") + ")",
                "Expected correct background color");
-  Assert.equal(style.color, "rgba(" + TAB_TEXT_COLOR.join(", ") + ")",
+  Assert.equal(style.color, "rgb(" + TAB_TEXT_COLOR.join(", ") + ")",
                "Expected correct text color");
 
   await extension.unload();
@@ -50,7 +51,7 @@ add_task(async function test_support_theme_frame() {
 add_task(async function test_support_theme_frame_inactive() {
   const FRAME_COLOR = [71, 105, 91];
   const FRAME_COLOR_INACTIVE = [255, 0, 0];
-  const TAB_TEXT_COLOR = [207, 221, 192, .9];
+  const TAB_TEXT_COLOR = [207, 221, 192];
   let extension = ExtensionTestUtils.loadExtension({
     manifest: {
       "theme": {
@@ -69,16 +70,20 @@ add_task(async function test_support_theme_frame_inactive() {
     },
   });
 
-  await extension.startup();
-
   let docEl = window.document.documentElement;
+  let transitionPromise = waitForTransition(docEl, "background-color");
+  await extension.startup();
+  await transitionPromise;
+
   let style = window.getComputedStyle(docEl);
 
   Assert.equal(style.backgroundColor, "rgb(" + FRAME_COLOR.join(", ") + ")",
                "Window background is set to the colors.frame property");
 
   // Now we'll open a new window to see if the inactive browser accent color changed
+  transitionPromise = waitForTransition(docEl, "background-color");
   let window2 = await BrowserTestUtils.openNewBrowserWindow();
+  await transitionPromise;
 
   Assert.equal(style.backgroundColor, "rgb(" + FRAME_COLOR_INACTIVE.join(", ") + ")",
                `Inactive window background color should be ${FRAME_COLOR_INACTIVE}`);
@@ -91,7 +96,7 @@ add_task(async function test_support_theme_frame_inactive() {
 
 add_task(async function test_lack_of_theme_frame_inactive() {
   const FRAME_COLOR = [71, 105, 91];
-  const TAB_TEXT_COLOR = [207, 221, 192, .9];
+  const TAB_TEXT_COLOR = [207, 221, 192];
   let extension = ExtensionTestUtils.loadExtension({
     manifest: {
       "theme": {
@@ -109,9 +114,11 @@ add_task(async function test_lack_of_theme_frame_inactive() {
     },
   });
 
-  await extension.startup();
-
   let docEl = window.document.documentElement;
+  let transitionPromise = waitForTransition(docEl, "background-color");
+  await extension.startup();
+  await transitionPromise;
+
   let style = window.getComputedStyle(docEl);
 
   Assert.equal(style.backgroundColor, "rgb(" + FRAME_COLOR.join(", ") + ")",

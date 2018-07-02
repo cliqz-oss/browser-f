@@ -30,6 +30,7 @@
 
 #include "mozilla/Services.h"
 #include "nsAttrValueInlines.h"
+#include "HTMLLinkElement.h"
 
 namespace mozilla {
 namespace dom {
@@ -162,8 +163,8 @@ Link::TryDNSPrefetchOrPreconnectOrPrefetchOrPreloadOrPrerender()
             return;
           }
 
-          if (!nsStyleLinkElement::CheckPreloadAttrs(asAttr, mimeType, media,
-                                                     mElement->OwnerDoc())) {
+          if (!HTMLLinkElement::CheckPreloadAttrs(asAttr, mimeType, media,
+                                                  mElement->OwnerDoc())) {
             policyType = nsIContentPolicy::TYPE_INVALID;
           }
 
@@ -184,7 +185,7 @@ Link::TryDNSPrefetchOrPreconnectOrPrefetchOrPreloadOrPrerender()
     nsCOMPtr<nsIURI> uri(GetURI());
     if (uri && mElement->OwnerDoc()) {
       mElement->OwnerDoc()->MaybePreconnect(uri,
-        mElement->AttrValueToCORSMode(mElement->GetParsedAttr(nsGkAtoms::crossorigin)));
+        Element::AttrValueToCORSMode(mElement->GetParsedAttr(nsGkAtoms::crossorigin)));
       return;
     }
   }
@@ -247,8 +248,8 @@ Link::UpdatePreload(nsAtom* aName, const nsAttrValue* aValue,
   }
 
   nsContentPolicyType policyType = asPolicyType;
-  if (!nsStyleLinkElement::CheckPreloadAttrs(asAttr, mimeType, media,
-                                             mElement->OwnerDoc())) {
+  if (!HTMLLinkElement::CheckPreloadAttrs(asAttr, mimeType, media,
+                                          mElement->OwnerDoc())) {
     policyType = nsIContentPolicy::TYPE_INVALID;
   }
 
@@ -268,8 +269,8 @@ Link::UpdatePreload(nsAtom* aName, const nsAttrValue* aValue,
   if (aName == nsGkAtoms::as) {
     if (aOldValue) {
       oldPolicyType = AsValueToContentPolicy(*aOldValue);
-      if (!nsStyleLinkElement::CheckPreloadAttrs(*aOldValue, mimeType, media,
-                                                 mElement->OwnerDoc())) {
+      if (!HTMLLinkElement::CheckPreloadAttrs(*aOldValue, mimeType, media,
+                                              mElement->OwnerDoc())) {
         oldPolicyType = nsIContentPolicy::TYPE_INVALID;
       }
     } else {
@@ -285,8 +286,8 @@ Link::UpdatePreload(nsAtom* aName, const nsAttrValue* aValue,
     }
     nsAutoString oldMimeType;
     nsContentUtils::SplitMimeType(oldType, oldMimeType, notUsed);
-    if (nsStyleLinkElement::CheckPreloadAttrs(asAttr, oldMimeType, media,
-                                              mElement->OwnerDoc())) {
+    if (HTMLLinkElement::CheckPreloadAttrs(asAttr, oldMimeType, media,
+                                           mElement->OwnerDoc())) {
       oldPolicyType = asPolicyType;
     } else {
       oldPolicyType = nsIContentPolicy::TYPE_INVALID;
@@ -299,8 +300,8 @@ Link::UpdatePreload(nsAtom* aName, const nsAttrValue* aValue,
     } else {
       oldMedia = EmptyString();
     }
-    if (nsStyleLinkElement::CheckPreloadAttrs(asAttr, mimeType, oldMedia,
-                                              mElement->OwnerDoc())) {
+    if (HTMLLinkElement::CheckPreloadAttrs(asAttr, mimeType, oldMedia,
+                                           mElement->OwnerDoc())) {
       oldPolicyType = asPolicyType;
     } else {
       oldPolicyType = nsIContentPolicy::TYPE_INVALID;
@@ -737,7 +738,8 @@ Link::GetSearch(nsAString &_search)
   nsAutoCString search;
   nsresult rv = url->GetQuery(search);
   if (NS_SUCCEEDED(rv) && !search.IsEmpty()) {
-    CopyUTF8toUTF16(NS_LITERAL_CSTRING("?") + search, _search);
+    _search.Assign(u'?');
+    AppendUTF8toUTF16(search, _search);
   }
 }
 
@@ -940,9 +942,11 @@ Link::AsValueToContentPolicy(const nsAttrValue& aValue)
   case DESTINATION_INVALID:
     return nsIContentPolicy::TYPE_INVALID;
   case DESTINATION_AUDIO:
+    return nsIContentPolicy::TYPE_INTERNAL_AUDIO;
   case DESTINATION_TRACK:
+    return nsIContentPolicy::TYPE_INTERNAL_TRACK;
   case DESTINATION_VIDEO:
-    return nsIContentPolicy::TYPE_MEDIA;
+    return nsIContentPolicy::TYPE_INTERNAL_VIDEO;
   case DESTINATION_FONT:
     return nsIContentPolicy::TYPE_FONT;
   case DESTINATION_IMAGE:

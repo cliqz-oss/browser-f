@@ -26,14 +26,10 @@
 #include "nsPresContext.h"
 #include "nsITooltipListener.h"
 #include "nsIDOMNode.h"
-#include "nsIDOMNodeList.h"
-#include "nsIDOMElement.h"
 #include "Link.h"
 #include "mozilla/dom/Element.h"
+#include "mozilla/dom/MouseEvent.h"
 #include "mozilla/dom/SVGTitleElement.h"
-#include "nsIDOMEvent.h"
-#include "nsIDOMFileList.h"
-#include "nsIDOMMouseEvent.h"
 #include "nsIFormControl.h"
 #include "nsIImageLoadingContent.h"
 #include "nsIWebNavigation.h"
@@ -54,11 +50,11 @@
 #include "nsPresContext.h"
 #include "nsViewManager.h"
 #include "nsView.h"
-#include "nsIDOMDragEvent.h"
 #include "nsIConstraintValidation.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/EventListenerManager.h"
-#include "mozilla/dom/Event.h" // for nsIDOMEvent::InternalDOMEvent()
+#include "mozilla/dom/DragEvent.h"
+#include "mozilla/dom/Event.h" // for Event
 #include "mozilla/dom/File.h" // for input type=file
 #include "mozilla/dom/FileList.h" // for input type=file
 #include "mozilla/TextEvents.h"
@@ -926,14 +922,14 @@ nsDocShellTreeOwner::RemoveChromeListeners()
 }
 
 NS_IMETHODIMP
-nsDocShellTreeOwner::HandleEvent(nsIDOMEvent* aEvent)
+nsDocShellTreeOwner::HandleEvent(Event* aEvent)
 {
-  nsCOMPtr<nsIDOMDragEvent> dragEvent = do_QueryInterface(aEvent);
-  NS_ENSURE_TRUE(dragEvent, NS_ERROR_INVALID_ARG);
+  DragEvent* dragEvent = aEvent ? aEvent->AsDragEvent() : nullptr;
+  if (NS_WARN_IF(!dragEvent)) {
+    return NS_ERROR_INVALID_ARG;
+  }
 
-  bool defaultPrevented;
-  aEvent->GetDefaultPrevented(&defaultPrevented);
-  if (defaultPrevented) {
+  if (dragEvent->DefaultPrevented()) {
     return NS_OK;
   }
 
@@ -1133,22 +1129,16 @@ NS_IMETHODIMP
 ChromeTooltipListener::RemoveTooltipListener()
 {
   if (mEventTarget) {
-    nsresult rv = NS_OK;
 #ifndef XP_WIN
-    rv = mEventTarget->RemoveSystemEventListener(NS_LITERAL_STRING("keydown"),
-                                                 this, false);
-    NS_ENSURE_SUCCESS(rv, rv);
+    mEventTarget->RemoveSystemEventListener(NS_LITERAL_STRING("keydown"),
+                                            this, false);
 #endif
-    rv = mEventTarget->RemoveSystemEventListener(NS_LITERAL_STRING("mousedown"),
-                                                 this, false);
-    NS_ENSURE_SUCCESS(rv, rv);
-    rv = mEventTarget->RemoveSystemEventListener(NS_LITERAL_STRING("mouseout"),
-                                                 this, false);
-    NS_ENSURE_SUCCESS(rv, rv);
-    rv = mEventTarget->RemoveSystemEventListener(NS_LITERAL_STRING("mousemove"),
-                                                 this, false);
-    NS_ENSURE_SUCCESS(rv, rv);
-
+    mEventTarget->RemoveSystemEventListener(NS_LITERAL_STRING("mousedown"),
+                                            this, false);
+    mEventTarget->RemoveSystemEventListener(NS_LITERAL_STRING("mouseout"),
+                                            this, false);
+    mEventTarget->RemoveSystemEventListener(NS_LITERAL_STRING("mousemove"),
+                                            this, false);
     mTooltipListenerInstalled = false;
   }
 
@@ -1156,7 +1146,7 @@ ChromeTooltipListener::RemoveTooltipListener()
 }
 
 NS_IMETHODIMP
-ChromeTooltipListener::HandleEvent(nsIDOMEvent* aEvent)
+ChromeTooltipListener::HandleEvent(Event* aEvent)
 {
   nsAutoString eventType;
   aEvent->GetType(eventType);
@@ -1185,9 +1175,9 @@ ChromeTooltipListener::HandleEvent(nsIDOMEvent* aEvent)
 // If we're a tooltip, fire off a timer to see if a tooltip should be shown. If
 // the timer fires, we cache the node in |mPossibleTooltipNode|.
 nsresult
-ChromeTooltipListener::MouseMove(nsIDOMEvent* aMouseEvent)
+ChromeTooltipListener::MouseMove(Event* aMouseEvent)
 {
-  nsCOMPtr<nsIDOMMouseEvent> mouseEvent(do_QueryInterface(aMouseEvent));
+  MouseEvent* mouseEvent = aMouseEvent->AsMouseEvent();
   if (!mouseEvent) {
     return NS_OK;
   }
@@ -1196,9 +1186,8 @@ ChromeTooltipListener::MouseMove(nsIDOMEvent* aMouseEvent)
   // within the timer callback. On win32, we'll get a MouseMove event even when
   // a popup goes away -- even when the mouse doesn't change position! To get
   // around this, we make sure the mouse has really moved before proceeding.
-  int32_t newMouseX, newMouseY;
-  mouseEvent->GetClientX(&newMouseX);
-  mouseEvent->GetClientY(&newMouseY);
+  int32_t newMouseX = mouseEvent->ClientX();
+  int32_t newMouseY = mouseEvent->ClientY();
   if (mMouseClientX == newMouseX && mMouseClientY == newMouseY) {
     return NS_OK;
   }
@@ -1212,8 +1201,8 @@ ChromeTooltipListener::MouseMove(nsIDOMEvent* aMouseEvent)
 
   mMouseClientX = newMouseX;
   mMouseClientY = newMouseY;
-  mouseEvent->GetScreenX(&mMouseScreenX);
-  mouseEvent->GetScreenY(&mMouseScreenY);
+  mMouseScreenX = mouseEvent->ScreenX(CallerType::System);
+  mMouseScreenY = mouseEvent->ScreenY(CallerType::System);
 
   if (mTooltipTimer) {
     mTooltipTimer->Cancel();
@@ -1222,8 +1211,7 @@ ChromeTooltipListener::MouseMove(nsIDOMEvent* aMouseEvent)
   if (!mShowingTooltip && !mTooltipShownOnce) {
     nsIEventTarget* target = nullptr;
 
-    nsCOMPtr<EventTarget> eventTarget =
-      aMouseEvent->InternalDOMEvent()->GetTarget();
+    nsCOMPtr<EventTarget> eventTarget = aMouseEvent->GetTarget();
     if (eventTarget) {
       mPossibleTooltipNode = do_QueryInterface(eventTarget);
       nsCOMPtr<nsIGlobalObject> global(eventTarget->GetOwnerGlobal());

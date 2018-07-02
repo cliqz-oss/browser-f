@@ -19,8 +19,9 @@ var { DebuggerServer } = require("devtools/server/main");
 var { DebuggerClient } = require("devtools/shared/client/debugger-client");
 var ObjectClient = require("devtools/shared/client/object-client");
 var { AddonManager } = ChromeUtils.import("resource://gre/modules/AddonManager.jsm", {});
-var EventEmitter = require("devtools/shared/old-event-emitter");
+var EventEmitter = require("devtools/shared/event-emitter");
 var { Toolbox } = require("devtools/client/framework/toolbox");
+var { Task } = require("devtools/shared/task");
 
 const chromeRegistry = Cc["@mozilla.org/chrome/chrome-registry;1"].getService(Ci.nsIChromeRegistry);
 
@@ -34,7 +35,7 @@ const CHROME_URI = Services.io.newURI(CHROME_URL);
 
 Services.prefs.setBoolPref("devtools.debugger.new-debugger-frontend", false);
 
-registerCleanupFunction(function* () {
+registerCleanupFunction(async function() {
   Services.prefs.clearUserPref("devtools.debugger.new-debugger-frontend");
 
   info("finish() was called, cleaning up...");
@@ -43,7 +44,7 @@ registerCleanupFunction(function* () {
   while (gBrowser && gBrowser.tabs && gBrowser.tabs.length > 1) {
     info("Destroying toolbox.");
     let target = TargetFactory.forTab(gBrowser.selectedTab);
-    yield gDevTools.closeToolbox(target);
+    await gDevTools.closeToolbox(target);
 
     info("Removing tab.");
     gBrowser.removeCurrentTab();
@@ -54,7 +55,7 @@ registerCleanupFunction(function* () {
 
   // Debugger tests use a lot of memory, so force a GC to help fragmentation.
   info("Forcing GC/CC after debugger test.");
-  yield new Promise(resolve => {
+  await new Promise(resolve => {
     Cu.forceGC();
     Cu.forceCC();
     Cu.schedulePreciseGC(resolve);
@@ -379,7 +380,7 @@ function waitForDebuggerEvents(aPanel, aEventName, aEventRepeat = 1) {
   let panelWin = aPanel.panelWin;
   let count = 0;
 
-  panelWin.on(aEventName, function onEvent(aEventName, ...aArgs) {
+  panelWin.on(aEventName, function onEvent(...aArgs) {
     info("Debugger event '" + aEventName + "' fired: " + (++count) + " time(s).");
 
     if (count == aEventRepeat) {
@@ -773,7 +774,7 @@ function initChromeDebugger(aOnClose) {
   let deferred = promise.defer();
 
   // Wait for the toolbox process to start...
-  BrowserToolboxProcess.init(aOnClose, (aEvent, aProcess) => {
+  BrowserToolboxProcess.init(aOnClose, aProcess => {
     info("Browser toolbox process started successfully.");
 
     prepareDebugger(aProcess);
@@ -1320,24 +1321,24 @@ function waitForDispatch(panel, type, eventRepeat = 1) {
   });
 }
 
-function* initWorkerDebugger(TAB_URL, WORKER_URL) {
+async function initWorkerDebugger(TAB_URL, WORKER_URL) {
   DebuggerServer.init();
   DebuggerServer.registerAllActors();
 
   let client = new DebuggerClient(DebuggerServer.connectPipe());
-  yield connect(client);
+  await connect(client);
 
-  let tab = yield addTab(TAB_URL);
-  let { tabs } = yield listTabs(client);
-  let [, tabClient] = yield attachTab(client, findTab(tabs, TAB_URL));
+  let tab = await addTab(TAB_URL);
+  let { tabs } = await listTabs(client);
+  let [, tabClient] = await attachTab(client, findTab(tabs, TAB_URL));
 
-  yield createWorkerInTab(tab, WORKER_URL);
+  await createWorkerInTab(tab, WORKER_URL);
 
-  let { workers } = yield listWorkers(tabClient);
-  let [, workerClient] = yield attachWorker(tabClient,
+  let { workers } = await listWorkers(tabClient);
+  let [, workerClient] = await attachWorker(tabClient,
                                              findWorker(workers, WORKER_URL));
 
-  let toolbox = yield gDevTools.showToolbox(TargetFactory.forWorker(workerClient),
+  let toolbox = await gDevTools.showToolbox(TargetFactory.forWorker(workerClient),
                                             "jsdebugger",
                                             Toolbox.HostType.WINDOW);
 

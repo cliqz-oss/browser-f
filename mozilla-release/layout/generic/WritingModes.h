@@ -7,9 +7,10 @@
 #ifndef WritingModes_h_
 #define WritingModes_h_
 
+#include "mozilla/ComputedStyle.h"
+#include "mozilla/ComputedStyleInlines.h"
+
 #include "nsRect.h"
-#include "nsStyleContext.h"
-#include "nsStyleContextInlines.h"
 #include "nsBidiUtils.h"
 
 // It is the caller's responsibility to operate on logical-coordinate objects
@@ -480,12 +481,12 @@ public:
   { }
 
   /**
-   * Construct writing mode based on a style context
+   * Construct writing mode based on a ComputedStyle.
    */
-  explicit WritingMode(nsStyleContext* aStyleContext)
+  explicit WritingMode(ComputedStyle* aComputedStyle)
   {
-    NS_ASSERTION(aStyleContext, "we need an nsStyleContext here");
-    InitFromStyleVisibility(aStyleContext->StyleVisibility());
+    NS_ASSERTION(aComputedStyle, "we need an ComputedStyle here");
+    InitFromStyleVisibility(aComputedStyle->StyleVisibility());
   }
 
   explicit WritingMode(const nsStyleVisibility* aStyleVisibility)
@@ -1929,7 +1930,7 @@ public:
       mBSize = 0;
     }
 
-    MOZ_ASSERT(rectDebug.IsEqualEdges(nsRect(mIStart, mBStart, mISize, mBSize)));
+    MOZ_ASSERT((rectDebug.IsEmpty() && (mISize == 0 || mBSize == 0)) || rectDebug.IsEqualEdges(nsRect(mIStart, mBStart, mISize, mBSize)));
     return mISize > 0 && mBSize > 0;
   }
 

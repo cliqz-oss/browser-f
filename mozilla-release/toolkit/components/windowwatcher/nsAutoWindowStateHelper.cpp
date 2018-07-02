@@ -8,7 +8,6 @@
 
 #include "mozilla/dom/Event.h"
 #include "nsIDocument.h"
-#include "nsIDOMEvent.h"
 #include "nsIDOMWindow.h"
 #include "nsPIDOMWindow.h"
 #include "nsString.h"
@@ -68,7 +67,7 @@ nsAutoWindowStateHelper::DispatchEventToChrome(const char* aEventName)
   event->WidgetEventPtr()->mFlags.mOnlyChromeDispatch = true;
 
   nsCOMPtr<EventTarget> target = do_QueryInterface(mWindow);
-  bool defaultActionEnabled;
-  target->DispatchEvent(event, &defaultActionEnabled);
+  bool defaultActionEnabled =
+    target->DispatchEvent(*event, CallerType::System, IgnoreErrors());
   return defaultActionEnabled;
 }

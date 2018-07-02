@@ -11,7 +11,6 @@ loader.lazyRequireGetter(this, "TargetFactory", "devtools/client/framework/targe
 loader.lazyRequireGetter(this, "gDevToolsBrowser", "devtools/client/framework/devtools-browser", true);
 loader.lazyRequireGetter(this, "Tools", "devtools/client/definitions", true);
 loader.lazyRequireGetter(this, "Telemetry", "devtools/client/shared/telemetry");
-loader.lazyRequireGetter(this, "WebConsoleFrame", "devtools/client/webconsole/webconsole", true);
 loader.lazyRequireGetter(this, "NewWebConsoleFrame", "devtools/client/webconsole/new-webconsole", true);
 loader.lazyRequireGetter(this, "gDevTools", "devtools/client/framework/devtools", true);
 loader.lazyRequireGetter(this, "DebuggerServer", "devtools/server/main", true);
@@ -184,25 +183,27 @@ HUD_SERVICE.prototype =
     }
 
     async function openWindow(t) {
-      let browserConsoleURL = Tools.webConsole.browserConsoleURL;
-      let win = Services.ww.openWindow(null, browserConsoleURL, "_blank",
-                                       BC_WINDOW_FEATURES, null);
+      let win = Services.ww.openWindow(null, Tools.webConsole.browserConsoleURL,
+                                       "_blank", BC_WINDOW_FEATURES, null);
+      let iframeWindow = win;
+
       await new Promise(resolve => {
         win.addEventListener("DOMContentLoaded", resolve, {once: true});
       });
 
       win.document.title = l10n.getStr("browserConsole.title");
 
-      if (browserConsoleURL === Tools.webConsole.oldWebConsoleURL) {
-        return {iframeWindow: win, chromeWindow: win};
+      // With a XUL wrapper doc, we host webconsole.html in an iframe.
+      // Wait for that to be ready before resolving:
+      if (!Tools.webConsole.browserConsoleUsesHTML) {
+        let iframe = win.document.querySelector("iframe");
+        await new Promise(resolve => {
+          iframe.addEventListener("DOMContentLoaded", resolve, {once: true});
+        });
+        iframeWindow = iframe.contentWindow;
       }
 
-      let iframe = win.document.querySelector("iframe");
-      await new Promise(resolve => {
-        iframe.addEventListener("DOMContentLoaded", resolve, {once: true});
-      });
-
-      return {iframeWindow: iframe.contentWindow, chromeWindow: win};
+      return {iframeWindow, chromeWindow: win};
     }
 
     // Temporarily cache the async startup sequence so that if toggleBrowserConsole
@@ -273,11 +274,7 @@ function WebConsole(target, iframeWindow, chromeWindow) {
   if (element.getAttribute("windowtype") != gDevTools.chromeWindowType) {
     this.browserWindow = HUDService.currentContext();
   }
-  if (iframeWindow.location.href === Tools.webConsole.newWebConsoleURL) {
-    this.ui = new NewWebConsoleFrame(this);
-  } else {
-    this.ui = new WebConsoleFrame(this);
-  }
+  this.ui = new NewWebConsoleFrame(this);
 }
 WebConsole.prototype = {
   iframeWindow: null,
@@ -317,7 +314,7 @@ WebConsole.prototype = {
 
   /**
    * Getter for the xul:popupset that holds any popups we open.
-   * @type nsIDOMElement
+   * @type Element
    */
   get mainPopupSet() {
     return this.chromeUtilsWindow.document.getElementById("mainPopupSet");
@@ -325,7 +322,7 @@ WebConsole.prototype = {
 
   /**
    * Getter for the output element that holds messages we display.
-   * @type nsIDOMElement
+   * @type Element
    */
   get outputNode() {
     return this.ui ? this.ui.outputNode : null;
@@ -381,11 +378,11 @@ WebConsole.prototype = {
    */
   openLink(link, e) {
     let isOSX = Services.appinfo.OS == "Darwin";
+    let where = "tab";
     if (e && (e.button === 1 || (e.button === 0 && (isOSX ? e.metaKey : e.ctrlKey)))) {
-      this.chromeUtilsWindow.openUILinkIn(link, "tabshifted");
-    } else {
-      this.chromeUtilsWindow.openUILinkIn(link, "tab");
+      where = "tabshifted";
     }
+    this.chromeUtilsWindow.openWebLinkIn(link, where);
   },
 
   /**
@@ -480,6 +477,20 @@ WebConsole.prototype = {
     }
 
     return panel.getFrames();
+  },
+
+  async getMappedExpression(expression) {
+    let toolbox = gDevTools.getToolbox(this.target);
+    if (!toolbox) {
+      return expression;
+    }
+    let panel = toolbox.getPanel("jsdebugger");
+
+    if (!panel) {
+      return expression;
+    }
+
+    return panel.getMappedExpression(expression);
   },
 
   /**

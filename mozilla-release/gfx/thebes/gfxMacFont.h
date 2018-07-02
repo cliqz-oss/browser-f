@@ -19,8 +19,7 @@ class gfxMacFont : public gfxFont
 {
 public:
     gfxMacFont(const RefPtr<mozilla::gfx::UnscaledFontMac>& aUnscaledFont,
-               MacOSFontEntry *aFontEntry, const gfxFontStyle *aFontStyle,
-               bool aNeedsBold);
+               MacOSFontEntry *aFontEntry, const gfxFontStyle *aFontStyle);
 
     virtual ~gfxMacFont();
 
@@ -68,6 +67,7 @@ public:
     static CTFontRef
     CreateCTFontFromCGFontWithVariations(CGFontRef aCGFont,
                                          CGFloat aSize,
+                                         bool aInstalledFont,
                                          CTFontDescriptorRef aFontDesc = nullptr);
 
 protected:

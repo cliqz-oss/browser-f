@@ -14,8 +14,6 @@
 const { Sqlite } = ChromeUtils.import("resource://gre/modules/Sqlite.jsm", {});
 const { Kinto } = ChromeUtils.import("resource://services-common/kinto-offline-client.js", {});
 
-const SQLITE_PATH = "kinto.sqlite";
-
 /**
  * Filter and sort list against provided filters and order.
  *
@@ -268,20 +266,32 @@ class FirefoxAdapter extends Kinto.adapters.BaseAdapter {
 
     return conn.executeTransaction(async function doExecuteTransaction() {
       // Preload specified records from DB, within transaction.
-      const parameters = [
-        collection,
-        ...options.preload,
-      ];
-      const placeholders = options.preload.map(_ => "?");
-      const stmt = statements.listRecordsById + "(" + placeholders.join(",") + ");";
-      const rows = await conn.execute(stmt, parameters);
 
-      const preloaded = rows.reduce((acc, row) => {
-        const record = JSON.parse(row.getResultByName("record"));
-        acc[row.getResultByName("record_id")] = record;
-        return acc;
-      }, {});
+      // if options.preload has more elements than the sqlite variable
+      // limit, split it up.
+      const limit = 100;
+      let preloaded = {};
+      let preload;
+      let more = options.preload;
 
+      while (more.length > 0) {
+        preload = more.slice(0, limit);
+        more = more.slice(limit, more.length);
+
+        const parameters = [
+          collection,
+          ...preload,
+        ];
+        const placeholders = preload.map(_ => "?");
+        const stmt = statements.listRecordsById + "(" + placeholders.join(",") + ");";
+        const rows = await conn.execute(stmt, parameters);
+
+        rows.reduce((acc, row) => {
+          const record = JSON.parse(row.getResultByName("record"));
+          acc[row.getResultByName("record_id")] = record;
+          return acc;
+        }, preloaded);
+      }
       const proxy = transactionProxy(collection, preloaded);
       result = callback(proxy);
 

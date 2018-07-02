@@ -126,7 +126,7 @@ CheckedInt64 FramesToUsecs(int64_t aFrames, uint32_t aRate);
 media::TimeUnit FramesToTimeUnit(int64_t aFrames, uint32_t aRate);
 // Perform aValue * aMul / aDiv, reducing the possibility of overflow due to
 // aValue * aMul overflowing.
-CheckedInt64 SaferMultDiv(int64_t aValue, uint32_t aMul, uint32_t aDiv);
+CheckedInt64 SaferMultDiv(int64_t aValue, uint64_t aMul, uint64_t aDiv);
 
 // Converts from microseconds (aUsecs) to number of audio frames, given the
 // specified audio rate (aRate). Stores the result in aOutFrames. Returns
@@ -157,6 +157,12 @@ ScaleDisplayByAspectRatio(gfx::IntSize& aDisplay, float aAspectRatio);
 // Input are the buffer contains stereo data and the number of frames.
 void DownmixStereoToMono(mozilla::AudioDataValue* aBuffer,
                          uint32_t aFrames);
+
+// Decide the number of playback channels according to the
+// given AudioInfo and the prefs that are being set.
+uint32_t DecideAudioPlaybackChannels(const AudioInfo& info);
+
+bool IsDefaultPlaybackDeviceMono();
 
 bool IsVideoContentType(const nsCString& aContentType);
 

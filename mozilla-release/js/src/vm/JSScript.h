@@ -390,11 +390,11 @@ class ScriptSource
     };
 
   private:
-    uint32_t refs;
+    mozilla::Atomic<uint32_t, mozilla::ReleaseAcquire> refs;
 
     // Note: while ScriptSources may be compressed off thread, they are only
-    // modified by the active thread, and all members are always safe to access
-    // on the active thread.
+    // modified by the main thread, and all members are always safe to access
+    // on the main thread.
 
     // Indicate which field in the |data| union is active.
 
@@ -597,7 +597,7 @@ class ScriptSource
 
     // XDR handling
     template <XDRMode mode>
-    MOZ_MUST_USE bool performXDR(XDRState<mode>* xdr);
+    MOZ_MUST_USE XDRResult performXDR(XDRState<mode>* xdr);
 
     MOZ_MUST_USE bool setFilename(JSContext* cx, const char* filename);
     const char* introducerFilename() const {
@@ -765,12 +765,12 @@ enum class FunctionAsyncKind : bool { SyncFunction, AsyncFunction };
  * CallNewScriptHook.
  */
 template<XDRMode mode>
-bool
+XDRResult
 XDRScript(XDRState<mode>* xdr, HandleScope enclosingScope, HandleScriptSource sourceObject,
           HandleFunction fun, MutableHandleScript scriptp);
 
 template<XDRMode mode>
-bool
+XDRResult
 XDRLazyScript(XDRState<mode>* xdr, HandleScope enclosingScope, HandleScriptSource sourceObject,
               HandleFunction fun, MutableHandle<LazyScript*> lazy);
 
@@ -778,7 +778,7 @@ XDRLazyScript(XDRState<mode>* xdr, HandleScope enclosingScope, HandleScriptSourc
  * Code any constant value.
  */
 template<XDRMode mode>
-bool
+XDRResult
 XDRScriptConst(XDRState<mode>* xdr, MutableHandleValue vp);
 
 /*
@@ -856,19 +856,29 @@ class SharedScriptData
 
 struct ScriptBytecodeHasher
 {
-    typedef SharedScriptData Lookup;
+    class Lookup {
+        friend struct ScriptBytecodeHasher;
+
+        SharedScriptData* scriptData;
+        HashNumber hash;
+
+      public:
+        explicit Lookup(SharedScriptData* data);
+        ~Lookup();
+    };
 
     static HashNumber hash(const Lookup& l) {
-        return mozilla::HashBytes(l.data(), l.dataLength());
+        return l.hash;
     }
     static bool match(SharedScriptData* entry, const Lookup& lookup) {
-        if (entry->natoms() != lookup.natoms())
+        const SharedScriptData* data = lookup.scriptData;
+        if (entry->natoms() != data->natoms())
             return false;
-        if (entry->codeLength() != lookup.codeLength())
+        if (entry->codeLength() != data->codeLength())
             return false;
-        if (entry->numNotes() != lookup.numNotes())
+        if (entry->numNotes() != data->numNotes())
             return false;
-        return mozilla::PodEqual<uint8_t>(entry->data(), lookup.data(), lookup.dataLength());
+        return mozilla::PodEqual<uint8_t>(entry->data(), data->data(), data->dataLength());
     }
 };
 
@@ -890,7 +900,7 @@ class JSScript : public js::gc::TenuredCell
 {
     template <js::XDRMode mode>
     friend
-    bool
+    js::XDRResult
     js::XDRScript(js::XDRState<mode>* xdr, js::HandleScope enclosingScope,
                   js::HandleScriptSource sourceObject, js::HandleFunction fun,
                   js::MutableHandleScript scriptp);
@@ -1140,7 +1150,6 @@ class JSScript : public js::gc::TenuredCell
     bool isAsync_:1;
 
     bool hasRest_:1;
-    bool isExprBody_:1;
 
     // True if the debugger's onNewScript hook has not yet been called.
     bool hideScriptFromDebugger_:1;
@@ -1459,13 +1468,6 @@ class JSScript : public js::gc::TenuredCell
         hasRest_ = true;
     }
 
-    bool isExprBody() const {
-        return isExprBody_;
-    }
-    void setIsExprBody() {
-        isExprBody_ = true;
-    }
-
     bool hideScriptFromDebugger() const {
         return hideScriptFromDebugger_;
     }
@@ -1710,9 +1712,12 @@ class JSScript : public js::gc::TenuredCell
     /* Ensure the script has a TypeScript. */
     inline bool ensureHasTypes(JSContext* cx, js::AutoKeepTypeScripts&);
 
-    inline js::TypeScript* types();
+    inline js::TypeScript* types(const js::AutoSweepTypeScript& sweep);
 
-    void maybeSweepTypes(js::AutoClearTypeInferenceStateOnOOM* oom);
+    inline bool typesNeedsSweep() const;
+
+    void sweepTypes(const js::AutoSweepTypeScript& sweep,
+                    js::AutoClearTypeInferenceStateOnOOM* oom);
 
     inline js::GlobalObject& global() const;
     js::GlobalObject& uninlinedGlobal() const;
@@ -2113,7 +2118,6 @@ class LazyScript : public gc::TenuredCell
         uint32_t shouldDeclareArguments : 1;
         uint32_t hasThisBinding : 1;
         uint32_t isAsync : 1;
-        uint32_t isExprBody : 1;
 
         uint32_t numClosedOverBindings : NumClosedOverBindingsBits;
 
@@ -2144,8 +2148,8 @@ class LazyScript : public gc::TenuredCell
 
     // Source location for the script.
     // See the comment in JSScript for the details
-    uint32_t begin_;
-    uint32_t end_;
+    uint32_t sourceStart_;
+    uint32_t sourceEnd_;
     uint32_t toStringStart_;
     uint32_t toStringEnd_;
     // Line and column of |begin_| position, that is the position where we
@@ -2271,13 +2275,6 @@ class LazyScript : public gc::TenuredCell
         p_.hasRest = true;
     }
 
-    bool isExprBody() const {
-        return p_.isExprBody;
-    }
-    void setIsExprBody() {
-        p_.isExprBody = true;
-    }
-
     bool strict() const {
         return p_.strict;
     }
@@ -2358,11 +2355,11 @@ class LazyScript : public gc::TenuredCell
     const char* filename() const {
         return scriptSource()->filename();
     }
-    uint32_t begin() const {
-        return begin_;
+    uint32_t sourceStart() const {
+        return sourceStart_;
     }
-    uint32_t end() const {
-        return end_;
+    uint32_t sourceEnd() const {
+        return sourceEnd_;
     }
     uint32_t toStringStart() const {
         return toStringStart_;
@@ -2379,7 +2376,7 @@ class LazyScript : public gc::TenuredCell
 
     void setToStringEnd(uint32_t toStringEnd) {
         MOZ_ASSERT(toStringStart_ <= toStringEnd);
-        MOZ_ASSERT(toStringEnd_ >= end_);
+        MOZ_ASSERT(toStringEnd_ >= sourceEnd_);
         toStringEnd_ = toStringEnd;
     }
 

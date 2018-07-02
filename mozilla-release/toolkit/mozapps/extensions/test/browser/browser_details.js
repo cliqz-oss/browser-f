@@ -17,31 +17,30 @@ var gVersion = Services.appinfo.version;
 var gDate = new Date(2010, 7, 1);
 var infoURL = Services.urlFormatter.formatURLPref("app.support.baseURL") + "unsigned-addons";
 
-function open_details(aId, aType, aCallback) {
+async function open_details(aId, aType, aCallback) {
   requestLongerTimeout(2);
 
-  gCategoryUtilities.openType(aType, function() {
-    var list = gManagerWindow.document.getElementById("addon-list");
-    var item = list.firstChild;
-    while (item) {
-      if ("mAddon" in item && item.mAddon.id == aId) {
-        list.ensureElementIsVisible(item);
-        EventUtils.synthesizeMouseAtCenter(item, { clickCount: 1 }, gManagerWindow);
-        EventUtils.synthesizeMouseAtCenter(item, { clickCount: 2 }, gManagerWindow);
-        wait_for_view_load(gManagerWindow, aCallback);
-        return;
-      }
-      item = item.nextSibling;
+  await gCategoryUtilities.openType(aType);
+  var list = gManagerWindow.document.getElementById("addon-list");
+  var item = list.firstChild;
+  while (item) {
+    if ("mAddon" in item && item.mAddon.id == aId) {
+      list.ensureElementIsVisible(item);
+      EventUtils.synthesizeMouseAtCenter(item, { clickCount: 1 }, gManagerWindow);
+      EventUtils.synthesizeMouseAtCenter(item, { clickCount: 2 }, gManagerWindow);
+      wait_for_view_load(gManagerWindow, aCallback);
+      return;
     }
-    ok(false, "Should have found the add-on in the list");
-  });
+    item = item.nextSibling;
+  }
+  ok(false, "Should have found the add-on in the list");
 }
 
 function get(aId) {
   return gManagerWindow.document.getElementById(aId);
 }
 
-function test() {
+async function test() {
   requestLongerTimeout(2);
 
   waitForExplicitFinish();
@@ -108,30 +107,12 @@ function test() {
       thumbnailHeight: 120
     }],
   }, {
-    id: "addon4@tests.mozilla.org",
-    blocklistURL: "http://example.com/addon4@tests.mozilla.org",
-    name: "Test add-on 4",
-    _userDisabled: true,
-    isActive: false,
-    blocklistState: Ci.nsIBlocklistService.STATE_SOFTBLOCKED
-  }, {
     id: "addon5@tests.mozilla.org",
     blocklistURL: "http://example.com/addon5@tests.mozilla.org",
     name: "Test add-on 5",
     isActive: false,
     blocklistState: Ci.nsIBlocklistService.STATE_BLOCKED,
     appDisabled: true
-  }, {
-    id: "addon6@tests.mozilla.org",
-    blocklistURL: "http://example.com/addon6@tests.mozilla.org",
-    name: "Test add-on 6",
-    operationsRequiringRestart: AddonManager.OP_NEEDS_RESTART_NONE
-  }, {
-    id: "addon7@tests.mozilla.org",
-    blocklistURL: "http://example.com/addon7@tests.mozilla.org",
-    name: "Test add-on 7",
-    _userDisabled: true,
-    isActive: false
   }, {
     id: "addon8@tests.mozilla.org",
     blocklistURL: "http://example.com/addon8@tests.mozilla.org",
@@ -163,117 +144,17 @@ function test() {
     foreignInstall: true,
   }]);
 
-  open_manager(null, function(aWindow) {
-    gManagerWindow = aWindow;
-    gCategoryUtilities = new CategoryUtilities(gManagerWindow);
+  let aWindow = await open_manager(null);
+  gManagerWindow = aWindow;
+  gCategoryUtilities = new CategoryUtilities(gManagerWindow);
 
-    run_next_test();
-  });
+  run_next_test();
 }
 
-function end_test() {
-  close_manager(gManagerWindow, function() {
-    finish();
-  });
+async function end_test() {
+  await close_manager(gManagerWindow);
+  finish();
 }
-
-// Opens and tests the details view for add-on 1
-add_test(function() {
-  open_details("addon1@tests.mozilla.org", "extension", function() {
-    is(get("detail-name").textContent, "Test add-on 1", "Name should be correct");
-    is_element_visible(get("detail-version"), "Version should not be hidden");
-    is(get("detail-version").value, "2.1", "Version should be correct");
-    is(get("detail-icon").src, "chrome://foo/skin/icon64.png", "Icon should be correct");
-    is_element_hidden(get("detail-creator"), "Creator should be hidden");
-    is_element_hidden(get("detail-screenshot-box"), "Screenshot should be hidden");
-    is(get("detail-screenshot").width, "", "Screenshot dimensions should not be set");
-    is(get("detail-screenshot").height, "", "Screenshot dimensions should not be set");
-    is(get("detail-desc").textContent, "Short description", "Description should be correct");
-    is(get("detail-fulldesc").textContent, "Longer description", "Full description should be correct");
-
-    is_element_visible(get("detail-contributions"), "Contributions section should be visible");
-
-    is_element_visible(get("detail-updates-row"), "Updates should not be hidden");
-    is_element_hidden(get("detail-dateUpdated"), "Update date should be hidden");
-
-    is_element_visible(get("detail-rating-row"), "Rating row should not be hidden");
-    is_element_visible(get("detail-rating"), "Rating should not be hidden");
-    is(get("detail-rating").averageRating, 4, "Rating should be correct");
-    is_element_visible(get("detail-reviews"), "Reviews should not be hidden");
-    is(get("detail-reviews").href, "http://example.com/reviews", "Review URL should be correct");
-    is(get("detail-reviews").value, "5 reviews", "Review text should be correct");
-
-    is_element_visible(get("detail-homepage-row"), "Homepage should be visible");
-    ok(get("detail-homepage").href, "http://example.com/addon1");
-    is_element_hidden(get("detail-repository-row"), "Repository profile should not be visible");
-
-    is_element_hidden(get("detail-size"), "Size should be hidden");
-
-    is_element_visible(get("detail-autoUpdate"), "Updates should not be hidden");
-    ok(get("detail-autoUpdate").childNodes[1].selected, "Updates ahould be automatic");
-    is_element_hidden(get("detail-findUpdates-btn"), "Check for updates should be hidden");
-    EventUtils.synthesizeMouseAtCenter(get("detail-autoUpdate").lastChild, {}, gManagerWindow);
-    ok(get("detail-autoUpdate").lastChild.selected, "Updates should be manual");
-    is_element_visible(get("detail-findUpdates-btn"), "Check for updates should be visible");
-    EventUtils.synthesizeMouseAtCenter(get("detail-autoUpdate").firstChild, {}, gManagerWindow);
-    ok(get("detail-autoUpdate").firstChild.selected, "Updates should be automatic");
-    is_element_hidden(get("detail-findUpdates-btn"), "Check for updates should be hidden");
-
-    is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
-    is_element_hidden(get("detail-enable-btn"), "Enable button should be hidden");
-    is_element_visible(get("detail-disable-btn"), "Disable button should be visible");
-    is_element_visible(get("detail-uninstall-btn"), "Remove button should be visible");
-
-    is_element_hidden(get("detail-warning"), "Warning message should be hidden");
-    is_element_hidden(get("detail-warning-link"), "Warning link should be hidden");
-    is_element_hidden(get("detail-error"), "Error message should be hidden");
-    is_element_hidden(get("detail-pending"), "Pending message should be hidden");
-
-    // Disable it
-    EventUtils.synthesizeMouseAtCenter(get("detail-disable-btn"), {}, gManagerWindow);
-    is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
-    is_element_visible(get("detail-enable-btn"), "Enable button should be visible");
-    is_element_hidden(get("detail-disable-btn"), "Disable button should be hidden");
-    is_element_visible(get("detail-uninstall-btn"), "Remove button should be visible");
-
-    is_element_hidden(get("detail-warning"), "Warning message should be hidden");
-    is_element_hidden(get("detail-warning-link"), "Warning link should be hidden");
-    is_element_hidden(get("detail-error"), "Error message should be hidden");
-    is_element_hidden(get("detail-error-link"), "Error link should be hidden");
-    is_element_visible(get("detail-pending"), "Pending message should be visible");
-    is(get("detail-pending").textContent, "Test add-on 1 will be disabled after you restart " + gApp + ".", "Pending message should be correct");
-
-    // Reopen it
-    open_details("addon1@tests.mozilla.org", "extension", function() {
-      is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
-      is_element_visible(get("detail-enable-btn"), "Enable button should be visible");
-      is_element_hidden(get("detail-disable-btn"), "Disable button should be hidden");
-      is_element_visible(get("detail-uninstall-btn"), "Remove button should be visible");
-
-      is_element_hidden(get("detail-warning"), "Warning message should be hidden");
-      is_element_hidden(get("detail-warning-link"), "Warning link should be hidden");
-      is_element_hidden(get("detail-error"), "Error message should be hidden");
-      is_element_hidden(get("detail-error-link"), "Error link should be hidden");
-      is_element_visible(get("detail-pending"), "Pending message should be visible");
-      is(get("detail-pending").textContent, "Test add-on 1 will be disabled after you restart " + gApp + ".", "Pending message should be correct");
-
-      // Undo disabling
-      EventUtils.synthesizeMouseAtCenter(get("detail-undo-btn"), {}, gManagerWindow);
-      is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
-      is_element_hidden(get("detail-enable-btn"), "Enable button should be hidden");
-      is_element_visible(get("detail-disable-btn"), "Disable button should be visible");
-      is_element_visible(get("detail-uninstall-btn"), "Remove button should be visible");
-
-      is_element_hidden(get("detail-warning"), "Warning message should be hidden");
-      is_element_hidden(get("detail-warning-link"), "Warning link should be hidden");
-      is_element_hidden(get("detail-error"), "Error message should be hidden");
-      is_element_hidden(get("detail-error-link"), "Error link should be hidden");
-      is_element_hidden(get("detail-pending"), "Pending message should be hidden");
-
-      run_next_test();
-    });
-  });
-});
 
 // Opens and tests the details view for add-on 2
 add_test(function() {
@@ -408,77 +289,10 @@ add_test(function() {
   });
 });
 
-// Opens and tests the details view for add-on 4
-add_test(function() {
-  open_details("addon4@tests.mozilla.org", "extension", function() {
-    is(get("detail-name").textContent, "Test add-on 4", "Name should be correct");
-
-    is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
-    is_element_visible(get("detail-enable-btn"), "Enable button should be visible");
-    is_element_hidden(get("detail-disable-btn"), "Disable button should be hidden");
-    is_element_visible(get("detail-uninstall-btn"), "Remove button should be visible");
-
-    is_element_visible(get("detail-warning"), "Warning message should be visible");
-    is(get("detail-warning").textContent, "Test add-on 4 is known to cause security or stability issues.", "Warning message should be correct");
-    is_element_visible(get("detail-warning-link"), "Warning link should be visible");
-    is(get("detail-warning-link").value, "More Information", "Warning link text should be correct");
-    is(get("detail-warning-link").href, "http://example.com/addon4@tests.mozilla.org", "Warning link should be correct");
-    is_element_hidden(get("detail-error"), "Error message should be hidden");
-    is_element_hidden(get("detail-error-link"), "Error link should be hidden");
-    is_element_hidden(get("detail-pending"), "Pending message should be hidden");
-
-    // Enable it
-    EventUtils.synthesizeMouseAtCenter(get("detail-enable-btn"), {}, gManagerWindow);
-    is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
-    is_element_hidden(get("detail-enable-btn"), "Enable button should be hidden");
-    is_element_visible(get("detail-disable-btn"), "Disable button should be visible");
-    is_element_visible(get("detail-uninstall-btn"), "Remove button should be visible");
-
-    is_element_hidden(get("detail-warning"), "Warning message should be hidden");
-    is_element_hidden(get("detail-warning-link"), "Warning link should be hidden");
-    is_element_hidden(get("detail-error"), "Error message should be hidden");
-    is_element_hidden(get("detail-error-link"), "Error link should be hidden");
-    is_element_visible(get("detail-pending"), "Pending message should be visible");
-    is(get("detail-pending").textContent, "Test add-on 4 will be enabled after you restart " + gApp + ".", "Pending message should be correct");
-
-    // Reopen it
-    open_details("addon4@tests.mozilla.org", "extension", function() {
-      is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
-      is_element_hidden(get("detail-enable-btn"), "Enable button should be hidden");
-      is_element_visible(get("detail-disable-btn"), "Disable button should be visible");
-      is_element_visible(get("detail-uninstall-btn"), "Remove button should be visible");
-
-      is_element_hidden(get("detail-warning"), "Warning message should be hidden");
-      is_element_hidden(get("detail-warning-link"), "Warning link should be hidden");
-      is_element_hidden(get("detail-error"), "Error message should be hidden");
-      is_element_hidden(get("detail-error-link"), "Error link should be hidden");
-      is_element_visible(get("detail-pending"), "Pending message should be visible");
-      is(get("detail-pending").textContent, "Test add-on 4 will be enabled after you restart " + gApp + ".", "Pending message should be correct");
-
-      // Undo enabling
-      EventUtils.synthesizeMouseAtCenter(get("detail-undo-btn"), {}, gManagerWindow);
-      is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
-      is_element_visible(get("detail-enable-btn"), "Enable button should be visible");
-      is_element_hidden(get("detail-disable-btn"), "Disable button should be hidden");
-      is_element_visible(get("detail-uninstall-btn"), "Remove button should be visible");
-
-      is_element_visible(get("detail-warning"), "Warning message should be visible");
-      is(get("detail-warning").textContent, "Test add-on 4 is known to cause security or stability issues.", "Warning message should be correct");
-      is_element_visible(get("detail-warning-link"), "Warning link should be visible");
-      is(get("detail-warning-link").value, "More Information", "Warning link text should be correct");
-      is(get("detail-warning-link").href, "http://example.com/addon4@tests.mozilla.org", "Warning link should be correct");
-      is_element_hidden(get("detail-error"), "Error message should be hidden");
-      is_element_hidden(get("detail-error-link"), "Error link should be hidden");
-      is_element_hidden(get("detail-pending"), "Pending message should be hidden");
-
-      run_next_test();
-    });
-  });
-});
-
 // Opens and tests the details view for add-on 5
 add_test(function() {
-  open_details("addon5@tests.mozilla.org", "extension", function() {
+  open_details("addon5@tests.mozilla.org", "extension", async function() {
+    await TestUtils.waitForCondition(() => !is_hidden(get("detail-error-link")));
     is(get("detail-name").textContent, "Test add-on 5", "Name should be correct");
 
     is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
@@ -496,196 +310,6 @@ add_test(function() {
     is_element_hidden(get("detail-pending"), "Pending message should be hidden");
 
     run_next_test();
-  });
-});
-
-// Opens and tests the details view for add-on 6
-add_test(function() {
-  open_details("addon6@tests.mozilla.org", "extension", function() {
-    is(get("detail-name").textContent, "Test add-on 6", "Name should be correct");
-
-    is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
-    is_element_hidden(get("detail-enable-btn"), "Enable button should be hidden");
-    is_element_visible(get("detail-disable-btn"), "Disable button should be visible");
-    is_element_visible(get("detail-uninstall-btn"), "Remove button should be visible");
-
-    is_element_hidden(get("detail-warning"), "Warning message should be hidden");
-    is_element_hidden(get("detail-warning-link"), "Warning link should be hidden");
-    is_element_hidden(get("detail-error"), "Error message should be hidden");
-    is_element_hidden(get("detail-error-link"), "Error link should be hidden");
-    is_element_hidden(get("detail-pending"), "Pending message should be hidden");
-
-    // Disable it
-    EventUtils.synthesizeMouseAtCenter(get("detail-disable-btn"), {}, gManagerWindow);
-    is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
-    is_element_visible(get("detail-enable-btn"), "Enable button should be visible");
-    is_element_hidden(get("detail-disable-btn"), "Disable button should be hidden");
-    is_element_visible(get("detail-uninstall-btn"), "Remove button should be visible");
-
-    is_element_hidden(get("detail-warning"), "Warning message should be hidden");
-    is_element_hidden(get("detail-warning-link"), "Warning link should be hidden");
-    is_element_hidden(get("detail-error"), "Error message should be hidden");
-    is_element_hidden(get("detail-error-link"), "Error link should be hidden");
-    is_element_hidden(get("detail-pending"), "Pending message should be hidden");
-
-    // Reopen it
-    open_details("addon6@tests.mozilla.org", "extension", function() {
-      is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
-      is_element_visible(get("detail-enable-btn"), "Enable button should be visible");
-      is_element_hidden(get("detail-disable-btn"), "Disable button should be hidden");
-      is_element_visible(get("detail-uninstall-btn"), "Remove button should be visible");
-
-      is_element_hidden(get("detail-warning"), "Warning message should be hidden");
-      is_element_hidden(get("detail-warning-link"), "Warning link should be hidden");
-      is_element_hidden(get("detail-error"), "Error message should be hidden");
-      is_element_hidden(get("detail-error-link"), "Error link should be hidden");
-      is_element_hidden(get("detail-pending"), "Pending message should be visible");
-
-      // Enable it
-      EventUtils.synthesizeMouseAtCenter(get("detail-enable-btn"), {}, gManagerWindow);
-      is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
-      is_element_hidden(get("detail-enable-btn"), "Enable button should be hidden");
-      is_element_visible(get("detail-disable-btn"), "Disable button should be visible");
-      is_element_visible(get("detail-uninstall-btn"), "Remove button should be visible");
-
-      is_element_hidden(get("detail-warning"), "Warning message should be hidden");
-      is_element_hidden(get("detail-warning-link"), "Warning link should be hidden");
-      is_element_hidden(get("detail-error"), "Error message should be hidden");
-      is_element_hidden(get("detail-error-link"), "Error link should be hidden");
-      is_element_hidden(get("detail-pending"), "Pending message should be hidden");
-
-      run_next_test();
-    });
-  });
-});
-
-// Opens and tests the details view for add-on 7
-add_test(function() {
-  open_details("addon7@tests.mozilla.org", "extension", function() {
-    is(get("detail-name").textContent, "Test add-on 7", "Name should be correct");
-
-    is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
-    is_element_visible(get("detail-enable-btn"), "Enable button should be visible");
-    is_element_hidden(get("detail-disable-btn"), "Disable button should be hidden");
-    is_element_visible(get("detail-uninstall-btn"), "Remove button should be visible");
-
-    is_element_hidden(get("detail-warning"), "Warning message should be hidden");
-    is_element_hidden(get("detail-warning-link"), "Warning link should be hidden");
-    is_element_hidden(get("detail-error"), "Error message should be hidden");
-    is_element_hidden(get("detail-error-link"), "Error link should be hidden");
-    is_element_hidden(get("detail-pending"), "Pending message should be hidden");
-
-    // Enable it
-    EventUtils.synthesizeMouseAtCenter(get("detail-enable-btn"), {}, gManagerWindow);
-    is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
-    is_element_hidden(get("detail-enable-btn"), "Enable button should be hidden");
-    is_element_visible(get("detail-disable-btn"), "Disable button should be visible");
-    is_element_visible(get("detail-uninstall-btn"), "Remove button should be visible");
-
-    is_element_hidden(get("detail-warning"), "Warning message should be hidden");
-    is_element_hidden(get("detail-warning-link"), "Warning link should be hidden");
-    is_element_hidden(get("detail-error"), "Error message should be hidden");
-    is_element_hidden(get("detail-error-link"), "Error link should be hidden");
-    is_element_visible(get("detail-pending"), "Pending message should be visible");
-    is(get("detail-pending").textContent, "Test add-on 7 will be enabled after you restart " + gApp + ".", "Pending message should be correct");
-
-    // Reopen it
-    open_details("addon7@tests.mozilla.org", "extension", function() {
-      is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
-      is_element_hidden(get("detail-enable-btn"), "Enable button should be hidden");
-      is_element_visible(get("detail-disable-btn"), "Disable button should be visible");
-      is_element_visible(get("detail-uninstall-btn"), "Remove button should be visible");
-
-      is_element_hidden(get("detail-warning"), "Warning message should be hidden");
-      is_element_hidden(get("detail-warning-link"), "Warning link should be hidden");
-      is_element_hidden(get("detail-error"), "Error message should be hidden");
-      is_element_hidden(get("detail-error-link"), "Error link should be hidden");
-      is_element_visible(get("detail-pending"), "Pending message should be visible");
-      is(get("detail-pending").textContent, "Test add-on 7 will be enabled after you restart " + gApp + ".", "Pending message should be correct");
-
-      // Undo enabling
-      EventUtils.synthesizeMouseAtCenter(get("detail-undo-btn"), {}, gManagerWindow);
-      is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
-      is_element_visible(get("detail-enable-btn"), "Enable button should be visible");
-      is_element_hidden(get("detail-disable-btn"), "Disable button should be hidden");
-      is_element_visible(get("detail-uninstall-btn"), "Remove button should be visible");
-
-      is_element_hidden(get("detail-warning"), "Warning message should be hidden");
-      is_element_hidden(get("detail-warning-link"), "Warning link should be hidden");
-      is_element_hidden(get("detail-error"), "Error message should be hidden");
-      is_element_hidden(get("detail-error-link"), "Error link should be hidden");
-      is_element_hidden(get("detail-pending"), "Pending message should be hidden");
-
-      run_next_test();
-    });
-  });
-});
-
-// Opens and tests the details view for add-on 8
-add_test(function() {
-  open_details("addon8@tests.mozilla.org", "extension", function() {
-    is(get("detail-name").textContent, "Test add-on 8", "Name should be correct");
-
-    is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
-    is_element_hidden(get("detail-enable-btn"), "Enable button should be hidden");
-    is_element_visible(get("detail-disable-btn"), "Disable button should be visible");
-    is_element_visible(get("detail-uninstall-btn"), "Remove button should be visible");
-
-    is_element_visible(get("detail-warning"), "Warning message should be visible");
-    is(get("detail-warning").textContent, "An important update is available for Test add-on 8.", "Warning message should be correct");
-    is_element_visible(get("detail-warning-link"), "Warning link should be visible");
-    is(get("detail-warning-link").value, "Update Now", "Warning link text should be correct");
-    is(get("detail-warning-link").href, "http://example.com/addon8@tests.mozilla.org", "Warning link should be correct");
-    is_element_hidden(get("detail-error"), "Error message should be hidden");
-    is_element_hidden(get("detail-error-link"), "Error link should be hidden");
-    is_element_hidden(get("detail-pending"), "Pending message should be hidden");
-
-    // Disable it
-    EventUtils.synthesizeMouseAtCenter(get("detail-disable-btn"), {}, gManagerWindow);
-    is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
-    is_element_visible(get("detail-enable-btn"), "Enable button should be visible");
-    is_element_hidden(get("detail-disable-btn"), "Disable button should be hidden");
-    is_element_visible(get("detail-uninstall-btn"), "Remove button should be visible");
-
-    is_element_hidden(get("detail-warning"), "Warning message should be hidden");
-    is_element_hidden(get("detail-warning-link"), "Warning link should be hidden");
-    is_element_hidden(get("detail-error"), "Error message should be hidden");
-    is_element_hidden(get("detail-error-link"), "Error link should be hidden");
-    is_element_visible(get("detail-pending"), "Pending message should be visible");
-    is(get("detail-pending").textContent, "Test add-on 8 will be disabled after you restart " + gApp + ".", "Pending message should be correct");
-
-    // Reopen it
-    open_details("addon8@tests.mozilla.org", "extension", function() {
-      is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
-      is_element_visible(get("detail-enable-btn"), "Enable button should be visible");
-      is_element_hidden(get("detail-disable-btn"), "Disable button should be hidden");
-      is_element_visible(get("detail-uninstall-btn"), "Remove button should be visible");
-
-      is_element_hidden(get("detail-warning"), "Warning message should be hidden");
-      is_element_hidden(get("detail-warning-link"), "Warning link should be hidden");
-      is_element_hidden(get("detail-error"), "Error message should be hidden");
-      is_element_hidden(get("detail-error-link"), "Error link should be hidden");
-      is_element_visible(get("detail-pending"), "Pending message should be visible");
-      is(get("detail-pending").textContent, "Test add-on 8 will be disabled after you restart " + gApp + ".", "Pending message should be correct");
-
-      // Undo disabling
-      EventUtils.synthesizeMouseAtCenter(get("detail-undo-btn"), {}, gManagerWindow);
-      is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
-      is_element_hidden(get("detail-enable-btn"), "Enable button should be hidden");
-      is_element_visible(get("detail-disable-btn"), "Disable button should be visible");
-      is_element_visible(get("detail-uninstall-btn"), "Remove button should be visible");
-
-      is_element_visible(get("detail-warning"), "Warning message should be visible");
-      is(get("detail-warning").textContent, "An important update is available for Test add-on 8.", "Warning message should be correct");
-      is_element_visible(get("detail-warning-link"), "Warning link should be visible");
-      is(get("detail-warning-link").value, "Update Now", "Warning link text should be correct");
-      is(get("detail-warning-link").href, "http://example.com/addon8@tests.mozilla.org", "Warning link should be correct");
-      is_element_hidden(get("detail-error"), "Error message should be hidden");
-      is_element_hidden(get("detail-error-link"), "Error link should be hidden");
-      is_element_hidden(get("detail-pending"), "Pending message should be hidden");
-
-      run_next_test();
-    });
   });
 });
 
@@ -716,40 +340,37 @@ if (!AppConstants.MOZ_REQUIRE_SIGNING) {
 }
 
 // Opens and tests the details view for add-on 9 with signing required
-add_test(function() {
-  close_manager(gManagerWindow, function() {
-    Services.prefs.setBoolPref("xpinstall.signatures.required", true);
-    open_manager(null, function(aWindow) {
-      gManagerWindow = aWindow;
-      gCategoryUtilities = new CategoryUtilities(gManagerWindow);
+add_test(async function() {
+  await close_manager(gManagerWindow);
+  Services.prefs.setBoolPref("xpinstall.signatures.required", true);
+  let aWindow = await open_manager(null);
+  gManagerWindow = aWindow;
+  gCategoryUtilities = new CategoryUtilities(gManagerWindow);
 
-      open_details("addon9@tests.mozilla.org", "extension", function() {
-        is(get("detail-name").textContent, "Test add-on 9", "Name should be correct");
+  open_details("addon9@tests.mozilla.org", "extension", async function() {
+    await TestUtils.waitForCondition(() => !is_hidden(get("detail-error-link")));
+    is(get("detail-name").textContent, "Test add-on 9", "Name should be correct");
 
-        is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
-        is_element_hidden(get("detail-enable-btn"), "Enable button should be hidden");
-        is_element_visible(get("detail-disable-btn"), "Disable button should be visible");
-        is_element_visible(get("detail-uninstall-btn"), "Remove button should be visible");
+    is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
+    is_element_hidden(get("detail-enable-btn"), "Enable button should be hidden");
+    is_element_visible(get("detail-disable-btn"), "Disable button should be visible");
+    is_element_visible(get("detail-uninstall-btn"), "Remove button should be visible");
 
-        is_element_hidden(get("detail-warning"), "Warning message should be hidden");
-        is_element_hidden(get("detail-warning-link"), "Warning link should be hidden");
-        is_element_visible(get("detail-error"), "Error message should be visible");
-        is(get("detail-error").textContent, "Test add-on 9 could not be verified for use in " + gApp + " and has been disabled.", "Error message should be correct");
-        is_element_visible(get("detail-error-link"), "Error link should be visible");
-        is(get("detail-error-link").value, "More Information", "Error link text should be correct");
-        is(get("detail-error-link").href, infoURL, "Error link should be correct");
+    is_element_hidden(get("detail-warning"), "Warning message should be hidden");
+    is_element_hidden(get("detail-warning-link"), "Warning link should be hidden");
+    is_element_visible(get("detail-error"), "Error message should be visible");
+    is(get("detail-error").textContent, "Test add-on 9 could not be verified for use in " + gApp + " and has been disabled.", "Error message should be correct");
+    is_element_visible(get("detail-error-link"), "Error link should be visible");
+    is(get("detail-error-link").value, "More Information", "Error link text should be correct");
+    is(get("detail-error-link").href, infoURL, "Error link should be correct");
 
-        close_manager(gManagerWindow, function() {
-          Services.prefs.setBoolPref("xpinstall.signatures.required", false);
-          open_manager(null, function(aWindow) {
-            gManagerWindow = aWindow;
-            gCategoryUtilities = new CategoryUtilities(gManagerWindow);
+    await close_manager(gManagerWindow);
+    Services.prefs.setBoolPref("xpinstall.signatures.required", false);
+    aWindow = await open_manager(null);
+    gManagerWindow = aWindow;
+    gCategoryUtilities = new CategoryUtilities(gManagerWindow);
 
-            run_next_test();
-          });
-        });
-      });
-    });
+    run_next_test();
   });
 });
 
@@ -778,40 +399,37 @@ if (!AppConstants.REQUIRE_SIGNING) {
 }
 
 // Opens and tests the details view for add-on 10 with signing required
-add_test(function() {
-  close_manager(gManagerWindow, function() {
-    Services.prefs.setBoolPref("xpinstall.signatures.required", true);
-    open_manager(null, function(aWindow) {
-      gManagerWindow = aWindow;
-      gCategoryUtilities = new CategoryUtilities(gManagerWindow);
+add_test(async function() {
+  await close_manager(gManagerWindow);
+  Services.prefs.setBoolPref("xpinstall.signatures.required", true);
+  let aWindow = await open_manager(null);
+  gManagerWindow = aWindow;
+  gCategoryUtilities = new CategoryUtilities(gManagerWindow);
 
-      open_details("addon10@tests.mozilla.org", "extension", function() {
-        is(get("detail-name").textContent, "Test add-on 10", "Name should be correct");
+  open_details("addon10@tests.mozilla.org", "extension", async function() {
+    await TestUtils.waitForCondition(() => !is_hidden(get("detail-error-link")));
+    is(get("detail-name").textContent, "Test add-on 10", "Name should be correct");
 
-        is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
-        is_element_hidden(get("detail-enable-btn"), "Enable button should be hidden");
-        is_element_hidden(get("detail-disable-btn"), "Disable button should be hidden");
-        is_element_visible(get("detail-uninstall-btn"), "Remove button should be visible");
+    is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
+    is_element_hidden(get("detail-enable-btn"), "Enable button should be hidden");
+    is_element_hidden(get("detail-disable-btn"), "Disable button should be hidden");
+    is_element_visible(get("detail-uninstall-btn"), "Remove button should be visible");
 
-        is_element_hidden(get("detail-warning"), "Warning message should be hidden");
-        is_element_hidden(get("detail-warning-link"), "Warning link should be hidden");
-        is_element_visible(get("detail-error"), "Error message should be visible");
-        is(get("detail-error").textContent, "Test add-on 10 could not be verified for use in " + gApp + " and has been disabled.", "Error message should be correct");
-        is_element_visible(get("detail-error-link"), "Error link should be visible");
-        is(get("detail-error-link").value, "More Information", "Error link text should be correct");
-        is(get("detail-error-link").href, infoURL, "Error link should be correct");
+    is_element_hidden(get("detail-warning"), "Warning message should be hidden");
+    is_element_hidden(get("detail-warning-link"), "Warning link should be hidden");
+    is_element_visible(get("detail-error"), "Error message should be visible");
+    is(get("detail-error").textContent, "Test add-on 10 could not be verified for use in " + gApp + " and has been disabled.", "Error message should be correct");
+    is_element_visible(get("detail-error-link"), "Error link should be visible");
+    is(get("detail-error-link").value, "More Information", "Error link text should be correct");
+    is(get("detail-error-link").href, infoURL, "Error link should be correct");
 
-        close_manager(gManagerWindow, function() {
-          Services.prefs.setBoolPref("xpinstall.signatures.required", false);
-          open_manager(null, function(aWindow) {
-            gManagerWindow = aWindow;
-            gCategoryUtilities = new CategoryUtilities(gManagerWindow);
+    await close_manager(gManagerWindow);
+    Services.prefs.setBoolPref("xpinstall.signatures.required", false);
+    aWindow = await open_manager(null);
+    gManagerWindow = aWindow;
+    gCategoryUtilities = new CategoryUtilities(gManagerWindow);
 
-            run_next_test();
-          });
-        });
-      });
-    });
+    run_next_test();
   });
 });
 
@@ -837,38 +455,34 @@ add_test(function() {
 });
 
 // Opens and tests the details view for add-on 11 with signing required
-add_test(function() {
-  close_manager(gManagerWindow, function() {
-    Services.prefs.setBoolPref("xpinstall.signatures.required", true);
-    open_manager(null, function(aWindow) {
-      gManagerWindow = aWindow;
-      gCategoryUtilities = new CategoryUtilities(gManagerWindow);
+add_test(async function() {
+  await close_manager(gManagerWindow);
+  Services.prefs.setBoolPref("xpinstall.signatures.required", true);
+  let aWindow = await open_manager(null);
+  gManagerWindow = aWindow;
+  gCategoryUtilities = new CategoryUtilities(gManagerWindow);
 
-      open_details("addon11@tests.mozilla.org", "extension", function() {
-        is(get("detail-name").textContent, "Test add-on 11", "Name should be correct");
+  open_details("addon11@tests.mozilla.org", "extension", async function() {
+    is(get("detail-name").textContent, "Test add-on 11", "Name should be correct");
 
-        is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
-        is_element_hidden(get("detail-enable-btn"), "Enable button should be hidden");
-        is_element_hidden(get("detail-disable-btn"), "Disable button should be hidden");
-        is_element_visible(get("detail-uninstall-btn"), "Remove button should be visible");
+    is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
+    is_element_hidden(get("detail-enable-btn"), "Enable button should be hidden");
+    is_element_hidden(get("detail-disable-btn"), "Disable button should be hidden");
+    is_element_visible(get("detail-uninstall-btn"), "Remove button should be visible");
 
-        is_element_visible(get("detail-warning"), "Warning message should be visible");
-        is(get("detail-warning").textContent, "Test add-on 11 is incompatible with " + gApp + " " + gVersion + ".", "Warning message should be correct");
-        is_element_hidden(get("detail-warning-link"), "Warning link should be hidden");
-        is_element_hidden(get("detail-error"), "Error message should be hidden");
-        is_element_hidden(get("detail-error-link"), "Error link should be hidden");
+    is_element_visible(get("detail-warning"), "Warning message should be visible");
+    is(get("detail-warning").textContent, "Test add-on 11 is incompatible with " + gApp + " " + gVersion + ".", "Warning message should be correct");
+    is_element_hidden(get("detail-warning-link"), "Warning link should be hidden");
+    is_element_hidden(get("detail-error"), "Error message should be hidden");
+    is_element_hidden(get("detail-error-link"), "Error link should be hidden");
 
-        close_manager(gManagerWindow, function() {
-          Services.prefs.setBoolPref("xpinstall.signatures.required", false);
-          open_manager(null, function(aWindow) {
-            gManagerWindow = aWindow;
-            gCategoryUtilities = new CategoryUtilities(gManagerWindow);
+    await close_manager(gManagerWindow);
+    Services.prefs.setBoolPref("xpinstall.signatures.required", false);
+    aWindow = await open_manager(null);
+    gManagerWindow = aWindow;
+    gCategoryUtilities = new CategoryUtilities(gManagerWindow);
 
-            run_next_test();
-          });
-        });
-      });
-    });
+    run_next_test();
   });
 });
 
@@ -893,37 +507,33 @@ add_test(function() {
 });
 
 // Opens and tests the details view for add-on 12 with signing required
-add_test(function() {
-  close_manager(gManagerWindow, function() {
-    Services.prefs.setBoolPref("xpinstall.signatures.required", true);
-    open_manager(null, function(aWindow) {
-      gManagerWindow = aWindow;
-      gCategoryUtilities = new CategoryUtilities(gManagerWindow);
+add_test(async function() {
+  await close_manager(gManagerWindow);
+  Services.prefs.setBoolPref("xpinstall.signatures.required", true);
+  let aWindow = await open_manager(null);
+  gManagerWindow = aWindow;
+  gCategoryUtilities = new CategoryUtilities(gManagerWindow);
 
-      open_details("addon12@tests.mozilla.org", "extension", function() {
-        is(get("detail-name").textContent, "Test add-on 12", "Name should be correct");
+  open_details("addon12@tests.mozilla.org", "extension", async function() {
+    is(get("detail-name").textContent, "Test add-on 12", "Name should be correct");
 
-        is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
-        is_element_hidden(get("detail-enable-btn"), "Enable button should be hidden");
-        is_element_visible(get("detail-disable-btn"), "Disable button should be visible");
-        is_element_visible(get("detail-uninstall-btn"), "Remove button should be visible");
+    is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
+    is_element_hidden(get("detail-enable-btn"), "Enable button should be hidden");
+    is_element_visible(get("detail-disable-btn"), "Disable button should be visible");
+    is_element_visible(get("detail-uninstall-btn"), "Remove button should be visible");
 
-        is_element_hidden(get("detail-warning"), "Warning message should be hidden");
-        is_element_hidden(get("detail-warning-link"), "Warning link should be hidden");
-        is_element_hidden(get("detail-error"), "Error message should be hidden");
-        is_element_hidden(get("detail-error-link"), "Error link should be hidden");
+    is_element_hidden(get("detail-warning"), "Warning message should be hidden");
+    is_element_hidden(get("detail-warning-link"), "Warning link should be hidden");
+    is_element_hidden(get("detail-error"), "Error message should be hidden");
+    is_element_hidden(get("detail-error-link"), "Error link should be hidden");
 
-        close_manager(gManagerWindow, function() {
-          Services.prefs.setBoolPref("xpinstall.signatures.required", false);
-          open_manager(null, function(aWindow) {
-            gManagerWindow = aWindow;
-            gCategoryUtilities = new CategoryUtilities(gManagerWindow);
+    await close_manager(gManagerWindow);
+    Services.prefs.setBoolPref("xpinstall.signatures.required", false);
+    aWindow = await open_manager(null);
+    gManagerWindow = aWindow;
+    gCategoryUtilities = new CategoryUtilities(gManagerWindow);
 
-            run_next_test();
-          });
-        });
-      });
-    });
+    run_next_test();
   });
 });
 
@@ -983,27 +593,26 @@ add_test(function() {
 });
 
 // Check that onPropertyChanges for appDisabled updates the UI
-add_test(function() {
+add_test(async function() {
   info("Checking that onPropertyChanges for appDisabled updates the UI");
 
-  AddonManager.getAddonByID("addon1@tests.mozilla.org", function(aAddon) {
-    aAddon.userDisabled = true;
-    aAddon.isCompatible = true;
-    aAddon.appDisabled = false;
+  let aAddon = await AddonManager.getAddonByID("addon1@tests.mozilla.org");
+  aAddon.userDisabled = true;
+  aAddon.isCompatible = true;
+  aAddon.appDisabled = false;
 
-    open_details("addon1@tests.mozilla.org", "extension", function() {
-      is(get("detail-view").getAttribute("active"), "false", "Addon should not be marked as active");
-      is_element_hidden(get("detail-warning"), "Warning message should not be visible");
+  open_details("addon1@tests.mozilla.org", "extension", function() {
+    is(get("detail-view").getAttribute("active"), "false", "Addon should not be marked as active");
+    is_element_hidden(get("detail-warning"), "Warning message should not be visible");
 
-      info("Making addon incompatible and appDisabled");
-      aAddon.isCompatible = false;
-      aAddon.appDisabled = true;
+    info("Making addon incompatible and appDisabled");
+    aAddon.isCompatible = false;
+    aAddon.appDisabled = true;
 
-      is(get("detail-view").getAttribute("active"), "false", "Addon should not be marked as active");
-      is_element_visible(get("detail-warning"), "Warning message should be visible");
-      is(get("detail-warning").textContent, "Test add-on replacement is incompatible with " + gApp + " " + gVersion + ".", "Warning message should be correct");
+    is(get("detail-view").getAttribute("active"), "false", "Addon should not be marked as active");
+    is_element_visible(get("detail-warning"), "Warning message should be visible");
+    is(get("detail-warning").textContent, "Test add-on replacement is incompatible with " + gApp + " " + gVersion + ".", "Warning message should be correct");
 
-      run_next_test();
-    });
+    run_next_test();
   });
 });

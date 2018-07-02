@@ -32,7 +32,7 @@ public:
     * @return           the frame that was created
     */
   friend nsTableColFrame* NS_NewTableColFrame(nsIPresShell* aPresShell,
-                                              nsStyleContext*  aContext);
+                                              ComputedStyle*  aContext);
 
   // nsIFrame overrides
   virtual void Init(nsIContent*       aContent,
@@ -45,8 +45,8 @@ public:
     }
   }
 
-  /** @see nsIFrame::DidSetStyleContext */
-  virtual void DidSetStyleContext(nsStyleContext* aOldStyleContext) override;
+  /** @see nsIFrame::DidSetComputedStyle */
+  virtual void DidSetComputedStyle(ComputedStyle* aOldComputedStyle) override;
 
   virtual void Reflow(nsPresContext*           aPresContext,
                       ReflowOutput&     aDesiredSize,
@@ -277,13 +277,13 @@ public:
     return nsSplittableFrame::IsFrameOfType(aFlags & ~(nsIFrame::eTablePart));
   }
 
-  virtual void InvalidateFrame(uint32_t aDisplayItemKey = 0) override;
-  virtual void InvalidateFrameWithRect(const nsRect& aRect, uint32_t aDisplayItemKey = 0) override;
+  virtual void InvalidateFrame(uint32_t aDisplayItemKey = 0, bool aRebuildDisplayItems = true) override;
+  virtual void InvalidateFrameWithRect(const nsRect& aRect, uint32_t aDisplayItemKey = 0, bool aRebuildDisplayItems = true) override;
   virtual void InvalidateFrameForRemoval() override { InvalidateFrameSubtree(); }
 
 protected:
 
-  explicit nsTableColFrame(nsStyleContext* aContext);
+  explicit nsTableColFrame(ComputedStyle* aStyle);
   ~nsTableColFrame();
 
   nscoord mMinCoord;

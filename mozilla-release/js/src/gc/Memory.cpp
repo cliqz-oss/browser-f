@@ -251,12 +251,17 @@ GetNewChunk(void** aAddress, void** aRetainedAddr, size_t size, size_t alignment
 void
 UnmapPages(void* p, size_t size)
 {
+    // ASan does not automatically unpoison memory, so we have to do this here.
+    MOZ_MAKE_MEM_UNDEFINED(p, size);
+
     MOZ_ALWAYS_TRUE(VirtualFree(p, 0, MEM_RELEASE));
 }
 
 bool
 MarkPagesUnused(void* p, size_t size)
 {
+    MOZ_MAKE_MEM_NOACCESS(p, size);
+
     if (!DecommitEnabled())
         return true;
 
@@ -268,6 +273,8 @@ MarkPagesUnused(void* p, size_t size)
 void
 MarkPagesInUse(void* p, size_t size)
 {
+    MOZ_MAKE_MEM_UNDEFINED(p, size);
+
     if (!DecommitEnabled())
         return;
 
@@ -370,12 +377,16 @@ MapAlignedPagesLastDitch(size_t size, size_t alignment)
 void
 UnmapPages(void* p, size_t size)
 {
+    // ASan does not automatically unpoison memory, so we have to do this here.
+    MOZ_MAKE_MEM_UNDEFINED(p, size);
+
     _aligned_free(p);
 }
 
 bool
 MarkPagesUnused(void* p, size_t size)
 {
+    MOZ_MAKE_MEM_NOACCESS(p, size);
     MOZ_ASSERT(OffsetFromAligned(p, pageSize) == 0);
     return true;
 }
@@ -383,6 +394,7 @@ MarkPagesUnused(void* p, size_t size)
 bool
 MarkPagesInUse(void* p, size_t size)
 {
+    MOZ_MAKE_MEM_UNDEFINED(p, size);
     MOZ_ASSERT(OffsetFromAligned(p, pageSize) == 0);
 }
 
@@ -450,12 +462,16 @@ MapAlignedPagesLastDitch(size_t size, size_t alignment)
 void
 UnmapPages(void* p, size_t size)
 {
+    // ASan does not automatically unpoison memory, so we have to do this here.
+    MOZ_MAKE_MEM_UNDEFINED(p, size);
+
     MOZ_ALWAYS_TRUE(0 == munmap((caddr_t)p, size));
 }
 
 bool
 MarkPagesUnused(void* p, size_t size)
 {
+    MOZ_MAKE_MEM_NOACCESS(p, size);
     MOZ_ASSERT(OffsetFromAligned(p, pageSize) == 0);
     return true;
 }
@@ -463,6 +479,8 @@ MarkPagesUnused(void* p, size_t size)
 bool
 MarkPagesInUse(void* p, size_t size)
 {
+    MOZ_MAKE_MEM_UNDEFINED(p, size);
+
     if (!DecommitEnabled())
         return;
 
@@ -755,6 +773,9 @@ GetNewChunk(void** aAddress, void** aRetainedAddr, size_t size, size_t alignment
 void
 UnmapPages(void* p, size_t size)
 {
+    // ASan does not automatically unpoison memory, so we have to do this here.
+    MOZ_MAKE_MEM_UNDEFINED(p, size);
+
     if (munmap(p, size))
         MOZ_ASSERT(errno == ENOMEM);
 }
@@ -762,6 +783,8 @@ UnmapPages(void* p, size_t size)
 bool
 MarkPagesUnused(void* p, size_t size)
 {
+    MOZ_MAKE_MEM_NOACCESS(p, size);
+
     if (!DecommitEnabled())
         return false;
 
@@ -777,6 +800,8 @@ MarkPagesUnused(void* p, size_t size)
 void
 MarkPagesInUse(void* p, size_t size)
 {
+    MOZ_MAKE_MEM_UNDEFINED(p, size);
+
     if (!DecommitEnabled())
         return;
 
@@ -859,7 +884,6 @@ ProtectPages(void* p, size_t size)
         MOZ_CRASH_UNSAFE_PRINTF("VirtualProtect(PAGE_NOACCESS) failed! Error code: %lu",
                                 GetLastError());
     }
-    MOZ_ASSERT(oldProtect == PAGE_READWRITE);
 #else  // assume Unix
     if (mprotect(p, size, PROT_NONE))
         MOZ_CRASH("mprotect(PROT_NONE) failed");
@@ -878,7 +902,6 @@ MakePagesReadOnly(void* p, size_t size)
         MOZ_CRASH_UNSAFE_PRINTF("VirtualProtect(PAGE_READONLY) failed! Error code: %lu",
                                 GetLastError());
     }
-    MOZ_ASSERT(oldProtect == PAGE_READWRITE);
 #else  // assume Unix
     if (mprotect(p, size, PROT_READ))
         MOZ_CRASH("mprotect(PROT_READ) failed");
@@ -897,7 +920,6 @@ UnprotectPages(void* p, size_t size)
         MOZ_CRASH_UNSAFE_PRINTF("VirtualProtect(PAGE_READWRITE) failed! Error code: %lu",
                                 GetLastError());
     }
-    MOZ_ASSERT(oldProtect == PAGE_NOACCESS || oldProtect == PAGE_READONLY);
 #else  // assume Unix
     if (mprotect(p, size, PROT_READ | PROT_WRITE))
         MOZ_CRASH("mprotect(PROT_READ | PROT_WRITE) failed");

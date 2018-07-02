@@ -64,9 +64,6 @@ with Files("ClipboardEvent.webidl"):
 with Files("ConstantSourceNode.webidl"):
     BUG_COMPONENT = ("Core", "Web Audio")
 
-with Files("ContainerBoxObject.webidl"):
-    BUG_COMPONENT = ("Core", "DOM")
-
 with Files("ConvolverNode.webidl"):
     BUG_COMPONENT = ("Core", "Web Audio")
 
@@ -221,7 +218,7 @@ with Files("OfflineAudio*"):
     BUG_COMPONENT = ("Core", "Web Audio")
 
 with Files("OffscreenCanvas.webidl"):
-    BUG_COMPONENT = ("Core", "Canvas 2D")
+    BUG_COMPONENT = ("Core", "Canvas: 2D")
 
 with Files("OscillatorNode.webidl"):
     BUG_COMPONENT = ("Core", "Web Audio")
@@ -414,6 +411,7 @@ WEBIDL_FILES = [
     'CharacterData.webidl',
     'CheckerboardReportService.webidl',
     'ChildNode.webidl',
+    'ChildSHistory.webidl',
     'ChromeNodeList.webidl',
     'Client.webidl',
     'Clients.webidl',
@@ -423,7 +421,6 @@ WEBIDL_FILES = [
     'CompositionEvent.webidl',
     'Console.webidl',
     'ConstantSourceNode.webidl',
-    'ContainerBoxObject.webidl',
     'ConvolverNode.webidl',
     'Coordinates.webidl',
     'CreateOfferRequest.webidl',
@@ -471,7 +468,6 @@ WEBIDL_FILES = [
     'DocumentOrShadowRoot.webidl',
     'DocumentTimeline.webidl',
     'DocumentType.webidl',
-    'DOMCursor.webidl',
     'DOMError.webidl',
     'DOMException.webidl',
     'DOMImplementation.webidl',
@@ -703,6 +699,7 @@ WEBIDL_FILES = [
     'PaintWorkletGlobalScope.webidl',
     'PannerNode.webidl',
     'ParentNode.webidl',
+    'ParentSHistory.webidl',
     'PaymentAddress.webidl',
     'PaymentRequest.webidl',
     'PaymentRequestUpdateEvent.webidl',
@@ -716,6 +713,7 @@ WEBIDL_FILES = [
     'PerformanceObserver.webidl',
     'PerformanceObserverEntryList.webidl',
     'PerformanceResourceTiming.webidl',
+    'PerformanceServerTiming.webidl',
     'PerformanceTiming.webidl',
     'PeriodicWave.webidl',
     'Permissions.webidl',
@@ -723,7 +721,6 @@ WEBIDL_FILES = [
     'Plugin.webidl',
     'PluginArray.webidl',
     'PointerEvent.webidl',
-    'PopupBoxObject.webidl',
     'Position.webidl',
     'PositionError.webidl',
     'Presentation.webidl',
@@ -955,6 +952,7 @@ WEBIDL_FILES = [
     'XULCommandEvent.webidl',
     'XULDocument.webidl',
     'XULElement.webidl',
+    'XULPopupElement.webidl',
 ]
 
 if CONFIG['MOZ_WEBRTC']:

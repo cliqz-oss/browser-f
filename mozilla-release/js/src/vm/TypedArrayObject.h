@@ -8,6 +8,7 @@
 #define vm_TypedArrayObject_h
 
 #include "mozilla/Attributes.h"
+#include "mozilla/TextUtils.h"
 
 #include "gc/Barrier.h"
 #include "js/Class.h"
@@ -26,11 +27,7 @@
     macro(double, Float64) \
     macro(uint8_clamped, Uint8Clamped)
 
-typedef struct JSProperty JSProperty;
-
 namespace js {
-
-enum class TypedArrayLength { Fixed, Dynamic };
 
 /*
  * TypedArrayObject
@@ -156,7 +153,7 @@ class TypedArrayObject : public NativeObject
     bool hasInlineElements() const;
     void setInlineElements();
     uint8_t* elementsRaw() const {
-        return *(uint8_t **)((((char *)this) + this->dataOffset()));
+        return *(uint8_t **)((((char *)this) + js::TypedArrayObject::dataOffset()));
     }
     uint8_t* elements() const {
         assertZeroLengthArrayData();
@@ -314,6 +311,13 @@ IsTypedArrayClass(const Class* clasp)
            clasp < &TypedArrayObject::classes[Scalar::MaxTypedArrayViewType];
 }
 
+inline Scalar::Type
+GetTypedArrayClassType(const Class* clasp)
+{
+    MOZ_ASSERT(IsTypedArrayClass(clasp));
+    return static_cast<Scalar::Type>(clasp - &TypedArrayObject::classes[0]);
+}
+
 bool
 IsTypedArrayConstructor(HandleValue v, uint32_t type);
 
@@ -325,8 +329,7 @@ IsBufferSource(JSObject* object, SharedMem<uint8_t*>* dataPointer, size_t* byteL
 inline Scalar::Type
 TypedArrayObject::type() const
 {
-    MOZ_ASSERT(IsTypedArrayClass(getClass()));
-    return static_cast<Scalar::Type>(getClass() - &classes[0]);
+    return GetTypedArrayClassType(getClass());
 }
 
 inline size_t
@@ -361,13 +364,13 @@ IsTypedArrayIndex(jsid id, uint64_t* indexp)
 
     if (atom->hasLatin1Chars()) {
         const Latin1Char* s = atom->latin1Chars(nogc);
-        if (!JS7_ISDEC(*s) && *s != '-')
+        if (!mozilla::IsAsciiDigit(*s) && *s != '-')
             return false;
         return StringIsTypedArrayIndex(s, length, indexp);
     }
 
     const char16_t* s = atom->twoByteChars(nogc);
-    if (!JS7_ISDEC(*s) && *s != '-')
+    if (!mozilla::IsAsciiDigit(*s) && *s != '-')
         return false;
     return StringIsTypedArrayIndex(s, length, indexp);
 }

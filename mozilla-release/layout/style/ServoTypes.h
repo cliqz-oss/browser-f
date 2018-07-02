@@ -9,7 +9,7 @@
 
 #include "mozilla/TypedEnumBits.h"
 
-#define STYLE_STRUCT(name_, checkdata_cb_) struct nsStyle##name_;
+#define STYLE_STRUCT(name_) struct nsStyle##name_;
 #include "nsStyleStructList.h"
 #undef STYLE_STRUCT
 
@@ -142,14 +142,14 @@ struct ServoRuleNode {
 };
 
 
-class ServoStyleContext;
+class ComputedStyle;
 
 struct ServoVisitedStyle {
   // This is actually a strong reference
   // but ServoComputedData's destructor is
   // managed by the Rust code so we just use a
   // regular pointer
-  ServoStyleContext* mPtr;
+  ComputedStyle* mPtr;
 };
 
 template <typename T>
@@ -163,11 +163,9 @@ struct ServoComputedValueFlags {
   uint16_t mFlags;
 };
 
-#define STYLE_STRUCT(name_, checkdata_cb_) struct Gecko##name_;
-#define STYLE_STRUCT_LIST_IGNORE_VARIABLES
+#define STYLE_STRUCT(name_) struct Gecko##name_;
 #include "nsStyleStructList.h"
 #undef STYLE_STRUCT
-#undef STYLE_STRUCT_LIST_IGNORE_VARIABLES
 
 // These measurements are obtained for both the UA cache and the Stylist, but
 // not all the fields are used in both cases.
@@ -210,20 +208,17 @@ struct ServoComputedDataForgotten
  */
 class ServoComputedData
 {
-  friend class mozilla::ServoStyleContext;
+  friend class mozilla::ComputedStyle;
 
 public:
   // Constructs via memcpy.  Will not move out of aValue.
   explicit ServoComputedData(const ServoComputedDataForgotten aValue);
 
-#define STYLE_STRUCT(name_, checkdata_cb_)                 \
+#define STYLE_STRUCT(name_)                                \
   mozilla::ServoRawOffsetArc<mozilla::Gecko##name_> name_; \
   inline const nsStyle##name_* GetStyle##name_() const;
-  #define STYLE_STRUCT_LIST_IGNORE_VARIABLES
 #include "nsStyleStructList.h"
 #undef STYLE_STRUCT
-#undef STYLE_STRUCT_LIST_IGNORE_VARIABLES
-  const nsStyleVariables* GetStyleVariables() const;
 
   void AddSizeOfExcludingThis(nsWindowSizes& aSizes) const;
 

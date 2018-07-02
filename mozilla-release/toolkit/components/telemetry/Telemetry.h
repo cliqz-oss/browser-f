@@ -234,6 +234,45 @@ void SetHistogramRecordingEnabled(HistogramID id, bool enabled);
 
 const char* GetHistogramName(HistogramID id);
 
+class MOZ_RAII RuntimeAutoTimer
+{
+public:
+  explicit RuntimeAutoTimer(Telemetry::HistogramID aId,
+                            TimeStamp aStart = TimeStamp::Now()
+                            MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
+    : id(aId)
+    , start(aStart)
+  {
+    MOZ_GUARD_OBJECT_NOTIFIER_INIT;
+  }
+  explicit RuntimeAutoTimer(Telemetry::HistogramID aId,
+                            const nsCString& aKey,
+                            TimeStamp aStart = TimeStamp::Now()
+                            MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
+    : id(aId)
+    , key(aKey)
+    , start(aStart)
+  {
+    MOZ_ASSERT(!aKey.IsEmpty(), "The key must not be empty.");
+    MOZ_GUARD_OBJECT_NOTIFIER_INIT;
+  }
+
+  ~RuntimeAutoTimer()
+  {
+    if (key.IsEmpty()) {
+      AccumulateTimeDelta(id, start);
+    } else {
+      AccumulateTimeDelta(id, key, start);
+    }
+  }
+
+private:
+  Telemetry::HistogramID id;
+  const nsCString key;
+  const TimeStamp start;
+  MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
+};
+
 template<HistogramID id>
 class MOZ_RAII AutoTimer
 {
@@ -266,6 +305,55 @@ private:
   MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 };
 
+class MOZ_RAII RuntimeAutoCounter
+{
+public:
+  explicit RuntimeAutoCounter(
+    HistogramID aId,
+    uint32_t counterStart = 0 MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
+    : id(aId)
+    , counter(counterStart)
+  {
+    MOZ_GUARD_OBJECT_NOTIFIER_INIT;
+  }
+
+  ~RuntimeAutoCounter()
+  {
+    Accumulate(id, counter);
+  }
+
+  // Prefix increment only, to encourage good habits.
+  void operator++()
+  {
+    if (NS_WARN_IF(counter == std::numeric_limits<uint32_t>::max())) {
+      return;
+    }
+    ++counter;
+  }
+
+  // Chaining doesn't make any sense, don't return anything.
+  void operator+=(int increment)
+  {
+    if (NS_WARN_IF(increment > 0 &&
+                   static_cast<uint32_t>(increment) >
+                     (std::numeric_limits<uint32_t>::max() - counter))) {
+      counter = std::numeric_limits<uint32_t>::max();
+      return;
+    }
+    if (NS_WARN_IF(increment < 0 &&
+                   static_cast<uint32_t>(-increment) > counter)) {
+      counter = std::numeric_limits<uint32_t>::min();
+      return;
+    }
+    counter += increment;
+  }
+
+private:
+  HistogramID id;
+  uint32_t counter;
+  MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
+};
+
 template<HistogramID id>
 class MOZ_RAII AutoCounter {
 public:
@@ -280,12 +368,28 @@ public:
   }
 
   // Prefix increment only, to encourage good habits.
-  void operator++() {
+  void operator++()
+  {
+    if (NS_WARN_IF(counter == std::numeric_limits<uint32_t>::max())) {
+      return;
+    }
     ++counter;
   }
 
   // Chaining doesn't make any sense, don't return anything.
-  void operator+=(int increment) {
+  void operator+=(int increment)
+  {
+    if (NS_WARN_IF(increment > 0 &&
+                   static_cast<uint32_t>(increment) >
+                     (std::numeric_limits<uint32_t>::max() - counter))) {
+      counter = std::numeric_limits<uint32_t>::max();
+      return;
+    }
+    if (NS_WARN_IF(increment < 0 &&
+                   static_cast<uint32_t>(-increment) > counter)) {
+      counter = std::numeric_limits<uint32_t>::min();
+      return;
+    }
     counter += increment;
   }
 

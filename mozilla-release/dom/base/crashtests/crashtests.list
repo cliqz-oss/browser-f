@@ -8,7 +8,6 @@ load 244933-1.html
 load 275912-1.html
 load 293388-1.html
 load 308120-1.xul
-load 324871-1.html
 load 325730-1.html
 load 326618-1.html
 load 326646-1.html
@@ -163,7 +162,6 @@ load 815477.html
 load 815500.html
 load 816253.html
 load 819014.html
-load 822691.html
 load 822723.html
 load 824719.html
 load 827190.html
@@ -204,6 +202,7 @@ load 1181619.html
 load 1230422.html
 load 1251361.html
 pref(dom.webcomponents.shadowdom.enabled,true) load 1281715.html
+pref(dom.webcomponents.shadowdom.enabled,true) load 1281745.html
 load 1304437.html
 pref(dom.IntersectionObserver.enabled,true) load 1324209.html
 load 1324500.html
@@ -239,4 +238,8 @@ load 1411473.html
 pref(dom.webcomponents.shadowdom.enabled,false) load 1422931.html
 pref(dom.webcomponents.shadowdom.enabled,true) load 1419799.html
 skip-if(!browserIsRemote) pref(dom.webcomponents.customelements.enabled,true) pref(dom.disable_open_during_load,false) load 1419902.html # skip on non e10s loads, Bug 1419902
+pref(dom.webcomponents.shadowdom.enabled,true) load 1422883.html
 pref(dom.webcomponents.shadowdom.enabled,true) load 1428053.html
+load 1449601.html
+load 1445670.html
+load 1458016.html

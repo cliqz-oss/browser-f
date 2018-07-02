@@ -9,10 +9,16 @@ var tmp = {};
 ChromeUtils.import("resource://gre/modules/Promise.jsm", tmp);
 ChromeUtils.import("resource:///modules/CustomizableUI.jsm", tmp);
 ChromeUtils.import("resource://gre/modules/AppConstants.jsm", tmp);
-var {Promise, CustomizableUI, AppConstants} = tmp;
+ChromeUtils.import("resource://testing-common/CustomizableUITestUtils.jsm", tmp);
+var {Promise, CustomizableUI, AppConstants, CustomizableUITestUtils} = tmp;
 
 var EventUtils = {};
 Services.scriptloader.loadSubScript("chrome://mochikit/content/tests/SimpleTest/EventUtils.js", EventUtils);
+
+/**
+ * Instance of CustomizableUITestUtils for the current browser window.
+ */
+var gCUITestUtils = new CustomizableUITestUtils(window);
 
 Services.prefs.setBoolPref("browser.uiCustomization.skipSourceNodeCheck", true);
 registerCleanupFunction(() => Services.prefs.clearUserPref("browser.uiCustomization.skipSourceNodeCheck"));
@@ -20,7 +26,6 @@ registerCleanupFunction(() => Services.prefs.clearUserPref("browser.uiCustomizat
 var {synthesizeDragStart, synthesizeDrop} = EventUtils;
 
 const kNSXUL = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
-const kTabEventFailureTimeoutInMs = 20000;
 
 const kForceOverflowWidthPx = 300;
 
@@ -254,11 +259,6 @@ function promiseWindowClosed(win) {
   });
 }
 
-function promisePanelShown(win) {
-  let panelEl = win.PanelUI.panel;
-  return promisePanelElementShown(win, panelEl);
-}
-
 function promiseOverflowShown(win) {
   let panelEl = win.document.getElementById("widget-overflow");
   return promisePanelElementShown(win, panelEl);
@@ -276,11 +276,6 @@ function promisePanelElementShown(win, aPanel) {
     }
     aPanel.addEventListener("popupshown", onPanelOpen);
   });
-}
-
-function promisePanelHidden(win) {
-  let panelEl = win.PanelUI.panel;
-  return promisePanelElementHidden(win, panelEl);
 }
 
 function promiseOverflowHidden(win) {
@@ -380,40 +375,6 @@ function promiseTabLoadEvent(aTab, aURL) {
 
   BrowserTestUtils.loadURI(browser, aURL);
   return BrowserTestUtils.browserLoaded(browser);
-}
-
-/**
- * Navigate back or forward in tab history and wait for it to finish.
- *
- * @param aDirection   Number to indicate to move backward or forward in history.
- * @param aConditionFn Function that returns the result of an evaluated condition
- *                     that needs to be `true` to resolve the promise.
- * @return {Promise} resolved when navigation has finished.
- */
-function promiseTabHistoryNavigation(aDirection = -1, aConditionFn) {
-  return new Promise((resolve, reject) => {
-
-    let timeoutId = setTimeout(() => {
-      gBrowser.removeEventListener("pageshow", listener, true);
-      reject("Pageshow did not happen within " + kTabEventFailureTimeoutInMs + "ms");
-    }, kTabEventFailureTimeoutInMs);
-
-    function listener(event) {
-      gBrowser.removeEventListener("pageshow", listener, true);
-      clearTimeout(timeoutId);
-
-      if (aConditionFn) {
-        waitForCondition(aConditionFn).then(() => resolve(),
-                                            aReason => reject(aReason));
-      } else {
-        resolve();
-      }
-    }
-    gBrowser.addEventListener("pageshow", listener, true);
-
-    gBrowser.contentWindowAsCPOW.history.go(aDirection);
-
-  });
 }
 
 /**

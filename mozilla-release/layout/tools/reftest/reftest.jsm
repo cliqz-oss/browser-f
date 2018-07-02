@@ -163,7 +163,7 @@ function OnRefTestLoad(win)
 
     g.browserIsIframe = prefs.getBoolPref("reftest.browser.iframe.enabled", false);
 
-    g.logLevel = prefs.getCharPref("reftest.logLevel", "info");
+    g.logLevel = prefs.getStringPref("reftest.logLevel", "info");
 
     if (win === undefined || win == null) {
       win = window;
@@ -237,7 +237,7 @@ function InitAndStartRefTests()
 
     /* Get the logfile for android tests */
     try {
-        var logFile = prefs.getCharPref("reftest.logFile");
+        var logFile = prefs.getStringPref("reftest.logFile");
         if (logFile) {
             var f = FileUtils.File(logFile);
             g.logFile = FileUtils.openFileOutputStream(f, FileUtils.MODE_WRONLY | FileUtils.MODE_CREATE);
@@ -259,17 +259,12 @@ function InitAndStartRefTests()
     }
 
     try {
-        g.focusFilterMode = prefs.getCharPref("reftest.focusFilterMode");
+        g.focusFilterMode = prefs.getStringPref("reftest.focusFilterMode");
     } catch(e) {}
 
     try {
         g.compareRetainedDisplayLists = prefs.getBoolPref("reftest.compareRetainedDisplayLists");
     } catch (e) {}
-#ifdef MOZ_STYLO
-    try {
-        g.compareStyloToGecko = prefs.getBoolPref("reftest.compareStyloToGecko");
-    } catch(e) {}
-#endif
 
 #ifdef MOZ_ENABLE_SKIA_PDF
     try {
@@ -358,9 +353,9 @@ function ReadTests() {
          * The latter two modes are used to pass test data back and forth
          * with python harness.
         */
-        let manifests = prefs.getCharPref("reftest.manifests", null);
-        let dumpTests = prefs.getCharPref("reftest.manifests.dumpTests", null);
-        let testList = prefs.getCharPref("reftest.tests", null);
+        let manifests = prefs.getStringPref("reftest.manifests", null);
+        let dumpTests = prefs.getStringPref("reftest.manifests.dumpTests", null);
+        let testList = prefs.getStringPref("reftest.tests", null);
 
         if ((testList && manifests) || !(testList || manifests)) {
             logger.error("Exactly one of reftest.manifests or reftest.tests must be specified.");
@@ -505,7 +500,7 @@ function StartTests()
             var ids = g.urls.map(function(obj) {
                 return obj.identifier;
             });
-            var suite = prefs.getCharPref('reftest.suite', 'reftest');
+            var suite = prefs.getStringPref('reftest.suite', 'reftest');
             logger.suiteStart(ids, suite, {"skipped": g.urls.length - numActiveTests});
             g.suiteStarted = true
         }
@@ -677,7 +672,7 @@ function StartCurrentURI(aURLTargetType)
                     }
                 } else if (ps.type == PREF_STRING) {
                     try {
-                        oldVal = prefs.getCharPref(ps.name);
+                        oldVal = prefs.getStringPref(ps.name);
                     } catch (e) {
                         badPref = "string preference '" + ps.name + "'";
                         throw "bad pref";
@@ -700,7 +695,7 @@ function StartCurrentURI(aURLTargetType)
                     if (ps.type == PREF_BOOLEAN) {
                         prefs.setBoolPref(ps.name, value);
                     } else if (ps.type == PREF_STRING) {
-                        prefs.setCharPref(ps.name, value);
+                        prefs.setStringPref(ps.name, value);
                         value = '"' + value + '"';
                     } else if (ps.type == PREF_INTEGER) {
                         prefs.setIntPref(ps.name, value);
@@ -1369,7 +1364,7 @@ function RestoreChangedPreferences()
             if (ps.type == PREF_BOOLEAN) {
                 prefs.setBoolPref(ps.name, value);
             } else if (ps.type == PREF_STRING) {
-                prefs.setCharPref(ps.name, value);
+                prefs.setStringPref(ps.name, value);
                 value = '"' + value + '"';
             } else if (ps.type == PREF_INTEGER) {
                 prefs.setIntPref(ps.name, value);

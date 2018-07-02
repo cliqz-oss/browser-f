@@ -26,6 +26,7 @@
 #include "base/task.h"
 #include "base/thread.h"
 #include "base/message_loop.h"
+#include "mozilla/FontPropertyTypes.h"
 #include "mozilla/gfx/Logging.h"
 
 #include "mozilla/gfx/2D.h"
@@ -85,14 +86,7 @@ gfxPlatformGtk::gfxPlatformGtk()
     }
 #endif
 
-    uint32_t canvasMask = BackendTypeBit(BackendType::CAIRO);
-    uint32_t contentMask = BackendTypeBit(BackendType::CAIRO);
-#ifdef USE_SKIA
-    canvasMask |= BackendTypeBit(BackendType::SKIA);
-    contentMask |= BackendTypeBit(BackendType::SKIA);
-#endif
-    InitBackendPrefs(canvasMask, BackendType::CAIRO,
-                     contentMask, BackendType::CAIRO);
+    InitBackendPrefs(GetBackendPrefs());
 
 #ifdef MOZ_X11
     if (gfxPlatform::IsHeadless() && GDK_IS_X11_DISPLAY(gdk_display_get_default())) {
@@ -200,10 +194,10 @@ gfxPlatformGtk::UpdateFontList()
 // out a more general list
 static const char kFontDejaVuSans[] = "DejaVu Sans";
 static const char kFontDejaVuSerif[] = "DejaVu Serif";
-static const char kFontEmojiOneMozilla[] = "EmojiOne Mozilla";
 static const char kFontFreeSans[] = "FreeSans";
 static const char kFontFreeSerif[] = "FreeSerif";
 static const char kFontTakaoPGothic[] = "TakaoPGothic";
+static const char kFontTwemojiMozilla[] = "Twemoji Mozilla";
 static const char kFontDroidSansFallback[] = "Droid Sans Fallback";
 static const char kFontWenQuanYiMicroHei[] = "WenQuanYi Micro Hei";
 static const char kFontNanumGothic[] = "NanumGothic";
@@ -219,7 +213,7 @@ gfxPlatformGtk::GetCommonFallbackFonts(uint32_t aCh, uint32_t aNextCh,
            (aNextCh != kVariationSelector15 &&
             emoji == EmojiPresentation::EmojiDefault)) {
             // if char is followed by VS16, try for a color emoji glyph
-            aFontList.AppendElement(kFontEmojiOneMozilla);
+            aFontList.AppendElement(kFontTwemojiMozilla);
         }
     }
 
@@ -277,30 +271,6 @@ gfxPlatformGtk::CreateFontGroup(const FontFamilyList& aFontFamilyList,
 {
     return new gfxFontGroup(aFontFamilyList, aStyle, aTextPerf,
                             aUserFontSet, aDevToCssSize);
-}
-
-gfxFontEntry*
-gfxPlatformGtk::LookupLocalFont(const nsAString& aFontName,
-                                uint16_t aWeight,
-                                int16_t aStretch,
-                                uint8_t aStyle)
-{
-    gfxPlatformFontList* pfl = gfxPlatformFontList::PlatformFontList();
-    return pfl->LookupLocalFont(aFontName, aWeight, aStretch,
-                                aStyle);
-}
-
-gfxFontEntry*
-gfxPlatformGtk::MakePlatformFont(const nsAString& aFontName,
-                                 uint16_t aWeight,
-                                 int16_t aStretch,
-                                 uint8_t aStyle,
-                                 const uint8_t* aFontData,
-                                 uint32_t aLength)
-{
-    gfxPlatformFontList* pfl = gfxPlatformFontList::PlatformFontList();
-    return pfl->MakePlatformFont(aFontName, aWeight, aStretch,
-                                 aStyle, aFontData, aLength);
 }
 
 FT_Library
@@ -527,6 +497,16 @@ gfxPlatformGtk::GetPlatformCMSOutputProfile(void *&mem, size_t &size)
 #endif
 }
 
+bool
+gfxPlatformGtk::CheckVariationFontSupport()
+{
+  // Although there was some variation/multiple-master support in FreeType
+  // in older versions, it seems too incomplete/unstable for us to use
+  // until at least 2.7.1.
+  FT_Int major, minor, patch;
+  FT_Library_Version(GetFTLibrary(), &major, &minor, &patch);
+  return major * 1000000 + minor * 1000 + patch >= 2007001;
+}
 
 #ifdef GL_PROVIDER_GLX
 

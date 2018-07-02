@@ -1,4 +1,4 @@
-// Note - this is a generated file.
+// Note - this is a generated static file.
 window.gActivityStreamPrerenderedState = {
   "TopSites": {
     "initialized": false,
@@ -16,16 +16,13 @@ window.gActivityStreamPrerenderedState = {
     "initialized": true,
     "values": {
       "migrationExpired": true,
-      "showTopSites": true,
+      "feeds.topsites": true,
       "showSearch": true,
       "topSitesRows": 1,
-      "collapseTopSites": false,
-      "section.highlights.collapsed": false,
-      "section.topstories.collapsed": false,
       "feeds.section.topstories": true,
       "feeds.section.highlights": true,
-      "enableWideLayout": true,
-      "sectionOrder": "topsites,topstories,highlights"
+      "sectionOrder": "topsites,topstories,highlights",
+      "collapsed": false
     }
   },
   "Dialog": {
@@ -59,7 +56,7 @@ window.gActivityStreamPrerenderedState = {
       "initialized": false
     }
   ],
-  "PreferencesPane": {
-    "visible": false
+  "Theme": {
+    "className": ""
   }
 };

@@ -2,23 +2,16 @@ const { Constructor: CC } = Components;
 
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://testing-common/httpd.js");
-ChromeUtils.import("resource://gre/modules/Timer.jsm");
 const { FileUtils } = ChromeUtils.import("resource://gre/modules/FileUtils.jsm", {});
 const { OS } = ChromeUtils.import("resource://gre/modules/osfile.jsm", {});
 
 const BlocklistClients = ChromeUtils.import("resource://services-common/blocklist-clients.js", {});
-const { UptakeTelemetry } = ChromeUtils.import("resource://services-common/uptake-telemetry.js", {});
 
 const BinaryInputStream = CC("@mozilla.org/binaryinputstream;1",
   "nsIBinaryInputStream", "setInputStream");
 
-const gBlocklistClients = [
-  {client: BlocklistClients.AddonBlocklistClient, testData: ["i808", "i720", "i539"]},
-  {client: BlocklistClients.PluginBlocklistClient, testData: ["p1044", "p32", "p28"]},
-  {client: BlocklistClients.GfxBlocklistClient, testData: ["g204", "g200", "g36"]},
-];
 
-
+let gBlocklistClients;
 let server;
 
 async function readJSON(filepath) {
@@ -33,9 +26,8 @@ async function clear_state() {
     Services.prefs.clearUserPref(client.lastCheckTimePref);
 
     // Clear local DB.
-    await client.openCollection(async (collection) => {
-      await collection.clear();
-    });
+    const collection = await client.openCollection();
+    await collection.clear();
 
     // Remove JSON dumps folders in profile dir.
     const dumpFile = OS.Path.join(OS.Constants.Path.profileDir, client.filename);
@@ -54,6 +46,15 @@ function run_test() {
   Services.prefs.setCharPref("services.settings.server",
                              `http://localhost:${server.identity.primaryPort}/v1`);
 
+  // This will initialize the remote settings clients for blocklists.
+  BlocklistClients.initialize();
+
+  gBlocklistClients = [
+    {client: BlocklistClients.AddonBlocklistClient, testData: ["i808", "i720", "i539"]},
+    {client: BlocklistClients.PluginBlocklistClient, testData: ["p1044", "p32", "p28"]},
+    {client: BlocklistClients.GfxBlocklistClient, testData: ["g204", "g200", "g36"]},
+  ];
+
   // Setup server fake responses.
   function handleResponse(request, response) {
     try {
@@ -61,17 +62,17 @@ function run_test() {
       if (!sample) {
         do_throw(`unexpected ${request.method} request for ${request.path}?${request.queryString}`);
       }
+      const { status: { status, statusText }, sampleHeaders, responseBody } = sample;
 
-      response.setStatusLine(null, sample.status.status,
-                             sample.status.statusText);
+      response.setStatusLine(null, status, statusText);
       // send the headers
-      for (let headerLine of sample.sampleHeaders) {
-        let headerElements = headerLine.split(":");
+      for (const headerLine of sampleHeaders) {
+        const headerElements = headerLine.split(":");
         response.setHeader(headerElements[0], headerElements[1].trimLeft());
       }
       response.setHeader("Date", (new Date()).toUTCString());
 
-      response.write(sample.responseBody);
+      response.write(responseBody);
       response.finish();
     } catch (e) {
       info(e);
@@ -99,41 +100,10 @@ add_task(async function test_initial_dump_is_loaded_as_synced_when_collection_is
     // Test an empty db populates, but don't reach server (specified timestamp <= dump).
     await client.maybeSync(1, Date.now());
 
-    // Open the collection, verify the loaded data has status to synced:
-    await client.openCollection(async (collection) => {
-      const list = await collection.list();
-      equal(list.data[0]._status, "synced");
-    });
+    // Verify the loaded data has status to synced:
+    const list = await client.get();
+    equal(list[0]._status, "synced");
   }
-});
-add_task(clear_state);
-
-add_task(async function test_records_obtained_from_server_are_stored_in_db() {
-  for (let {client} of gBlocklistClients) {
-    // Test an empty db populates
-    await client.maybeSync(2000, Date.now(), {loadDump: false});
-
-    // Open the collection, verify it's been populated:
-    // Our test data has a single record; it should be in the local collection
-    await client.openCollection(async (collection) => {
-      const list = await collection.list();
-      equal(list.data.length, 1);
-    });
-  }
-});
-add_task(clear_state);
-
-add_task(async function test_records_changes_are_overwritten_by_server_changes() {
-  const {client} = gBlocklistClients[0];
-
-  // Create some local conflicting data, and make sure it syncs without error.
-  await client.openCollection(async (collection) => {
-    await collection.create({
-      "versionRange": [],
-      "id": "9d500963-d80e-3a91-6e74-66f3811b99cc"
-    }, { useRecordId: true });
-  });
-  await client.maybeSync(2000, Date.now(), {loadDump: false});
 });
 add_task(clear_state);
 
@@ -198,102 +168,6 @@ add_task(async function test_sends_reload_message_when_blocklist_has_changes() {
 });
 add_task(clear_state);
 
-add_task(async function test_telemetry_reports_up_to_date() {
-  for (let {client} of gBlocklistClients) {
-    await client.maybeSync(2000, Date.now() - 1000, {loadDump: false});
-    const filePath = OS.Path.join(OS.Constants.Path.profileDir, client.filename);
-    const profFile = new FileUtils.File(filePath);
-    const fileLastModified = profFile.lastModifiedTime = profFile.lastModifiedTime - 1000;
-    const serverTime = Date.now();
-    const startHistogram = getUptakeTelemetrySnapshot(client.identifier);
-
-    await client.maybeSync(3000, serverTime);
-
-    // File was not updated.
-    equal(fileLastModified, profFile.lastModifiedTime);
-    // Server time was updated.
-    const after = Services.prefs.getIntPref(client.lastCheckTimePref);
-    equal(after, Math.round(serverTime / 1000));
-    // No Telemetry was sent.
-    const endHistogram = getUptakeTelemetrySnapshot(client.identifier);
-    const expectedIncrements = {[UptakeTelemetry.STATUS.UP_TO_DATE]: 1};
-    checkUptakeTelemetry(startHistogram, endHistogram, expectedIncrements);
-  }
-});
-add_task(clear_state);
-
-add_task(async function test_telemetry_if_sync_succeeds() {
-  // We test each client because Telemetry requires preleminary declarations.
-  for (let {client} of gBlocklistClients) {
-    const serverTime = Date.now();
-    const startHistogram = getUptakeTelemetrySnapshot(client.identifier);
-
-    await client.maybeSync(2000, serverTime, {loadDump: false});
-
-    const endHistogram = getUptakeTelemetrySnapshot(client.identifier);
-    const expectedIncrements = {[UptakeTelemetry.STATUS.SUCCESS]: 1};
-    checkUptakeTelemetry(startHistogram, endHistogram, expectedIncrements);
-  }
-});
-add_task(clear_state);
-
-add_task(async function test_telemetry_reports_if_application_fails() {
-  const {client} = gBlocklistClients[0];
-  const serverTime = Date.now();
-  const startHistogram = getUptakeTelemetrySnapshot(client.identifier);
-  const backup = client.processCallback;
-  client.processCallback = () => { throw new Error("boom"); };
-
-  try {
-    await client.maybeSync(2000, serverTime, {loadDump: false});
-  } catch (e) {}
-
-  client.processCallback = backup;
-
-  const endHistogram = getUptakeTelemetrySnapshot(client.identifier);
-  const expectedIncrements = {[UptakeTelemetry.STATUS.APPLY_ERROR]: 1};
-  checkUptakeTelemetry(startHistogram, endHistogram, expectedIncrements);
-});
-add_task(clear_state);
-
-add_task(async function test_telemetry_reports_if_sync_fails() {
-  const {client} = gBlocklistClients[0];
-  const serverTime = Date.now();
-
-  await client.openCollection(async (collection) => {
-    await collection.db.saveLastModified(9999);
-  });
-
-  const startHistogram = getUptakeTelemetrySnapshot(client.identifier);
-
-  try {
-    await client.maybeSync(10000, serverTime);
-  } catch (e) {}
-
-  const endHistogram = getUptakeTelemetrySnapshot(client.identifier);
-  const expectedIncrements = {[UptakeTelemetry.STATUS.SYNC_ERROR]: 1};
-  checkUptakeTelemetry(startHistogram, endHistogram, expectedIncrements);
-});
-add_task(clear_state);
-
-add_task(async function test_telemetry_reports_unknown_errors() {
-  const {client} = gBlocklistClients[0];
-  const serverTime = Date.now();
-  const backup = client.openCollection;
-  client.openCollection = () => { throw new Error("Internal"); };
-  const startHistogram = getUptakeTelemetrySnapshot(client.identifier);
-
-  try {
-    await client.maybeSync(2000, serverTime);
-  } catch (e) {}
-
-  client.openCollection = backup;
-  const endHistogram = getUptakeTelemetrySnapshot(client.identifier);
-  const expectedIncrements = {[UptakeTelemetry.STATUS.UNKNOWN_ERROR]: 1};
-  checkUptakeTelemetry(startHistogram, endHistogram, expectedIncrements);
-});
-add_task(clear_state);
-
 // get a response for a given request from sample data
 function getSampleResponse(req, port) {
   const responses = {
@@ -308,7 +182,7 @@ function getSampleResponse(req, port) {
       "status": {status: 200, statusText: "OK"},
       "responseBody": "null"
     },
-    "GET:/v1/?": {
+    "GET:/v1/": {
       "sampleHeaders": [
         "Access-Control-Allow-Origin: *",
         "Access-Control-Expose-Headers: Retry-After, Content-Length, Alert, Backoff",
@@ -489,23 +363,10 @@ function getSampleResponse(req, port) {
         "os": "Darwin 11",
         "featureStatus": "BLOCKED_DEVICE"
       }]})
-    },
-    "GET:/v1/buckets/blocklists/collections/addons/records?_sort=-last_modified&_since=9999": {
-      "sampleHeaders": [
-        "Access-Control-Allow-Origin: *",
-        "Access-Control-Expose-Headers: Retry-After, Content-Length, Alert, Backoff",
-        "Content-Type: application/json; charset=UTF-8",
-        "Server: waitress",
-      ],
-      "status": {status: 503, statusText: "Service Unavailable"},
-      "responseBody": JSON.stringify({
-        code: 503,
-        errno: 999,
-        error: "Service Unavailable",
-      })
     }
   };
   return responses[`${req.method}:${req.path}?${req.queryString}`] ||
+         responses[`${req.method}:${req.path}`] ||
          responses[req.method];
 
 }

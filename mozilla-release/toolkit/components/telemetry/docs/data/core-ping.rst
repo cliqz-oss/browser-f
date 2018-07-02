@@ -42,6 +42,7 @@ Structure:
                                     // UNIX epoch.
       "defaultSearch": <string>, // Identifier of the default search engine,
                                  // e.g. "yahoo".
+      "displayVersion": <string>, // Version displayed to user, e.g. 57.0b3 (optional)
       "distributionId": <string>, // Distribution identifier (optional)
       "campaignId": <string>, // Adjust's campaign identifier (optional)
       "created": <string>, // date the ping was created
@@ -125,7 +126,7 @@ sessions. Note that showing a dialog (including a Firefox dialog) will
 take Firefox out of focus & end the current session.
 
 An implementation that records a session when Firefox is completely hidden is
-preferrable (e.g. to avoid the dialog issue above), however, it's more complex
+preferable (e.g. to avoid the dialog issue above), however, it's more complex
 to implement and so we chose not to, at least for the initial implementation.
 
 profileDate
@@ -158,7 +159,7 @@ Possible value :
     {
        "yahoo.listitem":2,
        "duckduckgo.listitem":1,
-       "google-nocodes.suggestion":1
+       "google.suggestion":1
     }
 
 **<engine identifier>**: the identifier of the the search engine. The identifier is collected the way same as desktop.
@@ -179,7 +180,7 @@ we only record the search engine name when:
 
 accessibilityServices
 ~~~~~~~~~~~~~~~~~~~~~
-This describes which accessibility services are currently enabled on user's device and could be interacting with out
+This describes which accessibility services are currently enabled on user's device and could be interacting with our
 products. This is optional because users often do not have any accessibility services enabled. If present, the value is
 a list of accessibility service ids.
 
@@ -196,8 +197,12 @@ et al (e.g. "Tue, 01 Feb 2011 14:00:00 GMT").
 
 Version history
 ---------------
-* v10: added ``defaultBrowser`` to know if the user has set Firefox as default browser
-* v9: changed ``arch`` to contain device arch rather than the one we built against & ``accessibilityServices``
+* v9:
+ - Apr 2017: changed ``arch`` to contain device arch rather than the one we
+   built against & ``accessibilityServices``
+ - Dec 2017: added ``defaultBrowser`` to know if the user has set Firefox as
+   default browser (Dec 2017)
+ - May 2018: added (optional) ``displayVersion`` to distinguish Firefox beta versions easily
 * v8: added ``flashUsage``
 * v7: added ``sessionCount`` & ``sessionDuration``  & ``campaignId``
 * v6: added ``searches``

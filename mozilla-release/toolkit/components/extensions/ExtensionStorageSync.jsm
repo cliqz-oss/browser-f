@@ -346,7 +346,7 @@ async function storageSyncInit() {
   return storageSyncInit.promise;
 }
 
-// Kinto record IDs have two condtions:
+// Kinto record IDs have two conditions:
 //
 // - They must contain only ASCII alphanumerics plus - and _. To fix
 // this, we encode all non-letters using _C_, where C is the
@@ -1043,7 +1043,7 @@ class ExtensionStorageSync {
         }
 
         if (keyResolution.accepted.uuid != cryptoKeyRecord.uuid) {
-          log.info(`Detected a new UUID (${keyResolution.accepted.uuid}, was ${cryptoKeyRecord.uuid}). Reseting sync status for everything.`);
+          log.info(`Detected a new UUID (${keyResolution.accepted.uuid}, was ${cryptoKeyRecord.uuid}). Resetting sync status for everything.`);
           await this.cryptoCollection.resetSyncStatus();
 
           // Server version is now correct. Return that result.
@@ -1161,6 +1161,25 @@ class ExtensionStorageSync {
     }
     const histogram = this._telemetry.getKeyedHistogramById(HISTOGRAM_REMOVE_OPS);
     histogram.add(extension.id, keys.length);
+  }
+
+  /* Wipe local data for all collections without causing the changes to be synced */
+  async clearAll() {
+    const extensions = extensionContexts.keys();
+    const extIds = Array.from(extensions, extension => extension.id);
+    log.debug(`Clearing extension data for ${JSON.stringify(extIds)}`);
+    if (extIds.length) {
+      const promises = Array.from(extensionContexts.keys(), extension => {
+        return openCollection(this.cryptoCollection, extension).then(coll => {
+          return coll.clear();
+        });
+      });
+      await Promise.all(promises);
+    }
+
+    // and clear the crypto collection.
+    const cc = await this.cryptoCollection.getCollection();
+    await cc.clear();
   }
 
   async clear(extension, context) {

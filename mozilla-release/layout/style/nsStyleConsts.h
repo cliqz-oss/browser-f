@@ -4,7 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* constants used in the style struct data provided by nsStyleContext */
+/* constants used in the style struct data provided by ComputedStyle */
 
 #ifndef nsStyleConsts_h___
 #define nsStyleConsts_h___
@@ -14,7 +14,7 @@
 #include "gfxFontConstants.h"
 #include "X11UndefineNone.h"
 
-// XXX fold this into nsStyleContext and group by nsStyleXXX struct
+// XXX fold this into ComputedStyle and group by nsStyleXXX struct
 
 namespace mozilla {
 
@@ -573,9 +573,6 @@ enum class StyleDisplay : uint8_t {
 #define NS_STYLE_FONT_STYLE_OBLIQUE             NS_FONT_STYLE_OBLIQUE
 
 // See nsStyleFont
-// We should eventually stop using the NS_STYLE_* variants here.
-#define NS_STYLE_FONT_WEIGHT_NORMAL             NS_FONT_WEIGHT_NORMAL
-#define NS_STYLE_FONT_WEIGHT_BOLD               NS_FONT_WEIGHT_BOLD
 // The constants below appear only in style sheets and not computed style.
 #define NS_STYLE_FONT_WEIGHT_BOLDER             (-1)
 #define NS_STYLE_FONT_WEIGHT_LIGHTER            (-2)
@@ -592,18 +589,6 @@ enum class StyleDisplay : uint8_t {
 #define NS_STYLE_FONT_SIZE_LARGER               8
 #define NS_STYLE_FONT_SIZE_SMALLER              9
 #define NS_STYLE_FONT_SIZE_NO_KEYWORD          10 // Used by Servo to track the "no keyword" case
-
-// See nsStyleFont
-// We should eventually stop using the NS_STYLE_* variants here.
-#define NS_STYLE_FONT_STRETCH_ULTRA_CONDENSED   NS_FONT_STRETCH_ULTRA_CONDENSED
-#define NS_STYLE_FONT_STRETCH_EXTRA_CONDENSED   NS_FONT_STRETCH_EXTRA_CONDENSED
-#define NS_STYLE_FONT_STRETCH_CONDENSED         NS_FONT_STRETCH_CONDENSED
-#define NS_STYLE_FONT_STRETCH_SEMI_CONDENSED    NS_FONT_STRETCH_SEMI_CONDENSED
-#define NS_STYLE_FONT_STRETCH_NORMAL            NS_FONT_STRETCH_NORMAL
-#define NS_STYLE_FONT_STRETCH_SEMI_EXPANDED     NS_FONT_STRETCH_SEMI_EXPANDED
-#define NS_STYLE_FONT_STRETCH_EXPANDED          NS_FONT_STRETCH_EXPANDED
-#define NS_STYLE_FONT_STRETCH_EXTRA_EXPANDED    NS_FONT_STRETCH_EXTRA_EXPANDED
-#define NS_STYLE_FONT_STRETCH_ULTRA_EXPANDED    NS_FONT_STRETCH_ULTRA_EXPANDED
 
 // See nsStyleFont - system fonts
 #define NS_STYLE_FONT_CAPTION                   1   // css2
@@ -676,6 +661,12 @@ enum class StyleGridTrackBreadth : uint8_t {
 #define NS_STYLE_WIDTH_MIN_CONTENT              1
 #define NS_STYLE_WIDTH_FIT_CONTENT              2
 #define NS_STYLE_WIDTH_AVAILABLE                3
+// The 'content' keyword is only valid for 'flex-basis' (not for 'width').  But
+// aside from that, the 'flex-basis' property accepts exactly the same values
+// as 'width'. So I'm listing this one 'flex-basis'-specific enumerated value
+// alongside the 'width' ones, to be sure we don't accidentally overload this
+// numeric value with two different meanings if new 'width' keywords are added.
+#define NS_STYLE_FLEX_BASIS_CONTENT             4
 
 // See nsStyleDisplay.mPosition
 #define NS_STYLE_POSITION_STATIC                0

@@ -13,6 +13,7 @@
 #include "mozilla/ipc/ProtocolUtils.h"
 #include "mozilla/Logging.h"
 #include "mozilla/Move.h"
+#include "mozilla/ScopeExit.h"
 #include "mozilla/Sprintf.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/TimeStamp.h"
@@ -533,7 +534,8 @@ MessageChannel::MessageChannel(const char* aName,
     mFlags(REQUIRE_DEFAULT),
     mPeerPidSet(false),
     mPeerPid(-1),
-    mIsPostponingSends(false)
+    mIsPostponingSends(false),
+    mInKillHardShutdown(false)
 {
     MOZ_COUNT_CTOR(ipc::MessageChannel);
 
@@ -674,8 +676,9 @@ void
 MessageChannel::WillDestroyCurrentMessageLoop()
 {
 #if defined(DEBUG)
-    CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("ProtocolName"),
-                                       nsDependentCString(mName));
+    CrashReporter::AnnotateCrashReport(
+        NS_LITERAL_CSTRING("IPCFatalErrorProtocol"),
+        nsDependentCString(mName));
     MOZ_CRASH("MessageLoop destroyed before MessageChannel that's bound to it");
 #endif
 
@@ -698,9 +701,13 @@ MessageChannel::Clear()
     // before mListener.  But just to be safe, mListener is a weak pointer.
 
 #if !defined(ANDROID)
-    if (!Unsound_IsClosed()) {
-        CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("ProtocolName"),
-                                           nsDependentCString(mName));
+    // KillHard shutdowns can occur with the channel in connected state. We are
+    // already collecting crash dump data about KillHard shutdowns and we
+    // shouldn't intentionally crash here.
+    if (!Unsound_IsClosed() && !mInKillHardShutdown) {
+        CrashReporter::AnnotateCrashReport(
+            NS_LITERAL_CSTRING("IPCFatalErrorProtocol"),
+            nsDependentCString(mName));
         switch (mChannelState) {
             case ChannelOpening:
                 MOZ_CRASH("MessageChannel destroyed without being closed " \
@@ -1162,7 +1169,9 @@ MessageChannel::OnMessageReceivedFromLink(Message&& aMsg)
     if (MaybeInterceptSpecialIOMessage(aMsg))
         return;
 
+#ifdef EARLY_BETA_OR_EARLIER
     mListener->OnChannelReceivedMessage(aMsg);
+#endif
 
     // Regardless of the Interrupt stack, if we're awaiting a sync reply,
     // we know that it needs to be immediately handled to unblock us.
@@ -2316,13 +2325,6 @@ MessageChannel::EnqueuePendingMessages()
     RepostAllMessages();
 }
 
-static inline bool
-IsTimeoutExpired(PRIntervalTime aStart, PRIntervalTime aTimeout)
-{
-    return (aTimeout != PR_INTERVAL_NO_TIMEOUT) &&
-           (aTimeout <= (PR_IntervalNow() - aStart));
-}
-
 bool
 MessageChannel::WaitResponse(bool aWaitTimedOut)
 {
@@ -2352,17 +2354,14 @@ MessageChannel::WaitForSyncNotify(bool /* aHandleWindowsMessages */)
     }
 #endif
 
-    PRIntervalTime timeout = (kNoTimeout == mTimeoutMs) ?
-                             PR_INTERVAL_NO_TIMEOUT :
-                             PR_MillisecondsToInterval(mTimeoutMs);
-    // XXX could optimize away this syscall for "no timeout" case if desired
-    PRIntervalTime waitStart = PR_IntervalNow();
-
-    mMonitor->Wait(timeout);
+    TimeDuration timeout = (kNoTimeout == mTimeoutMs) ?
+                           TimeDuration::Forever() :
+                           TimeDuration::FromMilliseconds(mTimeoutMs);
+    CVStatus status = mMonitor->Wait(timeout);
 
     // If the timeout didn't expire, we know we received an event. The
     // converse is not true.
-    return WaitResponse(IsTimeoutExpired(waitStart, timeout));
+    return WaitResponse(status == CVStatus::Timeout);
 }
 
 bool
@@ -2704,7 +2703,16 @@ MessageChannel::Close()
     AssertWorkerThread();
 
     {
-        MonitorAutoLock lock(*mMonitor);
+        // We don't use MonitorAutoLock here as that causes some sort of
+        // deadlock in the error/timeout-with-a-listener state below when
+        // compiling an optimized msvc build.
+        mMonitor->Lock();
+
+        // Instead just use a ScopeExit to manage the unlock.
+        RefPtr<RefCountedMonitor> monitor(mMonitor);
+        auto exit = MakeScopeExit([m = Move(monitor)] () {
+          m->Unlock();
+        });
 
         if (ChannelError == mChannelState || ChannelTimeout == mChannelState) {
             // See bug 538586: if the listener gets deleted while the
@@ -2713,7 +2721,8 @@ MessageChannel::Close()
             // also be deleted and the listener will never be notified
             // of the channel error.
             if (mListener) {
-                MonitorAutoUnlock unlock(*mMonitor);
+                exit.release(); // Explicitly unlocking, clear scope exit.
+                mMonitor->Unlock();
                 NotifyMaybeChannelError();
             }
             return;
@@ -2853,6 +2862,7 @@ MessageChannel::RepostAllMessages()
     for (MessageTask* task : mPending) {
         if (!task->IsScheduled()) {
             needRepost = true;
+            break;
         }
     }
     if (!needRepost) {

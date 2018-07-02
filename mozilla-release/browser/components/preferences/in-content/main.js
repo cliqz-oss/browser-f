@@ -39,10 +39,6 @@ const PREF_HIDE_PLUGINS_WITHOUT_EXTENSIONS =
 
 // Strings to identify ExtensionSettingsStore overrides
 const CONTAINERS_KEY = "privacy.containers";
-const HOMEPAGE_OVERRIDE_KEY = "homepage_override";
-const URL_OVERRIDES_TYPE = "url_overrides";
-const NEW_TAB_KEY = "newTabURL";
-const NEW_TAB_STRING_ID = "extensionControlled.newTabURL2";
 
 /*
  * Preferences where we store handling information about the feed type.
@@ -273,6 +269,10 @@ var gMainPane = {
   // A hash of integer counts, indexed by string description.
   _visibleTypeDescriptionCount: {},
 
+  // browser.startup.page values
+  STARTUP_PREF_BLANK: 0,
+  STARTUP_PREF_HOMEPAGE: 1,
+  STARTUP_PREF_RESTORE_SESSION: 3,
 
   // Convenience & Performance Shortcuts
 
@@ -364,27 +364,6 @@ var gMainPane = {
     });
     this.updatePerformanceSettingsBox({ duringChangeEvent: false });
 
-    // set up the "use current page" label-changing listener
-    this._updateUseCurrentButton();
-    window.addEventListener("focus", this._updateUseCurrentButton.bind(this));
-
-#if 0
-    this.updateBrowserStartupLastSession();
-
-    handleControllingExtension(
-      URL_OVERRIDES_TYPE, NEW_TAB_KEY, NEW_TAB_STRING_ID);
-    let newTabObserver = {
-      observe(subject, topic, data) {
-        handleControllingExtension(
-          URL_OVERRIDES_TYPE, NEW_TAB_KEY, NEW_TAB_STRING_ID);
-      },
-    };
-    Services.obs.addObserver(newTabObserver, "newtab-url-changed");
-    window.addEventListener("unload", () => {
-      Services.obs.removeObserver(newTabObserver, "newtab-url-changed");
-    });
-#endif
-
     let connectionSettingsLink = document.getElementById("connectionSettingsLearnMore");
     let connectionSettingsUrl = Services.urlFormatter.formatURLPref("app.support.baseURL") +
                                 "prefs-connection-settings";
@@ -410,8 +389,22 @@ var gMainPane = {
     if (!TransientPrefs.prefShouldBeVisible("browser.tabs.warnOnOpen"))
       document.getElementById("warnOpenMany").hidden = true;
 
+    // Startup pref
+#if 0
+    setEventListener("browserRestoreSession", "command",
+      gMainPane.onBrowserRestoreSessionChange);
+#endif
+    gMainPane.updateBrowserStartupUI = gMainPane.updateBrowserStartupUI.bind(gMainPane);
     Preferences.get("browser.privatebrowsing.autostart").on("change",
-      gMainPane.updateBrowserStartupLastSession.bind(gMainPane));
+      gMainPane.updateBrowserStartupUI);
+    Preferences.get("browser.startup.page").on("change",
+      gMainPane.updateBrowserStartupUI);
+/*
+    Preferences.get("browser.startup.homepage").on("change",
+      gMainPane.updateBrowserStartupUI);
+*/
+    gMainPane.updateBrowserStartupUI();
+
     if (AppConstants.HAVE_SHELL_SERVICE) {
       setEventListener("setDefaultButton", "command",
         gMainPane.setDefaultBrowser);
@@ -422,16 +415,8 @@ var gMainPane = {
       gMainPane.setHomePageToBookmark);
     setEventListener("restoreDefaultHomePage", "command",
       gMainPane.restoreDefaultHomePage);
-#if 0
-    setEventListener("disableHomePageExtension", "command",
-                     makeDisableControllingExtension(PREF_SETTING_TYPE, HOMEPAGE_OVERRIDE_KEY));
-#endif
     setEventListener("disableContainersExtension", "command",
                      makeDisableControllingExtension(PREF_SETTING_TYPE, CONTAINERS_KEY));
-#if 0
-    setEventListener("disableNewTabExtension", "command",
-                     makeDisableControllingExtension(URL_OVERRIDES_TYPE, NEW_TAB_KEY));
-#endif
     setEventListener("chooseLanguage", "command",
       gMainPane.showLanguages);
     setEventListener("translationAttributionImage", "click",
@@ -452,8 +437,6 @@ var gMainPane = {
       gMainPane.checkBrowserContainers);
     setEventListener("browserContainersSettings", "command",
       gMainPane.showContainerSettings);
-    setEventListener("browserHomePage", "input",
-      gMainPane.onBrowserHomePageChange);
 
     // Initializes the fonts dropdowns displayed in this pane.
     this._rebuildFonts();
@@ -511,19 +494,17 @@ var gMainPane = {
     let arch = bundle.GetStringFromName(archResource);
 
     // Add Firefox and nav-extension versions
-    let cliqzAddon = AddonManager.getAddonByID("cliqz@cliqz.com", cliqzAddon => {
+    let cliqzAddon = AddonManager.getAddonByID("cliqz@cliqz.com").then(cliqzAddon => {
       let componentsVersion = Services.appinfo.platformVersion;
       if (cliqzAddon) {
         componentsVersion += `+${cliqzAddon.version}`;
       }
       version += ` (${componentsVersion})`;
       version += ` (${arch})`;
-
-      document.getElementById("version").textContent = version;
     });
     document.l10n.setAttributes(
       document.getElementById("updateAppInfo"),
-      "update-application-info",
+      "update-application-version",
       { version }
     );
 
@@ -605,8 +586,11 @@ var gMainPane = {
     setEventListener("actionColumn", "click", gMainPane.sort);
     setEventListener("chooseFolder", "command", gMainPane.chooseFolder);
     setEventListener("saveWhere", "command", gMainPane.handleSaveToCommand);
+    Preferences.get("browser.download.folderList").on("change",
+      gMainPane.displayDownloadDirPref.bind(gMainPane));
     Preferences.get("browser.download.dir").on("change",
       gMainPane.displayDownloadDirPref.bind(gMainPane));
+    gMainPane.displayDownloadDirPref();
 
     // Listen for window unload so we can remove our preference observers.
     window.addEventListener("unload", this);
@@ -761,7 +745,7 @@ var gMainPane = {
     const user = await fxAccounts.getSignedInUser();
     if (user) {
       // We have a user, open Sync preferences in the same tab
-      win.openUILinkIn("about:preferences#sync", "current");
+      win.openTrustedLinkIn("about:preferences#sync", "current");
       return;
     }
     let url = await FxAccounts.config.promiseSignInURI("dev-edition-setup");
@@ -770,7 +754,6 @@ var gMainPane = {
   },
 
   // HOME PAGE
-
   /*
    * Preferences:
    *
@@ -981,6 +964,9 @@ var gMainPane = {
    * Hide/show the "Show my windows and tabs from last time" option based
    * on the value of the browser.privatebrowsing.autostart pref.
    */
+
+/*
+<<<<<<< HEAD
   updateBrowserStartupLastSession() {
     let pbAutoStartPref = Preferences.get("browser.privatebrowsing.autostart");
     let restorePref = document.getElementById("browser.startup.restoreTabs");
@@ -988,10 +974,53 @@ var gMainPane = {
     if (pbAutoStartPref.value) {
       restoreCheckbox.setAttribute("disabled", "true");
       restoreCheckbox.checked = false;
+||||||| merged common ancestors
+  updateBrowserStartupLastSession() {
+    let pbAutoStartPref = Preferences.get("browser.privatebrowsing.autostart");
+    let startupPref = Preferences.get("browser.startup.page");
+    let group = document.getElementById("browserStartupPage");
+    let option = document.getElementById("browserStartupLastSession");
+    if (pbAutoStartPref.value) {
+      option.setAttribute("disabled", "true");
+      if (option.selected) {
+        group.selectedItem = document.getElementById("browserStartupHomePage");
+      }
+=======
+*/
+  updateBrowserStartupUI() {
+    const pbAutoStartPref = Preferences.get("browser.privatebrowsing.autostart");
+    const restoreCheckbox = document.getElementById("restoreSessionCheckbox");
+    let checkbox = document.getElementById("restoreSessionCheckbox");
+    if (pbAutoStartPref.value) {
+      restoreCheckbox.setAttribute("disabled", "true");
+      restoreCheckbox.checked = false;
     } else {
+      checkbox.removeAttribute("disabled");
+    }
+  },
+
+  onBrowserRestoreSessionChange(event) {
+    const value = event.target.checked;
+    const startupPref = Preferences.get("browser.startup.page");
+    let newValue;
+
+    if (value) {
+      // We need to restore the blank homepage setting in our other pref
+      if (startupPref.value === this.STARTUP_PREF_BLANK) {
+        Preferences.get("browser.startup.homepage").value = "about:blank";
+      }
+      newValue = this.STARTUP_PREF_RESTORE_SESSION;
+    } else {
+/*<<<<<<< HEAD
       restoreCheckbox.removeAttribute("disabled");
       restorePref.updateElements(); // Update corresponding checkbox.
+||||||| merged common ancestors
+      option.removeAttribute("disabled");
+      startupPref.updateElements(); // select the correct radio in the startup group
+=======*/
+      newValue = this.STARTUP_PREF_HOMEPAGE;
     }
+    startupPref.value = newValue;
   },
 
   // TABS
@@ -1143,21 +1172,13 @@ var gMainPane = {
   // extension is in control or not.
   async updateProxySettingsUI() {
     let controllingExtension = await getControllingExtension(PREF_SETTING_TYPE, PROXY_KEY);
-    let fragment = controllingExtension ?
-      getControllingExtensionFragment(
-        "extensionControlled.proxyConfig", controllingExtension, this._brandShortName) :
-      BrowserUtils.getLocalizedFragment(
-        document,
-        this._prefsBundle.getString("connectionDesc.label"),
-        this._brandShortName);
     let description = document.getElementById("connectionSettingsDescription");
 
-    // Remove the old content from the description.
-    while (description.firstChild) {
-      description.firstChild.remove();
+    if (controllingExtension) {
+      setControllingExtensionDescription(description, controllingExtension, "proxy.settings");
+    } else {
+      setControllingExtensionDescription(description, null, "network-proxy-connection-description");
     }
-
-    description.appendChild(fragment);
   },
 
   async checkBrowserContainers(event) {
@@ -1538,7 +1559,7 @@ var gMainPane = {
 
   // nsISupports
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver, Ci.nsIDOMEventListener]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver]),
 
   // nsIObserver
 
@@ -1570,7 +1591,7 @@ var gMainPane = {
   },
 
 
-  // nsIDOMEventListener
+  // EventListener
 
   handleEvent(aEvent) {
     if (aEvent.type == "unload") {
@@ -2717,28 +2738,20 @@ var gMainPane = {
 
     // Display a 'pretty' label or the path in the UI.
     if (folderIndex == 2) {
-      // Custom path selected and is configured
-      downloadFolder.label = this._getDisplayNameOfFile(currentDirPref.value);
+      // Force the left-to-right direction when displaying a custom path.
+      downloadFolder.value = currentDirPref.value ?
+        `\u2066${currentDirPref.value.path}\u2069` : "";
       iconUrlSpec = fph.getURLSpecFromFile(currentDirPref.value);
     } else if (folderIndex == 1) {
       // 'Downloads'
-      downloadFolder.label = bundlePreferences.getString("downloadsFolderName");
+      downloadFolder.value = bundlePreferences.getString("downloadsFolderName");
       iconUrlSpec = fph.getURLSpecFromFile(await this._indexToFolder(1));
     } else {
       // 'Desktop'
-      downloadFolder.label = bundlePreferences.getString("desktopFolderName");
+      downloadFolder.value = bundlePreferences.getString("desktopFolderName");
       iconUrlSpec = fph.getURLSpecFromFile(await this._getDownloadsFolder("Desktop"));
     }
-    downloadFolder.image = "moz-icon://" + iconUrlSpec + "?size=16";
-  },
-
-  /**
-   * Returns the textual path of a folder in readable form.
-   */
-  _getDisplayNameOfFile(aFolder) {
-    // TODO: would like to add support for 'Downloads on Macintosh HD'
-    //       for OS X users.
-    return aFolder ? aFolder.path : "";
+    downloadFolder.style.backgroundImage = "url(moz-icon://" + iconUrlSpec + "?size=16)";
   },
 
   /**
@@ -3250,14 +3263,7 @@ FeedHandlerInfo.prototype = {
       _inner: [],
       _removed: [],
 
-      QueryInterface(aIID) {
-        if (aIID.equals(Ci.nsIMutableArray) ||
-          aIID.equals(Ci.nsIArray) ||
-          aIID.equals(Ci.nsISupports))
-          return this;
-
-        throw Cr.NS_ERROR_NO_INTERFACE;
-      },
+      QueryInterface: ChromeUtils.generateQI(["nsIMutableArray", "nsIArray"]),
 
       get length() {
         return this._inner.length;

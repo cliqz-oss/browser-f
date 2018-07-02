@@ -18,6 +18,8 @@ using namespace mozilla::intl;
  */
 Locale::Locale(const nsACString& aLocale)
 {
+  MOZ_ASSERT(!aLocale.IsEmpty(), "Locale string cannot be empty");
+
   int32_t position = 0;
 
   if (!IsASCII(aLocale)) {
@@ -47,13 +49,24 @@ Locale::Locale(const nsACString& aLocale)
    *           ["-" script]        4ALPHA
    *           ["-" region]        2ALPHA
    *           *("-" variant)      3*8alphanum
+   *           ["-"] privateuse]   "x" 1*("-" (1*8alphanum))
    *
    * The `position` variable represents the currently expected section of the tag
    * and intentionally skips positions (like `extlang`) which may be added later.
+   *
+   *  language-extlangs-script-region-variant-extension-privateuse
+   *  --- 0 -- --- 1 -- -- 2 - -- 3 - -- 4 -- --- x --- ---- 6 ---
    */
   for (const nsACString& subTag : normLocale.Split('-')) {
     auto slen = subTag.Length();
-    if (position == 0) {
+    if (slen > 8) {
+      mIsValid = false;
+      return;
+    } else if (position == 6) {
+      ToLowerCase(*mPrivateUse.AppendElement(subTag));
+    } else if (subTag.LowerCaseEqualsLiteral("x")) {
+      position = 6;
+    } else if (position == 0) {
       if (slen < 2 || slen > 3) {
         mIsValid = false;
         return;
@@ -70,11 +83,7 @@ Locale::Locale(const nsACString& aLocale)
       mRegion = subTag;
       ToUpperCase(mRegion);
       position = 4;
-    } else if (position <= 4 && slen >= 3 && slen <= 8) {
-      // we're quirky here because we allow for variant to be 3 char long.
-      // BCP47 requires variants to be 5-8 char long at lest.
-      //
-      // We do this to support the `ja-JP-mac` quirk that we have.
+    } else if (position <= 4 && slen >= 5 && slen <= 8) {
       nsAutoCString lcSubTag(subTag);
       ToLowerCase(lcSubTag);
       mVariants.InsertElementSorted(lcSubTag);
@@ -108,6 +117,19 @@ Locale::AsString() const
   for (const auto& variant : mVariants) {
     tag.AppendLiteral("-");
     tag.Append(variant);
+  }
+
+  if (!mPrivateUse.IsEmpty()) {
+    if (tag.IsEmpty()) {
+      tag.AppendLiteral("x");
+    } else {
+      tag.AppendLiteral("-x");
+    }
+
+    for (const auto& subTag : mPrivateUse) {
+      tag.AppendLiteral("-");
+      tag.Append(subTag);
+    }
   }
   return tag;
 }

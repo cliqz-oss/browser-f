@@ -1191,28 +1191,31 @@ nsJSProtocolHandler::NewURI(const nsACString &aSpec,
                             nsIURI *aBaseURI,
                             nsIURI **result)
 {
-    nsresult rv;
+    nsresult rv = NS_OK;
 
     // javascript: URLs (currently) have no additional structure beyond that
     // provided by standard URLs, so there is no "outer" object given to
     // CreateInstance.
 
-    nsCOMPtr<nsIURI> url = new nsJSURI(aBaseURI);
-    NS_MutateURI mutator(url);
+    NS_MutateURI mutator(new nsJSURI::Mutator());
+    nsCOMPtr<nsIURI> base(aBaseURI);
+    mutator.Apply(NS_MutatorMethod(&nsIJSURIMutator::SetBase, base));
     if (!aCharset || !nsCRT::strcasecmp("UTF-8", aCharset)) {
-      mutator.SetSpec(aSpec);
+        mutator.SetSpec(aSpec);
     } else {
-      nsAutoCString utf8Spec;
-      rv = EnsureUTF8Spec(PromiseFlatCString(aSpec), aCharset, utf8Spec);
-      if (NS_SUCCEEDED(rv)) {
-        if (utf8Spec.IsEmpty()) {
-          mutator.SetSpec(aSpec);
-        } else {
-          mutator.SetSpec(utf8Spec);
+        nsAutoCString utf8Spec;
+        rv = EnsureUTF8Spec(PromiseFlatCString(aSpec), aCharset, utf8Spec);
+        if (NS_FAILED(rv)) {
+            return rv;
         }
-      }
+        if (utf8Spec.IsEmpty()) {
+            mutator.SetSpec(aSpec);
+        } else {
+            mutator.SetSpec(utf8Spec);
+        }
     }
 
+    nsCOMPtr<nsIURI> url;
     rv = mutator.Finalize(url);
     if (NS_FAILED(rv)) {
         return rv;
@@ -1283,9 +1286,16 @@ NS_INTERFACE_MAP_END_INHERITING(mozilla::net::nsSimpleURI)
 // nsISerializable methods:
 
 NS_IMETHODIMP
-nsJSURI::Read(nsIObjectInputStream* aStream)
+nsJSURI::Read(nsIObjectInputStream *aStream)
 {
-    nsresult rv = mozilla::net::nsSimpleURI::Read(aStream);
+    NS_NOTREACHED("Use nsIURIMutator.read() instead");
+    return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+nsresult
+nsJSURI::ReadPrivate(nsIObjectInputStream *aStream)
+{
+    nsresult rv = mozilla::net::nsSimpleURI::ReadPrivate(aStream);
     if (NS_FAILED(rv)) return rv;
 
     bool haveBase;
@@ -1380,7 +1390,12 @@ nsJSURI::StartClone(mozilla::net::nsSimpleURI::RefHandlingEnum refHandlingMode,
     return url;
 }
 
-NS_IMPL_ISUPPORTS(nsJSURI::Mutator, nsIURISetters, nsIURIMutator)
+// Queries this list of interfaces. If none match, it queries mURI.
+NS_IMPL_NSIURIMUTATOR_ISUPPORTS(nsJSURI::Mutator,
+                                nsIURISetters,
+                                nsIURIMutator,
+                                nsISerializable,
+                                nsIJSURIMutator)
 
 NS_IMETHODIMP
 nsJSURI::Mutate(nsIURIMutator** aMutator)

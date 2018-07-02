@@ -48,7 +48,6 @@ const DB_NAME = "shield";
 const STORE_NAME = "addon-studies";
 const DB_OPTIONS = {
   version: 1,
-  storage: "persistent",
 };
 const STUDY_ENDED_TOPIC = "shield-study-ended";
 const log = LogManager.getLogger("addon-studies");
@@ -342,8 +341,6 @@ var AddonStudies = {
       throw new Error(`No study found for recipe ${recipeId}.`);
     }
     if (!study.active) {
-      dump(`@@@ Cannot stop study for recipe ${recipeId}; it is already inactive.\n`);
-      dump(`@@@\n${new Error().stack}\n@@@\n`);
       throw new Error(`Cannot stop study for recipe ${recipeId}; it is already inactive.`);
     }
 

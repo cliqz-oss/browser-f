@@ -144,9 +144,8 @@ class ModuleSegment : public CodeSegment
 {
     Tier            tier_;
 
-    // These are pointers into code for stubs used for asynchronous
-    // signal-handler control-flow transfer.
-    uint8_t*        interruptCode_;
+    // These are pointers into code for stubs used for signal-handler
+    // control-flow transfer.
     uint8_t*        outOfBoundsCode_;
     uint8_t*        unalignedAccessCode_;
     uint8_t*        trapCode_;
@@ -173,7 +172,6 @@ class ModuleSegment : public CodeSegment
     ModuleSegment()
       : CodeSegment(),
         tier_(Tier(-1)),
-        interruptCode_(nullptr),
         outOfBoundsCode_(nullptr),
         unalignedAccessCode_(nullptr),
         trapCode_(nullptr)
@@ -195,7 +193,6 @@ class ModuleSegment : public CodeSegment
 
     Tier tier() const { return tier_; }
 
-    uint8_t* interruptCode() const { return interruptCode_; }
     uint8_t* outOfBoundsCode() const { return outOfBoundsCode_; }
     uint8_t* unalignedAccessCode() const { return unalignedAccessCode_; }
     uint8_t* trapCode() const { return trapCode_; }
@@ -403,6 +400,7 @@ struct MetadataCacheablePod
 {
     ModuleKind            kind;
     MemoryUsage           memoryUsage;
+    HasGcTypes            temporaryHasGcTypes;
     uint32_t              minMemoryLength;
     uint32_t              globalDataLength;
     Maybe<uint32_t>       maxMemoryLength;
@@ -411,6 +409,7 @@ struct MetadataCacheablePod
     explicit MetadataCacheablePod(ModuleKind kind)
       : kind(kind),
         memoryUsage(MemoryUsage::None),
+        temporaryHasGcTypes(HasGcTypes::False),
         minMemoryLength(0),
         globalDataLength(0)
     {}
@@ -483,7 +482,6 @@ struct MetadataTier
 
     const Tier            tier;
 
-    MemoryAccessVector    memoryAccesses;
     CodeRangeVector       codeRanges;
     CallSiteVector        callSites;
     TrapSiteVectorArray   trapSites;
@@ -576,8 +574,8 @@ class LazyStubTier
     LazyFuncExportVector exports_;
     size_t lastStubSegmentIndex_;
 
-    bool createMany(const Uint32Vector& funcExportIndices, const CodeTier& codeTier,
-                    size_t* stubSegmentIndex);
+    bool createMany(HasGcTypes gcTypesEnabled, const Uint32Vector& funcExportIndices,
+                    const CodeTier& codeTier, size_t* stubSegmentIndex);
 
   public:
     LazyStubTier() : lastStubSegmentIndex_(0) {}
@@ -597,8 +595,8 @@ class LazyStubTier
     // them in a single stub. Jit entries won't be used until
     // setJitEntries() is actually called, after the Code owner has committed
     // tier2.
-    bool createTier2(const Uint32Vector& funcExportIndices, const CodeTier& codeTier,
-                     Maybe<size_t>* stubSegmentIndex);
+    bool createTier2(HasGcTypes gcTypesEnabled, const Uint32Vector& funcExportIndices,
+                     const CodeTier& codeTier, Maybe<size_t>* stubSegmentIndex);
     void setJitEntries(const Maybe<size_t>& stubSegmentIndex, const Code& code);
 
     void addSizeOfMisc(MallocSizeOf mallocSizeOf, size_t* code, size_t* data) const;
@@ -776,7 +774,6 @@ class Code : public ShareableBase<Code>
 
     const CallSite* lookupCallSite(void* returnAddress) const;
     const CodeRange* lookupFuncRange(void* pc) const;
-    const MemoryAccess* lookupMemoryAccess(void* pc) const;
     bool containsCodePC(const void* pc) const;
     bool lookupTrap(void* pc, Trap* trap, BytecodeOffset* bytecode) const;
 

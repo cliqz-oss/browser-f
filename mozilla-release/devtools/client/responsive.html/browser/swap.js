@@ -5,6 +5,7 @@
 "use strict";
 
 const { Ci } = require("chrome");
+const { E10SUtils } = require("resource://gre/modules/E10SUtils.jsm");
 const { tunnelToInnerBrowser } = require("./tunnel");
 
 function debug(msg) {
@@ -89,9 +90,32 @@ function swapToInnerBrowser({ tab, containerURL, getInnerBrowser }) {
     }
   };
 
+  // Wait for a browser to load into a new frame loader.
+  function loadURIWithNewFrameLoader(browser, uri, options) {
+    return new Promise(resolve => {
+      gBrowser.addEventListener("XULFrameLoaderCreated", resolve, { once: true });
+      browser.loadURI(uri, options);
+    });
+  }
+
   return {
 
     async start() {
+      // In some cases, such as a preloaded browser used for about:newtab, browser code
+      // will force a new frameloader on next navigation to ensure balanced process
+      // assignment.  If this case will happen here, navigate to about:blank first to get
+      // this out of way so that we stay within one process while RDM is open.
+      let { newFrameloader } = E10SUtils.shouldLoadURIInBrowser(
+        tab.linkedBrowser,
+        "about:blank"
+      );
+      if (newFrameloader) {
+        debug(`Tab will force a new frameloader on navigation, load about:blank first`);
+        await loadURIWithNewFrameLoader(tab.linkedBrowser, "about:blank", {
+          flags: Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_HISTORY,
+        });
+      }
+
       tab.isResponsiveDesignMode = true;
 
       // Hide the browser content temporarily while things move around to avoid displaying
@@ -124,7 +148,7 @@ function swapToInnerBrowser({ tab, containerURL, getInnerBrowser }) {
       });
       // Prevent the `containerURL` from ending up in the tab's history.
       debug("Load container URL");
-      containerBrowser.loadURIWithFlags(containerURL, {
+      containerBrowser.loadURI(containerURL, {
         flags: Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_HISTORY,
       });
 
@@ -188,7 +212,7 @@ function swapToInnerBrowser({ tab, containerURL, getInnerBrowser }) {
       // Swapping browsers disconnects the find bar UI from the browser.
       // If the find bar has been initialized, reconnect it.
       if (gBrowser.isFindBarInitialized(tab)) {
-        let findBar = gBrowser.getFindBar(tab);
+        let findBar = gBrowser.getCachedFindBar(tab);
         findBar.browser = tab.linkedBrowser;
         if (!findBar.hidden) {
           // Force the find bar to activate again, restoring the search string.
@@ -253,7 +277,7 @@ function swapToInnerBrowser({ tab, containerURL, getInnerBrowser }) {
       // Swapping browsers disconnects the find bar UI from the browser.
       // If the find bar has been initialized, reconnect it.
       if (gBrowser.isFindBarInitialized(tab)) {
-        let findBar = gBrowser.getFindBar(tab);
+        let findBar = gBrowser.getCachedFindBar(tab);
         findBar.browser = tab.linkedBrowser;
         if (!findBar.hidden) {
           // Force the find bar to activate again, restoring the search string.

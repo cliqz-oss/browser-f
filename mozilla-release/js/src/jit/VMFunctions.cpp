@@ -44,13 +44,6 @@ AutoDetectInvalidation::AutoDetectInvalidation(JSContext* cx, MutableHandleValue
     disabled_(false)
 { }
 
-void
-VMFunction::addToFunctions()
-{
-    this->next = functions;
-    functions = this;
-}
-
 bool
 InvokeFunction(JSContext* cx, HandleObject obj, bool constructing, bool ignoresReturnValue,
                uint32_t argc, Value* argv, MutableHandleValue rval)
@@ -558,12 +551,6 @@ InterruptCheck(JSContext* cx)
 {
     gc::MaybeVerifyBarriers(cx);
 
-    {
-        JSRuntime* rt = cx->runtime();
-        JitRuntime::AutoPreventBackedgePatching apbp(rt);
-        cx->zone()->group()->jitZoneGroup->patchIonBackedges(cx, JitZoneGroup::BackedgeLoopHeader);
-    }
-
     return CheckForInterrupt(cx);
 }
 
@@ -585,7 +572,7 @@ NewCallObject(JSContext* cx, HandleShape shape, HandleObjectGroup group)
     // the initializing writes. The interpreter, however, may have allocated
     // the call object tenured, so barrier as needed before re-entering.
     if (!IsInsideNursery(obj))
-        cx->zone()->group()->storeBuffer().putWholeCell(obj);
+        cx->runtime()->gc.storeBuffer().putWholeCell(obj);
 
     return obj;
 }
@@ -602,7 +589,7 @@ NewSingletonCallObject(JSContext* cx, HandleShape shape)
     // the call object tenured, so barrier as needed before re-entering.
     MOZ_ASSERT(!IsInsideNursery(obj),
                "singletons are created in the tenured heap");
-    cx->zone()->group()->storeBuffer().putWholeCell(obj);
+    cx->runtime()->gc.storeBuffer().putWholeCell(obj);
 
     return obj;
 }
@@ -822,22 +809,22 @@ DebugPrologue(JSContext* cx, BaselineFrame* frame, jsbytecode* pc, bool* mustRet
     *mustReturn = false;
 
     switch (Debugger::onEnterFrame(cx, frame)) {
-      case JSTRAP_CONTINUE:
+      case ResumeMode::Continue:
         return true;
 
-      case JSTRAP_RETURN:
+      case ResumeMode::Return:
         // The script is going to return immediately, so we have to call the
         // debug epilogue handler as well.
         MOZ_ASSERT(frame->hasReturnValue());
         *mustReturn = true;
         return jit::DebugEpilogue(cx, frame, pc, true);
 
-      case JSTRAP_THROW:
-      case JSTRAP_ERROR:
+      case ResumeMode::Throw:
+      case ResumeMode::Terminate:
         return false;
 
       default:
-        MOZ_CRASH("bad Debugger::onEnterFrame status");
+        MOZ_CRASH("bad Debugger::onEnterFrame resume mode");
     }
 }
 
@@ -1068,9 +1055,11 @@ InitRestParameter(JSContext* cx, uint32_t length, Value* rest, HandleObject temp
         return arrRes;
     }
 
-    NewObjectKind newKind = templateObj->group()->shouldPreTenure()
-                            ? TenuredObject
-                            : GenericObject;
+    NewObjectKind newKind;
+    {
+        AutoSweepObjectGroup sweep(templateObj->group());
+        newKind = templateObj->group()->shouldPreTenure(sweep) ? TenuredObject : GenericObject;
+    }
     ArrayObject* arrRes = NewDenseCopiedArray(cx, length, rest, nullptr, newKind);
     if (arrRes)
         arrRes->setGroup(templateObj->group());
@@ -1097,32 +1086,32 @@ HandleDebugTrap(JSContext* cx, BaselineFrame* frame, uint8_t* retAddr, bool* mus
     MOZ_ASSERT(script->stepModeEnabled() || script->hasBreakpointsAt(pc));
 
     RootedValue rval(cx);
-    JSTrapStatus status = JSTRAP_CONTINUE;
+    ResumeMode resumeMode = ResumeMode::Continue;
 
     if (script->stepModeEnabled())
-        status = Debugger::onSingleStep(cx, &rval);
+        resumeMode = Debugger::onSingleStep(cx, &rval);
 
-    if (status == JSTRAP_CONTINUE && script->hasBreakpointsAt(pc))
-        status = Debugger::onTrap(cx, &rval);
+    if (resumeMode == ResumeMode::Continue && script->hasBreakpointsAt(pc))
+        resumeMode = Debugger::onTrap(cx, &rval);
 
-    switch (status) {
-      case JSTRAP_CONTINUE:
+    switch (resumeMode) {
+      case ResumeMode::Continue:
         break;
 
-      case JSTRAP_ERROR:
+      case ResumeMode::Terminate:
         return false;
 
-      case JSTRAP_RETURN:
+      case ResumeMode::Return:
         *mustReturn = true;
         frame->setReturnValue(rval);
         return jit::DebugEpilogue(cx, frame, pc, true);
 
-      case JSTRAP_THROW:
+      case ResumeMode::Throw:
         cx->setPendingException(rval);
         return false;
 
       default:
-        MOZ_CRASH("Invalid trap status");
+        MOZ_CRASH("Invalid step/breakpoint resume mode");
     }
 
     return true;
@@ -1134,21 +1123,19 @@ OnDebuggerStatement(JSContext* cx, BaselineFrame* frame, jsbytecode* pc, bool* m
     *mustReturn = false;
 
     switch (Debugger::onDebuggerStatement(cx, frame)) {
-      case JSTRAP_ERROR:
-        return false;
-
-      case JSTRAP_CONTINUE:
+      case ResumeMode::Continue:
         return true;
 
-      case JSTRAP_RETURN:
+      case ResumeMode::Return:
         *mustReturn = true;
         return jit::DebugEpilogue(cx, frame, pc, true);
 
-      case JSTRAP_THROW:
+      case ResumeMode::Throw:
+      case ResumeMode::Terminate:
         return false;
 
       default:
-        MOZ_CRASH("Invalid trap status");
+        MOZ_CRASH("Invalid OnDebuggerStatement resume mode");
     }
 }
 
@@ -1339,7 +1326,7 @@ AssertValidObjectPtr(JSContext* cx, JSObject* obj)
     // bogus object (pointer).
     MOZ_ASSERT(obj->compartment() == cx->compartment());
     MOZ_ASSERT(obj->zoneFromAnyThread() == cx->zone());
-    MOZ_ASSERT(obj->runtimeFromActiveCooperatingThread() == cx->runtime());
+    MOZ_ASSERT(obj->runtimeFromMainThread() == cx->runtime());
 
     MOZ_ASSERT_IF(!obj->hasLazyGroup() && obj->maybeShape(),
                   obj->group()->clasp() == obj->maybeShape()->getObjectClass());
@@ -1585,6 +1572,8 @@ EqualStringsHelper(JSString* str1, JSString* str2)
     MOZ_ASSERT(!str2->isAtom());
     MOZ_ASSERT(str1->length() == str2->length());
 
+    // ensureLinear is intentionally called with a nullptr to avoid OOM
+    // reporting; if it fails, we will continue to the next stub.
     JSLinearString* str2Linear = str2->ensureLinear(nullptr);
     if (!str2Linear)
         return false;

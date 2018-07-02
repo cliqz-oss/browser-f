@@ -364,13 +364,6 @@ function isOMTAEnabled() {
 }
 
 /**
- * Returns true if the document is styled by servo.
- */
-function isStyledByServo() {
-  return SpecialPowers.DOMWindowUtils.isStyledByServo;
-}
-
-/**
  * Append an SVG element to the target element.
  *
  * @param target The element which want to append.
@@ -430,3 +423,15 @@ function animationStartsRightNow(aAnimation) {
          aAnimation.currentTime === 0;
 }
 
+// Waits for a given animation being ready to restyle.
+async function waitForAnimationReadyToRestyle(aAnimation) {
+  await aAnimation.ready;
+  // If |aAnimation| begins at the current timeline time, we will not process
+  // restyling in the initial frame because of aligning with the refresh driver,
+  // the animation frame in which the ready promise is resolved happens to
+  // coincide perfectly with the start time of the animation.  In this case no
+  // restyling is needed in the frame so we have to wait one more frame.
+  if (animationStartsRightNow(aAnimation)) {
+    await waitForNextFrame();
+  }
+}

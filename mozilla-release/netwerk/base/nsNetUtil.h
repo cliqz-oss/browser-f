@@ -50,8 +50,6 @@ class nsIStreamLoader;
 class nsIStreamLoaderObserver;
 class nsIIncrementalStreamLoader;
 class nsIIncrementalStreamLoaderObserver;
-class nsIUnicharStreamLoader;
-class nsIUnicharStreamLoaderObserver;
 
 namespace mozilla {
 class Encoding;
@@ -66,9 +64,9 @@ class ServiceWorkerDescriptor;
 template <class> class nsCOMPtr;
 template <typename> struct already_AddRefed;
 
-already_AddRefed<nsIIOService> do_GetIOService(nsresult *error = 0);
+already_AddRefed<nsIIOService> do_GetIOService(nsresult *error = nullptr);
 
-already_AddRefed<nsINetUtil> do_GetNetUtil(nsresult *error = 0);
+already_AddRefed<nsINetUtil> do_GetNetUtil(nsresult *error = nullptr);
 
 // private little helper function... don't call this directly!
 nsresult net_EnsureIOService(nsIIOService **ios, nsCOMPtr<nsIIOService> &grip);
@@ -425,9 +423,6 @@ NS_NewStreamLoader(nsIStreamLoader        **outStream,
                    nsIInterfaceRequestor   *aCallbacks = nullptr,
                    nsLoadFlags              aLoadFlags = nsIRequest::LOAD_NORMAL,
                    nsIURI                  *aReferrer = nullptr);
-
-nsresult NS_NewUnicharStreamLoader(nsIUnicharStreamLoader        **result,
-                                   nsIUnicharStreamLoaderObserver *observer);
 
 nsresult NS_NewSyncStreamListener(nsIStreamListener **result,
                                   nsIInputStream    **stream);

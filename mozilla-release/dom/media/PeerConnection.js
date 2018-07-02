@@ -68,9 +68,8 @@ class GlobalPCList {
     Services.obs.addObserver(this, "gmp-plugin-crash", true);
     Services.obs.addObserver(this, "PeerConnection:response:allow", true);
     Services.obs.addObserver(this, "PeerConnection:response:deny", true);
-    if (Cc["@mozilla.org/childprocessmessagemanager;1"]) {
-      let mm = Cc["@mozilla.org/childprocessmessagemanager;1"].getService(Ci.nsIMessageListenerManager);
-      mm.addMessageListener("gmp-plugin-crash", this);
+    if (Services.cpmm) {
+      Services.cpmm.addMessageListener("gmp-plugin-crash", this);
     }
   }
 
@@ -204,9 +203,8 @@ class GlobalPCList {
   }
 }
 setupPrototype(GlobalPCList, {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver,
-                                         Ci.nsIMessageListener,
-                                         Ci.nsISupportsWeakReference]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver,
+                                          Ci.nsISupportsWeakReference]),
   classID: PC_MANAGER_CID,
   _xpcom_factory: {
     createInstance(outer, iid) {
@@ -232,8 +230,7 @@ class RTCIceCandidate {
 setupPrototype(RTCIceCandidate, {
   classID: PC_ICE_CID,
   contractID: PC_ICE_CONTRACT,
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsISupports,
-                                         Ci.nsIDOMGlobalPropertyInitializer])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIDOMGlobalPropertyInitializer])
 });
 
 class RTCSessionDescription {
@@ -277,8 +274,7 @@ class RTCSessionDescription {
 setupPrototype(RTCSessionDescription, {
   classID: PC_SESSION_CID,
   contractID: PC_SESSION_CONTRACT,
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsISupports,
-                                         Ci.nsIDOMGlobalPropertyInitializer])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIDOMGlobalPropertyInitializer])
 });
 
 class RTCStatsReport {
@@ -332,7 +328,7 @@ class RTCStatsReport {
 setupPrototype(RTCStatsReport, {
   classID: PC_STATS_CID,
   contractID: PC_STATS_CONTRACT,
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsISupports]),
+  QueryInterface: ChromeUtils.generateQI([]),
   _specToLegacyFieldMapping: {
         "inbound-rtp": "inboundrtp",
         "outbound-rtp": "outboundrtp",
@@ -816,12 +812,12 @@ class RTCPeerConnection {
 
   // Handles offerToReceiveAudio/Video
   _ensureTransceiversForOfferToReceive(options) {
-    if (options.offerToReceiveVideo) {
-      this._ensureOfferToReceive("video");
-    }
-
     if (options.offerToReceiveAudio) {
       this._ensureOfferToReceive("audio");
+    }
+
+    if (options.offerToReceiveVideo) {
+      this._ensureOfferToReceive("video");
     }
 
     this._transceivers
@@ -950,6 +946,7 @@ class RTCPeerConnection {
 
     // The fippo butter finger filter AKA non-ASCII chars
     // Note: SDP allows non-ASCII character in the subject (who cares?)
+    // eslint-disable-next-line no-control-regex
     let pos = sdp.search(/[^\u0000-\u007f]/);
     if (pos != -1) {
       throw new this._win.DOMException(
@@ -1064,9 +1061,11 @@ class RTCPeerConnection {
     });
   }
 
-  setIdentityProvider(provider, protocol, username) {
+  setIdentityProvider(provider,
+                      {protocol, usernameHint, peerIdentity} = {}) {
     this._checkClosed();
-    this._localIdp.setIdentityProvider(provider, protocol, username);
+    this._localIdp.setIdentityProvider(provider,
+                                       protocol, usernameHint, peerIdentity);
   }
 
   async _getIdentityAssertion(origin) {
@@ -1606,8 +1605,7 @@ class RTCPeerConnection {
 setupPrototype(RTCPeerConnection, {
   classID: PC_CID,
   contractID: PC_CONTRACT,
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsISupports,
-                                         Ci.nsIDOMGlobalPropertyInitializer]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIDOMGlobalPropertyInitializer]),
   _actions: {
     offer: Ci.IPeerConnection.kActionOffer,
     answer: Ci.IPeerConnection.kActionAnswer,
@@ -1803,7 +1801,10 @@ class PeerConnectionObserver {
         break;
 
       case "IceConnectionState":
-        this.handleIceConnectionStateChange(this._dompc._pc.iceConnectionState);
+        let connState = this._dompc._pc.iceConnectionState;
+        this._dompc._queueTaskWithClosedCheck(() => {
+          this.handleIceConnectionStateChange(connState);
+        });
         break;
 
       case "IceGatheringState":
@@ -1865,8 +1866,7 @@ class PeerConnectionObserver {
 setupPrototype(PeerConnectionObserver, {
   classID: PC_OBS_CID,
   contractID: PC_OBS_CONTRACT,
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsISupports,
-                                         Ci.nsIDOMGlobalPropertyInitializer])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIDOMGlobalPropertyInitializer])
 });
 
 class RTCPeerConnectionStatic {
@@ -1882,8 +1882,7 @@ class RTCPeerConnectionStatic {
 setupPrototype(RTCPeerConnectionStatic, {
   classID: PC_STATIC_CID,
   contractID: PC_STATIC_CONTRACT,
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsISupports,
-                                         Ci.nsIDOMGlobalPropertyInitializer])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIDOMGlobalPropertyInitializer])
 });
 
 class RTCDTMFSender {
@@ -1911,13 +1910,15 @@ class RTCDTMFSender {
 setupPrototype(RTCDTMFSender, {
   classID: PC_DTMF_SENDER_CID,
   contractID: PC_DTMF_SENDER_CONTRACT,
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsISupports])
+  QueryInterface: ChromeUtils.generateQI([])
 });
 
 class RTCRtpSender {
-  constructor(pc, transceiverImpl, transceiver, track, streams) {
-    let dtmf = pc._win.RTCDTMFSender._create(
-        pc._win, new RTCDTMFSender(this));
+  constructor(pc, transceiverImpl, transceiver, track, kind, streams) {
+    let dtmf = null;
+    if (kind == "audio") {
+      dtmf = pc._win.RTCDTMFSender._create(pc._win, new RTCDTMFSender(this));
+    }
 
     Object.assign(this, {
       _pc: pc,
@@ -2031,8 +2032,13 @@ class RTCRtpSender {
   }
 
   getStats() {
-    return this._pc._async(
-      async () => this._pc._getStats(this.track));
+    if (this.track) {
+      return this._pc._async(
+        async () => this._pc._getStats(this.track));
+    }
+    return this._pc._win.Promise.resolve().then(
+      () => this._pc._win.RTCStatsReport._create(this._pc._win, new Map())
+    );
   }
 
   checkWasCreatedByPc(pc) {
@@ -2046,7 +2052,7 @@ class RTCRtpSender {
 setupPrototype(RTCRtpSender, {
   classID: PC_SENDER_CID,
   contractID: PC_SENDER_CONTRACT,
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsISupports])
+  QueryInterface: ChromeUtils.generateQI([])
 });
 
 class RTCRtpReceiver {
@@ -2216,7 +2222,7 @@ class RTCRtpReceiver {
 setupPrototype(RTCRtpReceiver, {
   classID: PC_RECEIVER_CID,
   contractID: PC_RECEIVER_CONTRACT,
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsISupports])
+  QueryInterface: ChromeUtils.generateQI([])
 });
 
 class RTCRtpTransceiver {
@@ -2225,7 +2231,7 @@ class RTCRtpTransceiver {
         pc._win, new RTCRtpReceiver(pc, transceiverImpl, kind));
     let streams = (init && init.streams) || [];
     let sender = pc._win.RTCRtpSender._create(
-        pc._win, new RTCRtpSender(pc, transceiverImpl, this, sendTrack, streams));
+        pc._win, new RTCRtpSender(pc, transceiverImpl, this, sendTrack, kind, streams));
 
     let direction = (init && init.direction) || "sendrecv";
     Object.assign(this,
@@ -2379,7 +2385,7 @@ class RTCRtpTransceiver {
 setupPrototype(RTCRtpTransceiver, {
   classID: PC_TRANSCEIVER_CID,
   contractID: PC_TRANSCEIVER_CONTRACT,
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsISupports])
+  QueryInterface: ChromeUtils.generateQI([])
 });
 
 class CreateOfferRequest {
@@ -2390,7 +2396,7 @@ class CreateOfferRequest {
 setupPrototype(CreateOfferRequest, {
   classID: PC_COREQUEST_CID,
   contractID: PC_COREQUEST_CONTRACT,
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsISupports])
+  QueryInterface: ChromeUtils.generateQI([])
 });
 
 this.NSGetFactory = XPCOMUtils.generateNSGetFactory(

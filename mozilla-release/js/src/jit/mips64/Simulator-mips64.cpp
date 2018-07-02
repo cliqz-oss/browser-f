@@ -36,6 +36,7 @@
 #include "mozilla/MathAlgorithms.h"
 
 #include <float.h>
+#include <limits>
 
 #include "jit/AtomicOperations.h"
 #include "jit/mips64/Assembler-mips64.h"
@@ -550,8 +551,6 @@ class AutoLockSimulatorCache : public LockGuard<Mutex>
 
 mozilla::Atomic<size_t, mozilla::ReleaseAcquire>
     SimulatorProcess::ICacheCheckingDisableCount(1);  // Checking is disabled by default.
-mozilla::Atomic<bool, mozilla::ReleaseAcquire>
-    SimulatorProcess::cacheInvalidatedBySignalHandler_(false);
 SimulatorProcess* SimulatorProcess::singleton_ = nullptr;
 
 int64_t Simulator::StopSimAt = -1;
@@ -1215,25 +1214,11 @@ SimulatorProcess::checkICacheLocked(SimInstruction* instr)
     bool cache_hit = (*cache_valid_byte == CachePage::LINE_VALID);
     char* cached_line = cache_page->cachedData(offset & ~CachePage::kLineMask);
 
-    // Read all state before considering signal handler effects.
-    int cmpret = 0;
     if (cache_hit) {
         // Check that the data in memory matches the contents of the I-cache.
-        cmpret = memcmp(reinterpret_cast<void*>(instr),
-                        cache_page->cachedData(offset),
-                        SimInstruction::kInstrSize);
-    }
-
-    // Check for signal handler interruption between reading state and asserting.
-    // It is safe for the signal to arrive during the !cache_hit path, since it
-    // will be cleared the next time this function is called.
-    if (cacheInvalidatedBySignalHandler_) {
-        icache().clear();
-        cacheInvalidatedBySignalHandler_ = false;
-        return;
-    }
-
-    if (cache_hit) {
+        int cmpret = memcmp(reinterpret_cast<void*>(instr),
+                            cache_page->cachedData(offset),
+                            SimInstruction::kInstrSize);
         MOZ_ASSERT(cmpret == 0);
     } else {
         // Cache miss.  Load memory into the cache.
@@ -1278,7 +1263,6 @@ Simulator::Simulator()
     pc_modified_ = false;
     icount_ = 0;
     break_count_ = 0;
-    wasm_interrupt_ = false;
     break_pc_ = nullptr;
     break_instr_ = 0;
     single_stepping_ = false;
@@ -1574,6 +1558,7 @@ Simulator::testFCSRBit(uint32_t cc)
 
 // Sets the rounding error codes in FCSR based on the result of the rounding.
 // Returns true if the operation was invalid.
+template <typename T>
 bool
 Simulator::setFCSRRoundError(double original, double rounded)
 {
@@ -1601,7 +1586,9 @@ Simulator::setFCSRRoundError(double original, double rounded)
         ret = true;
     }
 
-    if (rounded > INT_MAX || rounded < INT_MIN) {
+    if ((long double)rounded > (long double)std::numeric_limits<T>::max() ||
+        (long double)rounded < (long double)std::numeric_limits<T>::min())
+    {
         setFCSRBit(kFCSROverflowFlagBit, true);
         setFCSRBit(kFCSROverflowCauseBit, true);
         // The reference is not really clear but it seems this is required:
@@ -1645,35 +1632,6 @@ Simulator::registerState()
     return state;
 }
 
-// The signal handler only redirects the PC to the interrupt stub when the PC is
-// in function code. However, this guard is racy for the simulator since the
-// signal handler samples PC in the middle of simulating an instruction and thus
-// the current PC may have advanced once since the signal handler's guard. So we
-// re-check here.
-void
-Simulator::handleWasmInterrupt()
-{
-    if (!wasm::CodeExists)
-        return;
-
-    void* pc = (void*)get_pc();
-    void* fp = (void*)getRegister(Register::fp);
-
-    JitActivation* activation = TlsContext.get()->activation()->asJit();
-    const wasm::CodeSegment* segment = wasm::LookupCodeSegment(pc);
-    if (!segment || !segment->isModule() || !segment->containsCodePC(pc))
-        return;
-
-    // fp can be null during the prologue/epilogue of the entry function.
-    if (!fp)
-        return;
-
-    if (!activation->startWasmInterrupt(registerState()))
-         return;
-
-    set_pc(int64_t(segment->asModule()->interruptCode()));
-}
-
 // WebAssembly memories contain an extra region of guard pages (see
 // WasmArrayRawBuffer comment). The guard pages catch out-of-bounds accesses
 // using a signal handler that redirects PC to a stub that safely reports an
@@ -1710,17 +1668,16 @@ Simulator::handleWasmFault(uint64_t addr, unsigned numBytes)
 
     LLBit_ = false;
 
-    const wasm::MemoryAccess* memoryAccess = instance->code().lookupMemoryAccess(pc);
-    if (!memoryAccess) {
-        MOZ_ALWAYS_TRUE(act->startWasmInterrupt(registerState()));
-        if (!instance->code().containsCodePC(pc))
-            MOZ_CRASH("Cannot map PC to trap handler");
+    wasm::Trap trap;
+    wasm::BytecodeOffset bytecode;
+    if (!moduleSegment->code().lookupTrap(pc, &trap, &bytecode)) {
+        act->startWasmTrap(wasm::Trap::OutOfBounds, 0, registerState());
         set_pc(int64_t(moduleSegment->outOfBoundsCode()));
         return true;
     }
 
-    MOZ_ASSERT(memoryAccess->hasTrapOutOfLineCode());
-    set_pc(int64_t(memoryAccess->trapOutOfLineCode(moduleSegment->base())));
+    act->startWasmTrap(wasm::Trap::OutOfBounds, bytecode.offset(), registerState());
+    set_pc(int64_t(moduleSegment->trapCode()));
     return true;
 }
 
@@ -1747,7 +1704,7 @@ Simulator::handleWasmTrapFault()
     if (!moduleSegment->code().lookupTrap(pc, &trap, &bytecode))
         return false;
 
-    act->startWasmTrap(trap, bytecode.offset, registerState());
+    act->startWasmTrap(trap, bytecode.offset(), registerState());
     set_pc(int64_t(moduleSegment->trapCode()));
     return true;
 }
@@ -2156,9 +2113,9 @@ typedef int64_t (*Prototype_General7)(int64_t arg0, int64_t arg1, int64_t arg2, 
                                       int64_t arg4, int64_t arg5, int64_t arg6);
 typedef int64_t (*Prototype_General8)(int64_t arg0, int64_t arg1, int64_t arg2, int64_t arg3,
                                       int64_t arg4, int64_t arg5, int64_t arg6, int64_t arg7);
-typedef int64_t (*Prototype_GeneralGeneralGeneralInt64)(int64_t arg0, int64_t arg1, int64_t arg2,
+typedef int32_t (*Prototype_Int_GeneralGeneralGeneralInt64)(int64_t arg0, int64_t arg1, int64_t arg2,
                                                         int64_t arg3);
-typedef int64_t (*Prototype_GeneralGeneralInt64Int64)(int64_t arg0, int64_t arg1, int64_t arg2,
+typedef int32_t (*Prototype_Int_GeneralGeneralInt64Int64)(int64_t arg0, int64_t arg1, int64_t arg2,
                                                       int64_t arg3);
 typedef double (*Prototype_Double_None)();
 typedef double (*Prototype_Double_Double)(double arg0);
@@ -2169,9 +2126,9 @@ typedef int64_t (*Prototype_Int_IntDoubleIntInt)(int64_t arg0, double arg1, int6
                                                  int64_t arg3);
 typedef float (*Prototype_Float32_Float32)(float arg0);
 typedef float (*Prototype_Float32_Float32Float32)(float arg0, float arg1);
-typedef float (*Prototype_Float32_IntInt)(int arg0, int arg1);
+typedef float (*Prototype_Float32_IntInt)(int64_t arg0, int64_t arg1);
 
-typedef double (*Prototype_DoubleInt)(double arg0, int64_t arg1);
+typedef double (*Prototype_Double_DoubleInt)(double arg0, int64_t arg1);
 typedef double (*Prototype_Double_IntDouble)(int64_t arg0, double arg1);
 typedef double (*Prototype_Double_DoubleDouble)(double arg0, double arg1);
 typedef int64_t (*Prototype_Int_IntDouble)(int64_t arg0, double arg1);
@@ -2237,9 +2194,8 @@ Simulator::softwareInterrupt(SimInstruction* instr)
           case Args_General3: {
             Prototype_General3 target = reinterpret_cast<Prototype_General3>(external);
             int64_t result = target(arg0, arg1, arg2);
-            if(external == intptr_t(&js::wasm::Instance::wake)) {
+            if (external == intptr_t(&js::wasm::Instance::wake))
                 result = int32_t(result);
-            }
             setCallResult(result);
             break;
           }
@@ -2285,42 +2241,42 @@ Simulator::softwareInterrupt(SimInstruction* instr)
           case Args_Int_Double: {
             double dval0 = getFpuRegisterDouble(12);
             Prototype_Int_Double target = reinterpret_cast<Prototype_Int_Double>(external);
-            int64_t res = target(dval0);
-            setRegister(v0, res);
+            int64_t result = target(dval0);
+            if (external == intptr_t((int32_t(*)(double))JS::ToInt32))
+                result = int32_t(result);
+            setRegister(v0, result);
             break;
           }
           case Args_Int_GeneralGeneralGeneralInt64: {
-            Prototype_GeneralGeneralGeneralInt64 target =
-                reinterpret_cast<Prototype_GeneralGeneralGeneralInt64>(external);
+            Prototype_Int_GeneralGeneralGeneralInt64 target =
+                reinterpret_cast<Prototype_Int_GeneralGeneralGeneralInt64>(external);
             int64_t result = target(arg0, arg1, arg2, arg3);
-            if(external == intptr_t(&js::wasm::Instance::wait_i32)) {
+            if (external == intptr_t(&js::wasm::Instance::wait_i32))
                 result = int32_t(result);
-            }
-            setCallResult(result);
+            setRegister(v0, result);
             break;
           }
           case Args_Int_GeneralGeneralInt64Int64: {
-            Prototype_GeneralGeneralInt64Int64 target =
-                reinterpret_cast<Prototype_GeneralGeneralInt64Int64>(external);
+            Prototype_Int_GeneralGeneralInt64Int64 target =
+                reinterpret_cast<Prototype_Int_GeneralGeneralInt64Int64>(external);
             int64_t result = target(arg0, arg1, arg2, arg3);
-            if(external == intptr_t(&js::wasm::Instance::wait_i64)) {
+            if (external == intptr_t(&js::wasm::Instance::wait_i64))
                 result = int32_t(result);
-            }
-            setCallResult(result);
+            setRegister(v0, result);
             break;
           }
           case Args_Int_DoubleIntInt: {
             double dval = getFpuRegisterDouble(12);
             Prototype_Int_DoubleIntInt target = reinterpret_cast<Prototype_Int_DoubleIntInt>(external);
-            int64_t res = target(dval, arg1, arg2);
-            setRegister(v0, res);
+            int64_t result = target(dval, arg1, arg2);
+            setRegister(v0, result);
             break;
           }
           case Args_Int_IntDoubleIntInt: {
             double dval = getFpuRegisterDouble(13);
             Prototype_Int_IntDoubleIntInt target = reinterpret_cast<Prototype_Int_IntDoubleIntInt>(external);
-            int64_t res = target(arg0, dval, arg2, arg3);
-            setRegister(v0, res);
+            int64_t result = target(arg0, dval, arg2, arg3);
+            setRegister(v0, result);
             break;
           }
           case Args_Double_Double: {
@@ -2362,7 +2318,7 @@ Simulator::softwareInterrupt(SimInstruction* instr)
           }
           case Args_Double_DoubleInt: {
             double dval0 = getFpuRegisterDouble(12);
-            Prototype_DoubleInt target = reinterpret_cast<Prototype_DoubleInt>(external);
+            Prototype_Double_DoubleInt target = reinterpret_cast<Prototype_Double_DoubleInt>(external);
             double dresult = target(dval0, arg1);
             setCallResultDouble(dresult);
             break;
@@ -2783,7 +2739,7 @@ Simulator::configureTypeRegister(SimInstruction* instr,
             alu_out = ~(rs | rt);
             break;
           case ff_slt:
-            alu_out = I32_CHECK(rs) < I32_CHECK(rt) ? 1 : 0;
+            alu_out = I64(rs) < I64(rt) ? 1 : 0;
             break;
           case ff_sltu:
             alu_out = U64(rs) < U64(rt) ? 1 : 0;
@@ -2827,7 +2783,7 @@ Simulator::configureTypeRegister(SimInstruction* instr,
             }
             break;
           case ff_ddiv:
-            if (I32_CHECK(rs) == INT_MIN && I32_CHECK(rt) == -1) {
+            if (I64(rs) == INT64_MIN && I64(rt) == -1) {
                 i128hilo = U64(INT64_MIN);
             } else {
                 uint64_t div = rs / rt;
@@ -3139,65 +3095,72 @@ Simulator::decodeTypeRegister(SimInstruction* instr)
                     result--;
                 }
                 setFpuRegisterLo(fd_reg, result);
-                if (setFCSRRoundError(fs_value, rounded)) {
+                if (setFCSRRoundError<int32_t>(fs_value, rounded))
                     setFpuRegisterLo(fd_reg, kFPUInvalidResult);
-                }
                 break;
               }
               case ff_trunc_w_fmt: { // Truncate float to word (round towards 0).
                 float rounded = truncf(fs_value);
                 int32_t result = I32(rounded);
                 setFpuRegisterLo(fd_reg, result);
-                if (setFCSRRoundError(fs_value, rounded)) {
+                if (setFCSRRoundError<int32_t>(fs_value, rounded))
                     setFpuRegisterLo(fd_reg, kFPUInvalidResult);
-                }
                 break;
               }
               case ff_floor_w_fmt: { // Round float to word towards negative infinity.
                 float rounded = std::floor(fs_value);
                 int32_t result = I32(rounded);
                 setFpuRegisterLo(fd_reg, result);
-                if (setFCSRRoundError(fs_value, rounded)) {
+                if (setFCSRRoundError<int32_t>(fs_value, rounded))
                     setFpuRegisterLo(fd_reg, kFPUInvalidResult);
-                }
                 break;
               }
               case ff_ceil_w_fmt: { // Round double to word towards positive infinity.
                 float rounded = std::ceil(fs_value);
                 int32_t result = I32(rounded);
                 setFpuRegisterLo(fd_reg, result);
-                if (setFCSRRoundError(fs_value, rounded)) {
+                if (setFCSRRoundError<int32_t>(fs_value, rounded))
                     setFpuRegisterLo(fd_reg, kFPUInvalidResult);
-                }
                 break;
               }
-              case ff_cvt_l_fmt: {  // Mips64r2: Truncate float to 64-bit long-word.
-                float rounded = truncf(fs_value);
-                i64 = I64(rounded);
-                setFpuRegister(fd_reg, i64);
-                break;
-              }
+              case ff_cvt_l_fmt:  // Mips64r2: Truncate float to 64-bit long-word.
+                // Rounding modes are not yet supported.
+                MOZ_ASSERT((FCSR_ & 3) == 0);
+                // In rounding mode 0 it should behave like ROUND.
+                MOZ_FALLTHROUGH;
               case ff_round_l_fmt: {  // Mips64r2 instruction.
                 float rounded =
                     fs_value > 0 ? std::floor(fs_value + 0.5) : std::ceil(fs_value - 0.5);
                 i64 = I64(rounded);
                 setFpuRegister(fd_reg, i64);
+                if (setFCSRRoundError<int64_t>(fs_value, rounded))
+                    setFpuRegister(fd_reg, kFPUInvalidResult64);
                 break;
               }
               case ff_trunc_l_fmt: {  // Mips64r2 instruction.
                 float rounded = truncf(fs_value);
                 i64 = I64(rounded);
                 setFpuRegister(fd_reg, i64);
+                if (setFCSRRoundError<int64_t>(fs_value, rounded))
+                    setFpuRegister(fd_reg, kFPUInvalidResult64);
                 break;
               }
-              case ff_floor_l_fmt:  // Mips64r2 instruction.
-                i64 = I64(std::floor(fs_value));
+              case ff_floor_l_fmt: {  // Mips64r2 instruction.
+                float rounded = std::floor(fs_value);
+                i64 = I64(rounded);
                 setFpuRegister(fd_reg, i64);
+                if (setFCSRRoundError<int64_t>(fs_value, rounded))
+                    setFpuRegister(fd_reg, kFPUInvalidResult64);
                 break;
-              case ff_ceil_l_fmt:  // Mips64r2 instruction.
-                i64 = I64(std::ceil(fs_value));
+              }
+              case ff_ceil_l_fmt: {  // Mips64r2 instruction.
+                float rounded = std::ceil(fs_value);
+                i64 = I64(rounded);
                 setFpuRegister(fd_reg, i64);
+                if (setFCSRRoundError<int64_t>(fs_value, rounded))
+                    setFpuRegister(fd_reg, kFPUInvalidResult64);
                 break;
+              }
               case ff_cvt_ps_s:
               case ff_c_f_fmt:
                 MOZ_CRASH();
@@ -3290,7 +3253,7 @@ Simulator::decodeTypeRegister(SimInstruction* instr)
                     result--;
                 }
                 setFpuRegisterLo(fd_reg, result);
-                if (setFCSRRoundError(ds_value, rounded))
+                if (setFCSRRoundError<int32_t>(ds_value, rounded))
                     setFpuRegisterLo(fd_reg, kFPUInvalidResult);
                 break;
               }
@@ -3298,7 +3261,7 @@ Simulator::decodeTypeRegister(SimInstruction* instr)
                 double rounded = trunc(ds_value);
                 int32_t result = I32(rounded);
                 setFpuRegisterLo(fd_reg, result);
-                if (setFCSRRoundError(ds_value, rounded))
+                if (setFCSRRoundError<int32_t>(ds_value, rounded))
                     setFpuRegisterLo(fd_reg, kFPUInvalidResult);
                 break;
               }
@@ -3306,7 +3269,7 @@ Simulator::decodeTypeRegister(SimInstruction* instr)
                 double rounded = std::floor(ds_value);
                 int32_t result = I32(rounded);
                 setFpuRegisterLo(fd_reg, result);
-                if (setFCSRRoundError(ds_value, rounded))
+                if (setFCSRRoundError<int32_t>(ds_value, rounded))
                     setFpuRegisterLo(fd_reg, kFPUInvalidResult);
                 break;
               }
@@ -3314,40 +3277,51 @@ Simulator::decodeTypeRegister(SimInstruction* instr)
                 double rounded = std::ceil(ds_value);
                 int32_t result = I32(rounded);
                 setFpuRegisterLo(fd_reg, result);
-                if (setFCSRRoundError(ds_value, rounded))
+                if (setFCSRRoundError<int32_t>(ds_value, rounded))
                     setFpuRegisterLo(fd_reg, kFPUInvalidResult);
                 break;
               }
               case ff_cvt_s_fmt:  // Convert double to float (single).
                 setFpuRegisterFloat(fd_reg, static_cast<float>(ds_value));
                 break;
-              case ff_cvt_l_fmt: {  // Mips64r2: Truncate double to 64-bit long-word.
-                double rounded = trunc(ds_value);
+              case ff_cvt_l_fmt:  // Mips64r2: Truncate double to 64-bit long-word.
+                // Rounding modes are not yet supported.
+                MOZ_ASSERT((FCSR_ & 3) == 0);
+                // In rounding mode 0 it should behave like ROUND.
+                MOZ_FALLTHROUGH;
+              case ff_round_l_fmt: {  // Mips64r2 instruction.
+                double rounded =
+                    ds_value > 0 ? std::floor(ds_value + 0.5) : std::ceil(ds_value - 0.5);
                 i64 = I64(rounded);
                 setFpuRegister(fd_reg, i64);
+                if (setFCSRRoundError<int64_t>(ds_value, rounded))
+                    setFpuRegister(fd_reg, kFPUInvalidResult64);
                 break;
               }
               case ff_trunc_l_fmt: {  // Mips64r2 instruction.
                 double rounded = trunc(ds_value);
                 i64 = I64(rounded);
                 setFpuRegister(fd_reg, i64);
+                if (setFCSRRoundError<int64_t>(ds_value, rounded))
+                    setFpuRegister(fd_reg, kFPUInvalidResult64);
                 break;
               }
-              case ff_round_l_fmt: {  // Mips64r2 instruction.
-                double rounded =
-                    ds_value > 0 ? std::floor(ds_value + 0.5) : std::ceil(ds_value - 0.5);
+              case ff_floor_l_fmt: {  // Mips64r2 instruction.
+                double rounded = std::floor(ds_value);
                 i64 = I64(rounded);
                 setFpuRegister(fd_reg, i64);
+                if (setFCSRRoundError<int64_t>(ds_value, rounded))
+                    setFpuRegister(fd_reg, kFPUInvalidResult64);
                 break;
               }
-              case ff_floor_l_fmt:  // Mips64r2 instruction.
-                i64 = I64(std::floor(ds_value));
+              case ff_ceil_l_fmt: {  // Mips64r2 instruction.
+                double rounded = std::ceil(ds_value);
+                i64 = I64(rounded);
                 setFpuRegister(fd_reg, i64);
+                if (setFCSRRoundError<int64_t>(ds_value, rounded))
+                    setFpuRegister(fd_reg, kFPUInvalidResult64);
                 break;
-              case ff_ceil_l_fmt:  // Mips64r2 instruction.
-                i64 = I64(std::ceil(ds_value));
-                setFpuRegister(fd_reg, i64);
-                break;
+              }
               case ff_c_f_fmt:
                 MOZ_CRASH();
                 break;
@@ -4062,19 +4036,6 @@ Simulator::disable_single_stepping()
     single_step_callback_arg_ = nullptr;
 }
 
-static void
-FakeInterruptHandler()
-{
-    JSContext* cx = TlsContext.get();
-    uint8_t* pc = cx->simulator()->get_pc_as<uint8_t*>();
-
-    const wasm::ModuleSegment* ms = nullptr;
-    if (!wasm::InInterruptibleCode(cx, pc, &ms))
-        return;
-
-    cx->simulator()->trigger_wasm_interrupt();
-}
-
 template<bool enableStopSimAt>
 void
 Simulator::execute()
@@ -4093,16 +4054,9 @@ Simulator::execute()
         } else {
             if (single_stepping_)
                 single_step_callback_(single_step_callback_arg_, this, (void*)program_counter);
-            if (MOZ_UNLIKELY(JitOptions.simulatorAlwaysInterrupt))
-                FakeInterruptHandler();
             SimInstruction* instr = reinterpret_cast<SimInstruction *>(program_counter);
             instructionDecode(instr);
             icount_++;
-
-            if (MOZ_UNLIKELY(wasm_interrupt_)) {
-                handleWasmInterrupt();
-                wasm_interrupt_ = false;
-            }
         }
         program_counter = get_pc();
     }

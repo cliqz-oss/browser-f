@@ -5,6 +5,7 @@
 
 #include "mozilla/Logging.h"
 #include "mozilla/intl/LocaleService.h"
+#include "mozilla/intl/MozLocale.h"
 #include "mozilla/intl/OSPreferences.h"
 
 #include "gfxPlatformFontList.h"
@@ -33,6 +34,7 @@
 
 using namespace mozilla;
 using mozilla::intl::LocaleService;
+using mozilla::intl::Locale;
 using mozilla::intl::OSPreferences;
 
 #define LOG_FONTLIST(args) MOZ_LOG(gfxPlatform::GetLog(eGfxLog_fontlist), \
@@ -159,6 +161,7 @@ gfxPlatformFontList::MemoryReporter::CollectReports(
     sizes.mFontListSize = 0;
     sizes.mFontTableCacheSize = 0;
     sizes.mCharMapsSize = 0;
+    sizes.mLoaderSize = 0;
 
     gfxPlatformFontList::PlatformFontList()->AddSizeOfIncludingThis(&FontListMallocSizeOf,
                                                                     &sizes);
@@ -178,6 +181,13 @@ gfxPlatformFontList::MemoryReporter::CollectReports(
             "explicit/gfx/font-tables", KIND_HEAP, UNITS_BYTES,
             sizes.mFontTableCacheSize,
             "Memory used for cached font metrics and layout tables.");
+    }
+
+    if (sizes.mLoaderSize) {
+        MOZ_COLLECT_REPORT(
+            "explicit/gfx/font-loader", KIND_HEAP, UNITS_BYTES,
+            sizes.mLoaderSize,
+            "Memory used for (platform-specific) font loader.");
     }
 
     return NS_OK;
@@ -564,11 +574,8 @@ gfxPlatformFontList::SystemFindFontForChar(uint32_t aCh, uint32_t aNextCh,
     // This helps speed up pages with lots of encoding errors, binary-as-text,
     // etc.
     if (aCh == 0xFFFD && mReplacementCharFallbackFamily) {
-        bool needsBold;  // ignored in the system fallback case
-
         fontEntry =
-            mReplacementCharFallbackFamily->FindFontForStyle(*aStyle,
-                                                             needsBold);
+            mReplacementCharFallbackFamily->FindFontForStyle(*aStyle);
 
         // this should never fail, as we must have found U+FFFD in order to set
         // mReplacementCharFallbackFamily at all, but better play it safe
@@ -661,10 +668,9 @@ gfxPlatformFontList::CommonFontFallback(uint32_t aCh, uint32_t aNextCh,
         }
 
         gfxFontEntry *fontEntry;
-        bool needsBold;  // ignored in the system fallback case
 
         // use first font in list that supports a given character
-        fontEntry = fallback->FindFontForStyle(*aMatchStyle, needsBold);
+        fontEntry = fallback->FindFontForStyle(*aMatchStyle);
         if (fontEntry) {
             if (fontEntry->HasCharacter(aCh)) {
                 *aMatchedFamily = fallback;
@@ -820,14 +826,13 @@ gfxPlatformFontList::FindAndAddFamilies(const nsAString& aFamily,
 }
 
 gfxFontEntry*
-gfxPlatformFontList::FindFontForFamily(const nsAString& aFamily, const gfxFontStyle* aStyle, bool& aNeedsBold)
+gfxPlatformFontList::FindFontForFamily(const nsAString& aFamily,
+                                       const gfxFontStyle* aStyle)
 {
     gfxFontFamily *familyEntry = FindFamily(aFamily);
 
-    aNeedsBold = false;
-
     if (familyEntry)
-        return familyEntry->FindFontForStyle(*aStyle, aNeedsBold);
+        return familyEntry->FindFontForStyle(*aStyle);
 
     return nullptr;
 }
@@ -1243,19 +1248,18 @@ gfxPlatformFontList::AppendCJKPrefLangs(eFontPrefLang aPrefLangs[], uint32_t &aL
         LocaleService::GetInstance()->GetAppLocaleAsLangTag(localeStr);
 
         {
-          const nsACString& lang = Substring(localeStr, 0, 2);
-          if (lang.EqualsLiteral("ja")) {
+          Locale locale(localeStr);
+          if (locale.GetLanguage().Equals("ja")) {
               AppendPrefLang(tempPrefLangs, tempLen, eFontPrefLang_Japanese);
-          } else if (lang.EqualsLiteral("zh")) {
-              const nsACString& region = Substring(localeStr, 3, 2);
-              if (region.EqualsLiteral("CN")) {
+          } else if (locale.GetLanguage().Equals("zh")) {
+              if (locale.GetRegion().Equals("CN")) {
                   AppendPrefLang(tempPrefLangs, tempLen, eFontPrefLang_ChineseCN);
-              } else if (region.EqualsLiteral("TW")) {
+              } else if (locale.GetRegion().Equals("TW")) {
                   AppendPrefLang(tempPrefLangs, tempLen, eFontPrefLang_ChineseTW);
-              } else if (region.EqualsLiteral("HK")) {
+              } else if (locale.GetRegion().Equals("HK")) {
                   AppendPrefLang(tempPrefLangs, tempLen, eFontPrefLang_ChineseHK);
               }
-          } else if (lang.EqualsLiteral("ko")) {
+          } else if (locale.GetLanguage().Equals("ko")) {
               AppendPrefLang(tempPrefLangs, tempLen, eFontPrefLang_Korean);
           }
         }
@@ -1270,28 +1274,28 @@ gfxPlatformFontList::AppendCJKPrefLangs(eFontPrefLang aPrefLangs[], uint32_t &aL
 
         AutoTArray<nsCString,16> sysLocales;
         AutoTArray<nsCString,16> negLocales;
-        if (OSPreferences::GetInstance()->GetSystemLocales(sysLocales) &&
+        if (OSPreferences::GetInstance()->GetSystemLocales(sysLocales)) {
             LocaleService::GetInstance()->NegotiateLanguages(
                 sysLocales, prefLocales, NS_LITERAL_CSTRING(""),
-                LocaleService::LangNegStrategy::Filtering, negLocales)) {
+                LocaleService::LangNegStrategy::Filtering, negLocales);
             for (const auto& localeStr : negLocales) {
-                const nsACString& lang = Substring(localeStr, 0, 2);
-                if (lang.EqualsLiteral("ja")) {
+                Locale locale(localeStr);
+
+                if (locale.GetLanguage().Equals("ja")) {
                     AppendPrefLang(tempPrefLangs, tempLen,
                                    eFontPrefLang_Japanese);
-                } else if (lang.EqualsLiteral("zh")) {
-                    const nsACString& region = Substring(localeStr, 3, 2);
-                    if (region.EqualsLiteral("CN")) {
+                } else if (locale.GetLanguage().Equals("zh")) {
+                    if (locale.GetRegion().Equals("CN")) {
                         AppendPrefLang(tempPrefLangs, tempLen,
                                        eFontPrefLang_ChineseCN);
-                    } else if (region.EqualsLiteral("TW")) {
+                    } else if (locale.GetRegion().Equals("TW")) {
                         AppendPrefLang(tempPrefLangs, tempLen,
                                        eFontPrefLang_ChineseTW);
-                    } else if (region.EqualsLiteral("HK")) {
+                    } else if (locale.GetRegion().Equals("HK")) {
                         AppendPrefLang(tempPrefLangs, tempLen,
                                        eFontPrefLang_ChineseHK);
                     }
-                } else if (lang.EqualsLiteral("ko")) {
+                } else if (locale.GetLanguage().Equals("ko")) {
                     AppendPrefLang(tempPrefLangs, tempLen,
                                    eFontPrefLang_Korean);
                 }
@@ -1442,134 +1446,6 @@ gfxPlatformFontList::GetGenericName(FontFamilyType aGenericType)
     }
 
     return generic;
-}
-
-// mapping of moz lang groups ==> default lang
-struct MozLangGroupData {
-    nsAtom* const& mozLangGroup;
-    const char *defaultLang;
-};
-
-const MozLangGroupData MozLangGroups[] = {
-    { nsGkAtoms::x_western,      "en" },
-    { nsGkAtoms::x_cyrillic,     "ru" },
-    { nsGkAtoms::x_devanagari,   "hi" },
-    { nsGkAtoms::x_tamil,        "ta" },
-    { nsGkAtoms::x_armn,         "hy" },
-    { nsGkAtoms::x_beng,         "bn" },
-    { nsGkAtoms::x_cans,         "iu" },
-    { nsGkAtoms::x_ethi,         "am" },
-    { nsGkAtoms::x_geor,         "ka" },
-    { nsGkAtoms::x_gujr,         "gu" },
-    { nsGkAtoms::x_guru,         "pa" },
-    { nsGkAtoms::x_khmr,         "km" },
-    { nsGkAtoms::x_knda,         "kn" },
-    { nsGkAtoms::x_mlym,         "ml" },
-    { nsGkAtoms::x_orya,         "or" },
-    { nsGkAtoms::x_sinh,         "si" },
-    { nsGkAtoms::x_tamil,        "ta" },
-    { nsGkAtoms::x_telu,         "te" },
-    { nsGkAtoms::x_tibt,         "bo" },
-    { nsGkAtoms::Unicode,        0    }
-};
-
-bool
-gfxPlatformFontList::TryLangForGroup(const nsACString& aOSLang,
-                                       nsAtom* aLangGroup,
-                                       nsACString& aFcLang)
-{
-    // Truncate at '.' or '@' from aOSLang, and convert '_' to '-'.
-    // aOSLang is in the form "language[_territory][.codeset][@modifier]".
-    // fontconfig takes languages in the form "language-territory".
-    // nsLanguageAtomService takes languages in the form language-subtag,
-    // where subtag may be a territory.  fontconfig and nsLanguageAtomService
-    // handle case-conversion for us.
-    const char *pos, *end;
-    aOSLang.BeginReading(pos);
-    aOSLang.EndReading(end);
-    aFcLang.Truncate();
-    while (pos < end) {
-        switch (*pos) {
-            case '.':
-            case '@':
-                end = pos;
-                break;
-            case '_':
-                aFcLang.Append('-');
-                break;
-            default:
-                aFcLang.Append(*pos);
-        }
-        ++pos;
-    }
-
-    nsAtom *atom = mLangService->LookupLanguage(aFcLang);
-    return atom == aLangGroup;
-}
-
-void
-gfxPlatformFontList::GetSampleLangForGroup(nsAtom* aLanguage,
-                                             nsACString& aLangStr,
-                                             bool aCheckEnvironment)
-{
-    aLangStr.Truncate();
-    if (!aLanguage) {
-        return;
-    }
-
-    // set up lang string
-    const MozLangGroupData *mozLangGroup = nullptr;
-
-    // -- look it up in the list of moz lang groups
-    for (unsigned int i = 0; i < ArrayLength(MozLangGroups); ++i) {
-        if (aLanguage == MozLangGroups[i].mozLangGroup) {
-            mozLangGroup = &MozLangGroups[i];
-            break;
-        }
-    }
-
-    // -- not a mozilla lang group? Just return the BCP47 string
-    //    representation of the lang group
-    if (!mozLangGroup) {
-        // Not a special mozilla language group.
-        // Use aLanguage as a language code.
-        aLanguage->ToUTF8String(aLangStr);
-        return;
-    }
-
-    // -- check the environment for the user's preferred language that
-    //    corresponds to this mozilla lang group.
-    if (aCheckEnvironment) {
-        const char *languages = getenv("LANGUAGE");
-        if (languages) {
-            const char separator = ':';
-
-            for (const char *pos = languages; true; ++pos) {
-                if (*pos == '\0' || *pos == separator) {
-                    if (languages < pos &&
-                        TryLangForGroup(Substring(languages, pos),
-                                        aLanguage, aLangStr))
-                        return;
-
-                    if (*pos == '\0')
-                        break;
-
-                    languages = pos + 1;
-                }
-            }
-        }
-        const char *ctype = setlocale(LC_CTYPE, nullptr);
-        if (ctype &&
-            TryLangForGroup(nsDependentCString(ctype), aLanguage, aLangStr)) {
-            return;
-        }
-    }
-
-    if (mozLangGroup->defaultLang) {
-        aLangStr.Assign(mozLangGroup->defaultLang);
-    } else {
-        aLangStr.Truncate();
-    }
 }
 
 void

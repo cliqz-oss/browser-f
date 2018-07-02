@@ -38,7 +38,7 @@ namespace layers {
 
 WebRenderLayerManager::WebRenderLayerManager(nsIWidget* aWidget)
   : mWidget(aWidget)
-  , mLatestTransactionId(0)
+  , mLatestTransactionId{0}
   , mWindowOverlayChanged(false)
   , mNeedsComposite(false)
   , mIsFirstPaint(false)
@@ -108,7 +108,6 @@ WebRenderLayerManager::DoDestroy(bool aIsSync)
 
   if (WrBridge()) {
     // Just clear ImageKeys, they are deleted during WebRenderAPI destruction.
-    mImageKeysToDeleteLater.Clear();
     mImageKeysToDelete.Clear();
     // CompositorAnimations are cleared by WebRenderBridgeParent.
     mDiscardedCompositorAnimationsIds.Clear();
@@ -128,7 +127,7 @@ WebRenderLayerManager::DoDestroy(bool aIsSync)
     // pending transaction. Do this at the top of the event loop so we don't
     // cause a paint to occur during compositor shutdown.
     RefPtr<TransactionIdAllocator> allocator = mTransactionIdAllocator;
-    uint64_t id = mLatestTransactionId;
+    TransactionId id = mLatestTransactionId;
 
     RefPtr<Runnable> task = NS_NewRunnableFunction(
       "TransactionIdAllocator::NotifyTransactionCompleted",
@@ -152,12 +151,6 @@ CompositorBridgeChild*
 WebRenderLayerManager::GetCompositorBridgeChild()
 {
   return WrBridge()->GetCompositorBridgeChild();
-}
-
-int32_t
-WebRenderLayerManager::GetMaxTextureSize() const
-{
-  return WrBridge()->GetMaxTextureSize();
 }
 
 bool
@@ -198,6 +191,9 @@ WebRenderLayerManager::EndEmptyTransaction(EndTransactionFlags aFlags)
     return false;
   }
 
+  // Since we don't do repeat transactions right now, just set the time
+  mAnimationReadyTime = TimeStamp::Now();
+
   // With the WebRenderLayerManager we reject attempts to set most kind of
   // "pending data" for empty transactions. Any place that attempts to update
   // transforms or scroll offset, for example, will get failure return values
@@ -216,8 +212,6 @@ WebRenderLayerManager::EndEmptyTransaction(EndTransactionFlags aFlags)
   WrBridge()->BeginTransaction();
 
   mWebRenderCommandBuilder.EmptyTransaction();
-
-  WrBridge()->ClearReadLocks();
 
   mLatestTransactionId = mTransactionIdAllocator->GetTransactionId(/*aThrottle*/ true);
   TimeStamp transactionStart = mTransactionIdAllocator->GetTransactionStart();
@@ -253,7 +247,6 @@ WebRenderLayerManager::EndTransactionWithoutLayer(nsDisplayList* aDisplayList,
                                                   const nsTArray<wr::WrFilterOp>& aFilters)
 {
   MOZ_ASSERT(aDisplayList && aDisplayListBuilder);
-  WrBridge()->RemoveExpiredFontKeys();
 
   AUTO_PROFILER_TRACING("Paint", "RenderLayers");
 
@@ -271,7 +264,6 @@ WebRenderLayerManager::EndTransactionWithoutLayer(nsDisplayList* aDisplayList,
   mAnimationReadyTime = TimeStamp::Now();
 
   WrBridge()->BeginTransaction();
-  DiscardCompositorAnimations();
 
   LayoutDeviceIntSize size = mWidget->GetClientSize();
   wr::LayoutSize contentSize { (float)size.width, (float)size.height };
@@ -286,10 +278,10 @@ WebRenderLayerManager::EndTransactionWithoutLayer(nsDisplayList* aDisplayList,
                                                   contentSize,
                                                   aFilters);
 
+  DiscardCompositorAnimations();
+
   mWidget->AddWindowOverlayWebRenderCommands(WrBridge(), builder, resourceUpdates);
   mWindowOverlayChanged = false;
-
-  WrBridge()->ClearReadLocks();
 
   if (AsyncPanZoomEnabled()) {
     mScrollData.SetFocusTarget(mFocusTarget);
@@ -309,7 +301,8 @@ WebRenderLayerManager::EndTransactionWithoutLayer(nsDisplayList* aDisplayList,
     resourceUpdates.DeleteImage(key);
   }
   mImageKeysToDelete.Clear();
-  mImageKeysToDelete.SwapElements(mImageKeysToDeleteLater);
+
+  WrBridge()->RemoveExpiredFontKeys(resourceUpdates);
 
   // Skip the synchronization for buffer since we also skip the painting during
   // device-reset status.
@@ -336,8 +329,6 @@ WebRenderLayerManager::EndTransactionWithoutLayer(nsDisplayList* aDisplayList,
 
   MakeSnapshotIfRequired(size);
   mNeedsComposite = false;
-
-  ClearDisplayItemLayers();
 }
 
 void
@@ -417,20 +408,16 @@ WebRenderLayerManager::MakeSnapshotIfRequired(LayoutDeviceIntSize aSize)
 void
 WebRenderLayerManager::AddImageKeyForDiscard(wr::ImageKey key)
 {
-  mImageKeysToDeleteLater.AppendElement(key);
+  mImageKeysToDelete.AppendElement(key);
 }
 
 void
 WebRenderLayerManager::DiscardImages()
 {
   wr::IpcResourceUpdateQueue resources(WrBridge());
-  for (const auto& key : mImageKeysToDeleteLater) {
-    resources.DeleteImage(key);
-  }
   for (const auto& key : mImageKeysToDelete) {
     resources.DeleteImage(key);
   }
-  mImageKeysToDeleteLater.Clear();
   mImageKeysToDelete.Clear();
   WrBridge()->UpdateResources(resources);
 }
@@ -473,7 +460,6 @@ WebRenderLayerManager::DiscardLocalImages()
   // Removes images but doesn't tell the parent side about them
   // This is useful in empty / failed transactions where we created
   // image keys but didn't tell the parent about them yet.
-  mImageKeysToDeleteLater.Clear();
   mImageKeysToDelete.Clear();
 }
 
@@ -486,7 +472,7 @@ WebRenderLayerManager::SetLayerObserverEpoch(uint64_t aLayerObserverEpoch)
 }
 
 void
-WebRenderLayerManager::DidComposite(uint64_t aTransactionId,
+WebRenderLayerManager::DidComposite(TransactionId aTransactionId,
                                     const mozilla::TimeStamp& aCompositeStart,
                                     const mozilla::TimeStamp& aCompositeEnd)
 {
@@ -500,7 +486,7 @@ WebRenderLayerManager::DidComposite(uint64_t aTransactionId,
 
   // |aTransactionId| will be > 0 if the compositor is acknowledging a shadow
   // layers transaction.
-  if (aTransactionId) {
+  if (aTransactionId.IsValid()) {
     nsIWidgetListener *listener = mWidget->GetWidgetListener();
     if (listener) {
       listener->DidCompositeWindow(aTransactionId, aCompositeStart, aCompositeEnd);

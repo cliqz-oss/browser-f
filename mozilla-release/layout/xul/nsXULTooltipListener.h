@@ -8,8 +8,6 @@
 #define nsXULTooltipListener_h__
 
 #include "nsIDOMEventListener.h"
-#include "nsIDOMMouseEvent.h"
-#include "nsIDOMElement.h"
 #include "nsITimer.h"
 #include "nsCOMPtr.h"
 #include "nsString.h"
@@ -22,14 +20,21 @@
 
 class nsIContent;
 
+namespace mozilla {
+namespace dom {
+class Event;
+class MouseEvent;
+} // namespace dom
+} // namespace mozilla
+
 class nsXULTooltipListener final : public nsIDOMEventListener
 {
 public:
   NS_DECL_ISUPPORTS
   NS_DECL_NSIDOMEVENTLISTENER
 
-  void MouseOut(nsIDOMEvent* aEvent);
-  void MouseMove(nsIDOMEvent* aEvent);
+  void MouseOut(mozilla::dom::Event* aEvent);
+  void MouseMove(mozilla::dom::Event* aEvent);
 
   void AddTooltipSupport(nsIContent* aNode);
   void RemoveTooltipSupport(nsIContent* aNode);
@@ -50,7 +55,7 @@ protected:
   void KillTooltipTimer();
 
 #ifdef MOZ_XUL
-  void CheckTreeBodyMove(nsIDOMMouseEvent* aMouseEvent);
+  void CheckTreeBodyMove(mozilla::dom::MouseEvent* aMouseEvent);
   nsresult GetSourceTreeBoxObject(nsITreeBoxObject** aBoxObject);
 #endif
 

@@ -18,7 +18,6 @@
 #include "nsTObserverArray.h"
 
 class nsIDocShell;
-class nsIDOMEvent;
 class nsIEventListenerInfo;
 class nsPIDOMWindowInner;
 class JSTracer;
@@ -33,6 +32,7 @@ class ELMCreationDetector;
 class EventListenerManager;
 
 namespace dom {
+class Event;
 class EventTarget;
 class Element;
 } // namespace dom
@@ -189,10 +189,13 @@ public:
 
     enum ListenerType : uint8_t
     {
+      // No listener.
       eNoListener,
+      // A generic C++ implementation of nsIDOMEventListener.
       eNativeListener,
+      // An event handler attribute using JSEventHandler.
       eJSEventListener,
-      eWrappedJSListener,
+      // A scripted EventListener.
       eWebIDLListener,
     };
     ListenerType mListenerType;
@@ -297,11 +300,11 @@ public:
     RemoveEventListener(aType, EventListenerHolder(aListener), aOptions);
   }
 
-  void AddListenerForAllEvents(nsIDOMEventListener* aListener,
+  void AddListenerForAllEvents(dom::EventListener* aListener,
                                bool aUseCapture,
                                bool aWantsUntrusted,
                                bool aSystemEventGroup);
-  void RemoveListenerForAllEvents(nsIDOMEventListener* aListener,
+  void RemoveListenerForAllEvents(dom::EventListener* aListener,
                                   bool aUseCapture,
                                   bool aSystemEventGroup);
 
@@ -309,7 +312,13 @@ public:
   * Sets events listeners of all types.
   * @param an event listener
   */
-  void AddEventListenerByType(nsIDOMEventListener *aListener,
+  void AddEventListenerByType(nsIDOMEventListener* aListener,
+                              const nsAString& type,
+                              const EventListenerFlags& aFlags)
+  {
+    AddEventListenerByType(EventListenerHolder(aListener), type, aFlags);
+  }
+  void AddEventListenerByType(dom::EventListener* aListener,
                               const nsAString& type,
                               const EventListenerFlags& aFlags)
   {
@@ -317,8 +326,16 @@ public:
   }
   void AddEventListenerByType(EventListenerHolder aListener,
                               const nsAString& type,
-                              const EventListenerFlags& aFlags);
-  void RemoveEventListenerByType(nsIDOMEventListener *aListener,
+                              const EventListenerFlags& aFlags,
+                              const dom::Optional<bool>& aPassive =
+                                dom::Optional<bool>());
+  void RemoveEventListenerByType(nsIDOMEventListener* aListener,
+                                 const nsAString& type,
+                                 const EventListenerFlags& aFlags)
+  {
+    RemoveEventListenerByType(EventListenerHolder(aListener), type, aFlags);
+  }
+  void RemoveEventListenerByType(dom::EventListener* aListener,
                                  const nsAString& type,
                                  const EventListenerFlags& aFlags)
   {
@@ -350,7 +367,7 @@ public:
 
   void HandleEvent(nsPresContext* aPresContext,
                    WidgetEvent* aEvent,
-                   nsIDOMEvent** aDOMEvent,
+                   dom::Event** aDOMEvent,
                    dom::EventTarget* aCurrentTarget,
                    nsEventStatus* aEventStatus)
   {
@@ -405,18 +422,18 @@ public:
   /**
    * Returns true if there is at least one event listener for aEventName.
    */
-  bool HasListenersFor(const nsAString& aEventName);
+  bool HasListenersFor(const nsAString& aEventName) const;
 
   /**
    * Returns true if there is at least one event listener for aEventNameWithOn.
    * Note that aEventNameWithOn must start with "on"!
    */
-  bool HasListenersFor(nsAtom* aEventNameWithOn);
+  bool HasListenersFor(nsAtom* aEventNameWithOn) const;
 
   /**
    * Returns true if there is at least one event listener.
    */
-  bool HasListeners();
+  bool HasListeners() const;
 
   /**
    * Sets aList to the list of nsIEventListenerInfo objects representing the
@@ -480,12 +497,12 @@ public:
 protected:
   void HandleEventInternal(nsPresContext* aPresContext,
                            WidgetEvent* aEvent,
-                           nsIDOMEvent** aDOMEvent,
+                           dom::Event** aDOMEvent,
                            dom::EventTarget* aCurrentTarget,
                            nsEventStatus* aEventStatus);
 
   nsresult HandleEventSubType(Listener* aListener,
-                              nsIDOMEvent* aDOMEvent,
+                              dom::Event* aDOMEvent,
                               dom::EventTarget* aCurrentTarget);
 
   /**
@@ -638,27 +655,5 @@ protected:
 };
 
 } // namespace mozilla
-
-/**
- * NS_AddSystemEventListener() is a helper function for implementing
- * EventTarget::AddSystemEventListener().
- */
-inline nsresult
-NS_AddSystemEventListener(mozilla::dom::EventTarget* aTarget,
-                          const nsAString& aType,
-                          nsIDOMEventListener *aListener,
-                          bool aUseCapture,
-                          bool aWantsUntrusted)
-{
-  mozilla::EventListenerManager* listenerManager =
-    aTarget->GetOrCreateListenerManager();
-  NS_ENSURE_STATE(listenerManager);
-  mozilla::EventListenerFlags flags;
-  flags.mInSystemGroup = true;
-  flags.mCapture = aUseCapture;
-  flags.mAllowUntrustedEvents = aWantsUntrusted;
-  listenerManager->AddEventListenerByType(aListener, aType, flags);
-  return NS_OK;
-}
 
 #endif // mozilla_EventListenerManager_h_

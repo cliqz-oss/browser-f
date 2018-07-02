@@ -12,6 +12,7 @@
 #include "mozilla/EventDispatcher.h"
 #include "mozilla/EventStates.h"
 #include "mozilla/MemoryReporting.h"
+#include "nsWindowSizes.h"
 
 NS_IMPL_NS_NEW_HTML_ELEMENT(Area)
 
@@ -52,10 +53,10 @@ HTMLAreaElement::GetTarget(DOMString& aValue)
   }
 }
 
-nsresult
+void
 HTMLAreaElement::GetEventTargetParent(EventChainPreVisitor& aVisitor)
 {
-  return GetEventTargetParentForAnchors(aVisitor);
+  GetEventTargetParentForAnchors(aVisitor);
 }
 
 nsresult

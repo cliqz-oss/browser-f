@@ -83,9 +83,6 @@ const MICROSEC_PER_SEC = 1000000;
 
 const EXPORT_INDENT = "    "; // four spaces
 
-// Counter used to build fake favicon urls.
-var serialNumber = 0;
-
 function base64EncodeString(aString) {
   let stream = Cc["@mozilla.org/io/string-input-stream;1"]
                  .createInstance(Ci.nsIStringInputStream);
@@ -127,17 +124,26 @@ var BookmarkHTMLUtils = Object.freeze({
    * @param aSpec
    *        String containing the "file:" URI for the existing "bookmarks.html"
    *        file to be loaded.
-   * @param aInitialImport
-   *        Whether this is the initial import executed on a new profile.
+   * @param [options.replace]
+   *        Whether we should erase existing bookmarks before loading.
+   *        Defaults to `false`.
+   * @param [options.source]
+   *        The bookmark change source, used to determine the sync status for
+   *        imported bookmarks. Defaults to `RESTORE` if `replace = true`, or
+   *        `IMPORT` otherwise.
    *
    * @return {Promise}
    * @resolves When the new bookmarks have been created.
    * @rejects JavaScript exception.
    */
-  async importFromURL(aSpec, aInitialImport) {
+  async importFromURL(aSpec, {
+    replace: aInitialImport = false,
+    source: aSource = aInitialImport ? PlacesUtils.bookmarks.SOURCES.RESTORE :
+                                       PlacesUtils.bookmarks.SOURCES.IMPORT,
+  } = {}) {
     notifyObservers(PlacesUtils.TOPIC_BOOKMARKS_RESTORE_BEGIN, aInitialImport);
     try {
-      let importer = new BookmarkImporter(aInitialImport);
+      let importer = new BookmarkImporter(aInitialImport, aSource);
       await importer.importFromURL(aSpec);
 
       notifyObservers(PlacesUtils.TOPIC_BOOKMARKS_RESTORE_SUCCESS, aInitialImport);
@@ -153,20 +159,29 @@ var BookmarkHTMLUtils = Object.freeze({
    *
    * @param aFilePath
    *        OS.File path string of the "bookmarks.html" file to be loaded.
-   * @param aInitialImport
-   *        Whether this is the initial import executed on a new profile.
+   * @param [options.replace]
+   *        Whether we should erase existing bookmarks before loading.
+   *        Defaults to `false`.
+   * @param [options.source]
+   *        The bookmark change source, used to determine the sync status for
+   *        imported bookmarks. Defaults to `RESTORE` if `replace = true`, or
+   *        `IMPORT` otherwise.
    *
    * @return {Promise}
    * @resolves When the new bookmarks have been created.
    * @rejects JavaScript exception.
    */
-  async importFromFile(aFilePath, aInitialImport) {
+  async importFromFile(aFilePath, {
+    replace: aInitialImport = false,
+    source: aSource = aInitialImport ? PlacesUtils.bookmarks.SOURCES.RESTORE :
+                                       PlacesUtils.bookmarks.SOURCES.IMPORT,
+  } = {}) {
     notifyObservers(PlacesUtils.TOPIC_BOOKMARKS_RESTORE_BEGIN, aInitialImport);
     try {
       if (!(await OS.File.exists(aFilePath))) {
         throw new Error("Cannot import from nonexisting html file: " + aFilePath);
       }
-      let importer = new BookmarkImporter(aInitialImport);
+      let importer = new BookmarkImporter(aInitialImport, aSource);
       await importer.importFromURL(OS.Path.toFileURI(aFilePath));
 
       notifyObservers(PlacesUtils.TOPIC_BOOKMARKS_RESTORE_SUCCESS, aInitialImport);
@@ -286,12 +301,9 @@ function Frame(aFolder) {
   this.previousLastModifiedDate = null;
 }
 
-function BookmarkImporter(aInitialImport) {
+function BookmarkImporter(aInitialImport, aSource) {
   this._isImportDefaults = aInitialImport;
-  // The bookmark change source, used to determine the sync status and change
-  // counter.
-  this._source = aInitialImport ? PlacesUtils.bookmarks.SOURCE_IMPORT_REPLACE :
-                                  PlacesUtils.bookmarks.SOURCE_IMPORT;
+  this._source = aSource;
 
   // This root is where we construct the bookmarks tree into, following the format
   // of the imported file.
@@ -740,62 +752,6 @@ BookmarkImporter.prototype = {
 
   _appendText: function appendText(str) {
     this._curFrame.previousText += str;
-  },
-
-  /**
-   * data is a string that is a data URI for the favicon. Our job is to
-   * decode it and store it in the favicon service.
-   *
-   * When aIconURI is non-null, we will use that as the URI of the favicon
-   * when storing in the favicon service.
-   *
-   * When aIconURI is null, we have to make up a URI for this favicon so that
-   * it can be stored in the service. The real one will be set the next time
-   * the user visits the page. Our made up one should get expired when the
-   * page no longer references it.
-   */
-  _setFaviconForURI: function setFaviconForURI(aPageURI, aIconURI, aData) {
-    // if the input favicon URI is a chrome: URI, then we just save it and don't
-    // worry about data
-    if (aIconURI) {
-      if (aIconURI.schemeIs("chrome")) {
-        PlacesUtils.favicons.setAndFetchFaviconForPage(aPageURI, aIconURI, false,
-                                                       PlacesUtils.favicons.FAVICON_LOAD_NON_PRIVATE, null,
-                                                       Services.scriptSecurityManager.getSystemPrincipal());
-
-        return;
-      }
-    }
-
-    // some bookmarks have placeholder URIs that contain just "data:"
-    // ignore these
-    if (aData.length <= 5) {
-      return;
-    }
-
-    let faviconURI;
-    if (aIconURI) {
-      faviconURI = aIconURI;
-    } else {
-      // Make up a favicon URI for this page.  Later, we'll make sure that this
-      // favicon URI is always associated with local favicon data, so that we
-      // don't load this URI from the network.
-      let faviconSpec = "http://www.mozilla.org/2005/made-up-favicon/"
-                      + serialNumber
-                      + "-"
-                      + new Date().getTime();
-      faviconURI = NetUtil.newURI(faviconSpec);
-      serialNumber++;
-    }
-
-    // This could fail if the favicon is bigger than defined limit, in such a
-    // case neither the favicon URI nor the favicon data will be saved.  If the
-    // bookmark is visited again later, the URI and data will be fetched.
-    PlacesUtils.favicons.replaceFaviconDataFromDataURL(faviconURI, aData, 0,
-                                                       Services.scriptSecurityManager.getSystemPrincipal());
-    PlacesUtils.favicons.setAndFetchFaviconForPage(aPageURI, faviconURI, false,
-                                                   PlacesUtils.favicons.FAVICON_LOAD_NON_PRIVATE, null,
-                                                   Services.scriptSecurityManager.getSystemPrincipal());
   },
 
   /**

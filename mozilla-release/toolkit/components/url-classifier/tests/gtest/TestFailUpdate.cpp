@@ -33,7 +33,7 @@ void CheckFileExist(const char* table, const T (&files)[N], bool expectExists)
   }
 }
 
-TEST(FailUpdate, CheckTableReset)
+TEST(UrlClassifierFailUpdate, CheckTableReset)
 {
   const bool FULL_UPDATE = true;
   const bool PARTIAL_UPDATE = false;
@@ -52,8 +52,8 @@ TEST(FailUpdate, CheckTableReset)
   // Helper function to generate table update data
   auto func = [](TableUpdateV4* update, bool full, const char* str) {
     update->SetFullUpdate(full);
-    std::string prefix(str);
-    update->NewPrefixes(prefix.length(), prefix);
+    nsCString prefix(str);
+    update->NewPrefixes(prefix.Length(), prefix);
   };
 
   // Apply V4 update for table1

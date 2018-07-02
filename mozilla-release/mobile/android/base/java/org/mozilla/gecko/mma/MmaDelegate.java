@@ -29,7 +29,6 @@ import org.mozilla.gecko.preferences.GeckoPreferences;
 import org.mozilla.gecko.switchboard.SwitchBoard;
 import org.mozilla.gecko.util.ContextUtils;
 
-import java.lang.ref.WeakReference;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -45,34 +44,39 @@ public class MmaDelegate {
     public static final String INTERACT_WITH_SEARCH_URL_AREA = "E_Interact_With_Search_URL_Area";
     public static final String SCREENSHOT = "E_Screenshot";
     public static final String SAVED_LOGIN_AND_PASSWORD = "E_Saved_Login_And_Password";
-    public static final String LAUNCH_BUT_NOT_DEFAULT_BROWSER = "E_Launch_But_Not_Default_Browser";
-    public static final String LAUNCH_BROWSER = "E_Launch_Browser";
     public static final String RESUMED_FROM_BACKGROUND = "E_Resumed_From_Background";
     public static final String NEW_TAB = "E_Opened_New_Tab";
     public static final String DISMISS_ONBOARDING = "E_Dismiss_Onboarding";
 
+    private static final String LAUNCH_BUT_NOT_DEFAULT_BROWSER = "E_Launch_But_Not_Default_Browser";
+    private static final String LAUNCH_BROWSER = "E_Launch_Browser";
+    private static final String CHANGED_DEFAULT_TO_FENNEC = "E_Changed_Default_To_Fennec";
+    private static final String INSTALLED_FOCUS = "E_Just_Installed_Focus";
+    private static final String INSTALLED_KLAR = "E_Just_Installed_Klar";
 
-    public static final String USER_ATT_FOCUS_INSTALLED = "Focus Installed";
-    public static final String USER_ATT_KLAR_INSTALLED = "Klar Installed";
-    public static final String USER_ATT_POCKET_INSTALLED = "Pocket Installed";
-    public static final String USER_ATT_DEFAULT_BROWSER = "Default Browser";
-    public static final String USER_ATT_SIGNED_IN = "Signed In Sync";
-    public static final String USER_ATT_POCKET_TOP_SITES = "Pocket in Top Sites";
+    private static final String USER_ATT_FOCUS_INSTALLED = "Focus Installed";
+    private static final String USER_ATT_KLAR_INSTALLED = "Klar Installed";
+    private static final String USER_ATT_POCKET_INSTALLED = "Pocket Installed";
+    private static final String USER_ATT_DEFAULT_BROWSER = "Default Browser";
+    private static final String USER_ATT_SIGNED_IN = "Signed In Sync";
+    private static final String USER_ATT_POCKET_TOP_SITES = "Pocket in Top Sites";
 
-    public static final String PACKAGE_NAME_KLAR = "org.mozilla.klar";
-    public static final String PACKAGE_NAME_FOCUS = "org.mozilla.focus";
-    public static final String PACKAGE_NAME_POCKET = "com.ideashower.readitlater.pro";
+    private static final String PACKAGE_NAME_KLAR = "org.mozilla.klar";
+    private static final String PACKAGE_NAME_FOCUS = "org.mozilla.focus";
+    private static final String PACKAGE_NAME_POCKET = "com.ideashower.readitlater.pro";
 
     private static final String TAG = "MmaDelegate";
 
     public static final String KEY_ANDROID_PREF_STRING_LEANPLUM_DEVICE_ID = "android.not_a_preference.leanplum.device_id";
+    private static final String KEY_ANDROID_PREF_BOOLEAN_FENNEC_IS_DEFAULT = "android.not_a_preference.fennec.default.browser.status";
+
     private static final String DEBUG_LEANPLUM_DEVICE_ID = "8effda84-99df-11e7-abc4-cec278b6b50a";
 
     private static final MmaInterface mmaHelper = MmaConstants.getMma();
-    private static WeakReference<Context> applicationContext;
+    private static Context applicationContext;
 
     public static void init(Activity activity) {
-        applicationContext = new WeakReference<>(activity.getApplicationContext());
+        applicationContext = activity.getApplicationContext();
         // Since user attributes are gathered in Fennec, not in MMA implementation,
         // we gather the information here then pass to mmaHelper.init()
         // Note that generateUserAttribute always return a non null HashMap.
@@ -110,15 +114,49 @@ public class MmaDelegate {
         return attributes;
     }
 
+    public static void notifyDefaultBrowserStatus(Activity activity) {
+        if (!isMmaEnabled(activity)) {
+            return;
+        }
+
+        final SharedPreferences sharedPreferences = activity.getPreferences(Context.MODE_PRIVATE);
+        final boolean isFennecDefaultBrowser = isDefaultBrowser(activity);
+
+        // Only if this is not the first run of LeanPlum and we previously tracked default browser status
+        // we can check for changes
+        if (sharedPreferences.contains(KEY_ANDROID_PREF_BOOLEAN_FENNEC_IS_DEFAULT)) {
+            // Will only inform LeanPlum of the event if Fennec was not previously the default browser
+            if (!sharedPreferences.getBoolean(KEY_ANDROID_PREF_BOOLEAN_FENNEC_IS_DEFAULT, true) && isFennecDefaultBrowser) {
+                track(CHANGED_DEFAULT_TO_FENNEC);
+            }
+        }
+
+        sharedPreferences.edit().putBoolean(KEY_ANDROID_PREF_BOOLEAN_FENNEC_IS_DEFAULT, isFennecDefaultBrowser).apply();
+    }
+
+    static void trackJustInstalledPackage(@NonNull final Context context, @NonNull final String packageName,
+                                          final boolean firstTimeInstall) {
+        if (!isMmaEnabled(context)) {
+            return;
+        }
+
+        if (packageName.equals(PACKAGE_NAME_FOCUS) && firstTimeInstall) {
+            // Already know Mma is enabled, safe to call directly and avoid a superfluous check
+            mmaHelper.event(INSTALLED_FOCUS);
+        } else if (packageName.equals(PACKAGE_NAME_KLAR) && firstTimeInstall) {
+            mmaHelper.event(INSTALLED_KLAR);
+        }
+    }
+
     public static void track(String event) {
-        if (applicationContext != null && isMmaEnabled(applicationContext.get())) {
+        if (applicationContext != null && isMmaEnabled(applicationContext)) {
             mmaHelper.event(event);
         }
     }
 
 
     public static void track(String event, long value) {
-        if (applicationContext != null && isMmaEnabled(applicationContext.get())) {
+        if (applicationContext != null && isMmaEnabled(applicationContext)) {
             mmaHelper.event(event, value);
         }
     }
@@ -140,7 +178,6 @@ public class MmaDelegate {
         // only check Gecko Pref when Gecko is running
         return inExperiment && healthReport && !isInPrivateBrowsing;
     }
-
 
     public static boolean isDefaultBrowser(Context context) {
         final Intent viewIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("http://www.mozilla.org"));

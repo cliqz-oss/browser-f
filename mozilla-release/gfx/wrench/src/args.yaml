@@ -17,10 +17,6 @@ args:
       long: zoom
       help: Set zoom factor
       takes_value: true
-  - debug:
-      short: d
-      long: debug
-      help: Enable debug renderer
   - shaders:
       long: shaders
       help: Override path for shaders
@@ -44,6 +40,9 @@ args:
       short: h
       long: headless
       help: Enable headless rendering
+  - angle:
+      long: angle
+      help: Enable ANGLE rendering (on Windows only)
   - dp_ratio:
       short: p
       long: device-pixel-ratio
@@ -111,7 +110,7 @@ subcommands:
         args:
           - api:
               long: api
-              help: Reissue Api messsages for each frame
+              help: Reissue Api messages for each frame
           - skip-uploads:
               long: skip-uploads
               help: Skip re-uploads while reissuing Api messages (BROKEN)

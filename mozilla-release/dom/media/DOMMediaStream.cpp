@@ -455,10 +455,16 @@ DOMMediaStream::Destroy()
 {
   LOG(LogLevel::Debug, ("DOMMediaStream %p Being destroyed.", this));
   if (mOwnedListener) {
+    if (mOwnedStream) {
+      mOwnedStream->RemoveListener(mOwnedListener);
+    }
     mOwnedListener->Forget();
     mOwnedListener = nullptr;
   }
   if (mPlaybackListener) {
+    if (mPlaybackStream) {
+      mPlaybackStream->RemoveListener(mPlaybackListener);
+    }
     mPlaybackListener->Forget();
     mPlaybackListener = nullptr;
   }
@@ -559,7 +565,8 @@ DOMMediaStream::Constructor(const GlobalObject& aGlobal,
   if (!newStream->GetPlaybackStream()) {
     MOZ_ASSERT(aTracks.IsEmpty());
     MediaStreamGraph* graph =
-      MediaStreamGraph::GetInstance(MediaStreamGraph::SYSTEM_THREAD_DRIVER, ownerWindow);
+      MediaStreamGraph::GetInstance(MediaStreamGraph::SYSTEM_THREAD_DRIVER, ownerWindow,
+                                    MediaStreamGraph::REQUEST_DEFAULT_SAMPLE_RATE);
     newStream->InitPlaybackStreamCommon(graph);
   }
 
@@ -600,7 +607,8 @@ DOMMediaStream::CountUnderlyingStreams(const GlobalObject& aGlobal, ErrorResult&
     return nullptr;
   }
 
-  MediaStreamGraph* graph = MediaStreamGraph::GetInstanceIfExists(window);
+  MediaStreamGraph* graph = MediaStreamGraph::GetInstanceIfExists(window,
+                                                MediaStreamGraph::REQUEST_DEFAULT_SAMPLE_RATE);
   if (!graph) {
     p->MaybeResolve(0);
     return p.forget();

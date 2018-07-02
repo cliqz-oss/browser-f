@@ -51,10 +51,11 @@ using mozilla::layers::BorderCorners from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::BorderWidths from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::LayerHandle from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::CompositableHandle from "mozilla/layers/LayersTypes.h";
-using mozilla::layers::ReadLockHandle from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::SimpleLayerAttributes from "mozilla/layers/LayerAttributes.h";
 using mozilla::CrossProcessSemaphoreHandle from "mozilla/ipc/CrossProcessSemaphore.h";
 using struct mozilla::void_t from "ipc/IPCMessageUtils.h";
+using mozilla::layers::LayersId from "mozilla/layers/LayersTypes.h";
+using mozilla::layers::TransactionId from "mozilla/layers/LayersTypes.h";
 
 namespace mozilla {
 namespace layers {
@@ -306,7 +307,7 @@ struct GlyphArray
 struct ColorLayerAttributes     { LayerColor color; IntRect bounds; };
 struct CanvasLayerAttributes    { SamplingFilter samplingFilter; IntRect bounds; };
 struct RefLayerAttributes {
-  uint64_t id;
+  LayersId id;
   EventRegionsOverride eventRegionsOverride;
 };
 struct ImageLayerAttributes     { SamplingFilter samplingFilter; IntSize scaleToSize; ScaleMode scaleMode; };
@@ -377,11 +378,6 @@ union ReadLockDescriptor {
   CrossProcessSemaphoreDescriptor;
   uintptr_t;
   null_t;
-};
-
-struct ReadLockInit {
-  ReadLockDescriptor sharedLock;
-  ReadLockHandle handle;
 };
 
 union MaybeTexture {
@@ -568,7 +564,7 @@ struct TransactionInfo
   CompositableOperation[] paints;
   OpDestroy[] toDestroy;
   uint64_t fwdTransactionId;
-  uint64_t id;
+  TransactionId id;
   TargetConfig targetConfig;
   PluginWindowData[] plugins;
   bool isFirstPaint;

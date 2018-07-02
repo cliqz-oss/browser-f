@@ -24,7 +24,7 @@ function test() {
 
   promiseTabState(tab, tabState).then(() => {
     let sessionHistory = browser.sessionHistory;
-    let entry = sessionHistory.getEntryAtIndex(0, false);
+    let entry = sessionHistory.legacySHistory.getEntryAtIndex(0, false);
     entry.QueryInterface(Ci.nsISHContainer);
 
     whenChildCount(entry, 1, function() {
@@ -47,7 +47,6 @@ function test() {
       });
 
       // Create a dynamic subframe.
-      // eslint-disable-next-line mozilla/no-cpows-in-tests
       let doc = browser.contentDocument;
       let iframe = doc.createElement("iframe");
       doc.body.appendChild(iframe);

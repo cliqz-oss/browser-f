@@ -54,6 +54,12 @@ else
   ACCEPTED_MAR_CHANNEL_IDS=firefox-mozilla-release
   MAR_CHANNEL_ID=firefox-mozilla-release
 fi
+# ASan reporter builds should have different channel ids
+if [ "${MOZ_ASAN_REPORTER}" = "1" ]; then
+    ACCEPTED_MAR_CHANNEL_IDS="${ACCEPTED_MAR_CHANNEL_IDS}-asan"
+    MAR_CHANNEL_ID="${MAR_CHANNEL_ID}-asan"
+fi
+
 MOZ_PROFILE_MIGRATOR=1
 
 # Enable checking that add-ons are signed by the trusted root

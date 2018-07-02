@@ -100,7 +100,7 @@ function BrowserLoaderBuilder({ baseURI, window, useOnlyShared, commonLibRequire
   const loaderOptions = devtools.require("@loader/options");
   const dynamicPaths = {};
 
-  if (AppConstants.DEBUG || AppConstants.DEBUG_JS_MODULES) {
+  if (AppConstants.DEBUG_JS_MODULES) {
     dynamicPaths["devtools/client/shared/vendor/react"] =
       "resource://devtools/client/shared/vendor/react-dev";
     dynamicPaths["devtools/client/shared/vendor/react-dom"] =
@@ -192,7 +192,7 @@ BrowserLoaderBuilder.prototype = {
    * @param Boolean destructure
    *    Pass true if the property name is a member of the module's exports.
    */
-  lazyRequireGetter: function (obj, property, module, destructure) {
+  lazyRequireGetter: function(obj, property, module, destructure) {
     devtools.lazyGetter(obj, property, () => {
       return destructure
           ? this.require(module)[property]

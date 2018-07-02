@@ -41,13 +41,6 @@ public:
   static void AssertOnControllerThread();
 
   /**
-   * This can be used to assert that the current thread is the
-   * sampler thread (which samples the async transform).
-   * This does nothing if thread assertions are disabled.
-   */
-  static void AssertOnSamplerThread();
-
-  /**
    * Run the given task on the APZ "controller thread" for this platform. If
    * this function is called from the controller thread itself then the task is
    * run immediately without getting queued.

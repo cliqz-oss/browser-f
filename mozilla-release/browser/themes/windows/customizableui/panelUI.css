@@ -37,29 +37,10 @@
 }
 
 /* Disabled empty item looks too small otherwise, because it has no icon. */
-menuitem.subviewbutton[disabled]:not(.menuitem-iconic),
-/* Same for checkbox menu items, whose icons lose size due to -moz-appearance: none: */
-menuitem[type="checkbox"].subviewbutton {
+menuitem.subviewbutton[disabled]:not(.menuitem-iconic) {
   /* This is 16px for an icon + 3px for its margins + 1px for its padding +
    * 2px for its border, see above */
   min-height: 22px;
-}
-
-menu.subviewbutton > .menu-right {
-  -moz-appearance: none;
-  list-style-image: url(chrome://browser/skin/customizableui/menu-arrow.svg);
-  -moz-context-properties: fill, fill-opacity;
-  fill: currentColor;
-  /* Reset the rect we inherit from the button: */
-  -moz-image-region: auto;
-}
-
-menu[disabled="true"].subviewbutton > .menu-right {
-  fill-opacity: 0.6;
-}
-
-menu.subviewbutton > .menu-right:-moz-locale-dir(rtl) {
-  transform: scaleX(-1);
 }
 
 /* Win8 and beyond. */

@@ -5,14 +5,14 @@
 "use strict";
 
 const { connect } = require("devtools/client/shared/vendor/react-redux");
-const { createFactory, PureComponent } = require("devtools/client/shared/vendor/react");
+const { Component, createFactory } = require("devtools/client/shared/vendor/react");
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 
 const AnimationTarget = createFactory(require("./AnimationTarget"));
 const SummaryGraph = createFactory(require("./graph/SummaryGraph"));
 
-class AnimationItem extends PureComponent {
+class AnimationItem extends Component {
   static get propTypes() {
     return {
       animation: PropTypes.object.isRequired,
@@ -23,6 +23,7 @@ class AnimationItem extends PureComponent {
       onShowBoxModelHighlighterForNode: PropTypes.func.isRequired,
       selectAnimation: PropTypes.func.isRequired,
       selectedAnimation: PropTypes.object.isRequired,
+      setHighlightedNode: PropTypes.func.isRequired,
       setSelectedNode: PropTypes.func.isRequired,
       simulateAnimation: PropTypes.func.isRequired,
       timeScale: PropTypes.object.isRequired,
@@ -61,6 +62,7 @@ class AnimationItem extends PureComponent {
       onHideBoxModelHighlighter,
       onShowBoxModelHighlighterForNode,
       selectAnimation,
+      setHighlightedNode,
       setSelectedNode,
       simulateAnimation,
       timeScale,
@@ -81,6 +83,7 @@ class AnimationItem extends PureComponent {
           getNodeFromActor,
           onHideBoxModelHighlighter,
           onShowBoxModelHighlighterForNode,
+          setHighlightedNode,
           setSelectedNode,
         }
       ),

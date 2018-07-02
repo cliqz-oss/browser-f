@@ -45,6 +45,11 @@ policies-notice =
 pane-general-title = Allgemein
 category-general =
     .tooltiptext = { pane-general-title }
+
+pane-home-title = Startseite
+category-home =
+    .tooltiptext = { pane-home-title }
+
 pane-search-title = Suche
 category-search =
     .tooltiptext = { pane-search-title }
@@ -69,6 +74,41 @@ should-restart-title = { -brand-short-name } neu starten
 should-restart-ok = { -brand-short-name } jetzt neu starten
 cancel-no-restart-button = Abbrechen
 restart-later = Später neu starten
+
+## Extension Control Notifications
+##
+## These strings are used to inform the user
+## about changes made by extensions to browser settings.
+##
+## <img data-l10n-name="icon"/> is going to be replaced by the extension icon.
+##
+## Variables:
+##   $name (String): name of the extension
+
+# This string is shown to notify the user that their home page
+# is being controlled by an extension.
+extension-controlled-homepage-override = Die Erweiterung "<img data-l10n-name="icon"/> { $name }" verwaltet die Startseite.
+# This string is shown to notify the user that their new tab page
+# is being controlled by an extension.
+extension-controlled-new-tab-url = Die Erweiterung "<img data-l10n-name="icon"/> { $name }" verwaltet die Startseite neuer Tabs.
+# This string is shown to notify the user that the default search engine
+# is being controlled by an extension.
+extension-controlled-default-search = Die Erweiterung "<img data-l10n-name="icon"/> { $name }" hat die Standardsuchmaschine festgelegt.
+# This string is shown to notify the user that Container Tabs
+# are being enabled by an extension.
+extension-controlled-privacy-containers = Die Erweiterung <img data-l10n-name="icon"/> { $name } verwaltet die Tab-Umgebungen.
+# This string is shown to notify the user that their tracking protection preferences
+# are being controlled by an extension.
+extension-controlled-websites-tracking-protection-mode = Die Erweiterung <img data-l10n-name="icon"/> { $name } steuert den Schutz vor Aktivitätenverfolgung.
+# This string is shown to notify the user that their proxy configuration preferences
+# are being controlled by an extension.
+extension-controlled-proxy-config = Die Erweiterung "<img data-l10n-name="icon"/> { $name }" kontrolliert, wie { -brand-short-name } mit dem Internet verbindet.
+# This string is shown after the user disables an extension to notify the user
+# how to enable an extension that they disabled.
+#
+# <img data-l10n-name="addons-icon"/> will be replaced with Add-ons icon
+# <img data-l10n-name="menu-icon"/> will be replaced with Menu icon
+extension-controlled-enable = Um die Erweiterung zu aktivieren, öffnen Sie das <img data-l10n-name="menu-icon"/> Menü und dann <img data-l10n-name="addons-icon"/> Add-ons.
 
 ## Preferences UI Search Results
 
@@ -107,6 +147,11 @@ startup-blank-page =
     .label = Leere Seite anzeigen
 startup-prev-session =
     .label = Fenster und Tabs der letzten Sitzung anzeigen
+
+startup-restore-previous-session =
+    .label = Vorherige Sitzung wiederherstellen
+    .accesskey = V
+
 disable-extension =
     .label = Erweiterung deaktivieren
 home-page-header = Startseite
@@ -294,6 +339,7 @@ browsing-search-on-start-typing =
 ## General Section - Proxy
 
 network-proxy-title = Netzwerk-Proxy
+network-proxy-connection-description = Jetzt festlegen, wie { -brand-short-name } mit dem Internet verbindet.
 network-proxy-connection-learn-more = Weitere Informationen
 network-proxy-connection-settings =
     .label = Einstellungen…
@@ -301,8 +347,33 @@ network-proxy-connection-settings =
 
 ## Home Section
 
+home-new-windows-tabs-header = Neue Fenster und Tabs
+
+home-new-windows-tabs-description2 = Legen Sie fest, was als Homepage sowie in neuen Fenstern und Tabs geöffnet wird.
 
 ## Home Section - Home Page Customization
+
+home-homepage-mode-label = Homepage und neue Fenster
+
+home-newtabs-mode-label = Neue Tabs
+
+home-restore-defaults =
+    .label = Standard wiederherstellen
+    .accesskey = w
+
+# "Firefox" should be treated as a brand and kept in English,
+# while "Home" and "(Default)" can be localized.
+home-mode-choice-default =
+    .label = Firefox-Startseite (Standard)
+
+home-mode-choice-custom =
+    .label = Benutzerdefinierte Adressen…
+
+home-mode-choice-blank =
+    .label = Leere Seite
+
+home-homepage-custom-url =
+    .placeholder = Adresse einfügen…
 
 # This string has a special case for '1' and [other] (default). If necessary for
 # your language, you can add {$tabCount} to your translations and use the
@@ -412,6 +483,11 @@ sync-signedin-login-failure = Melden Sie sich an, um erneut mit { $email } zu ve
 sync-resend-verification =
     .label = E-Mail zur Verifizierung erneut senden
     .accesskey = V
+
+sync-remove-account =
+    .label = Konto entfernen
+    .accesskey = e
+
 sync-sign-in =
     .label = Anmelden
     .accesskey = m
@@ -473,6 +549,9 @@ privacy-header = Browser-Datenschutz
 ## Privacy Section - Forms
 
 forms-header = Formulare & Passwörter
+forms-ask-to-save-logins =
+    .label = Fragen, ob Zugangsdaten und Passwörter für Websites gespeichert werden sollen
+    .accesskey = Z
 forms-exceptions =
     .label = Ausnahmen…
     .accesskey = u
@@ -530,6 +609,11 @@ history-clear-button =
 ## Privacy Section - Site Data
 
 sitedata-header = Cookies und Websitedaten
+sitedata-total-size-calculating = Größe von Websitedaten und Cache wird berechnet…
+# Variables:
+#   $value (Number) - Value of the unit (for example: 4.6, 500)
+#   $unit (String) - Name of the unit (for example: "bytes", "KB")
+sitedata-total-size = Die gespeicherten Cookies, Websitedaten und der Cache belegen derzeit { $value } { $unit } Speicherplatz.
 sitedata-learn-more = Weitere Informationen
 sitedata-accept-cookies-option =
     .label = Cookies und Website-Daten annehmen (empfohlen)
@@ -539,6 +623,12 @@ sitedata-block-cookies-option =
     .accesskey = b
 sitedata-keep-until = Behalten, bis
     .accesskey = B
+
+sitedata-keep-until-expire =
+    .label = sie nicht mehr gültig sind
+sitedata-keep-until-closed =
+    .label = { -brand-short-name } geschlossen wird
+
 sitedata-accept-third-party-desc = Cookies und Website-Daten von Drittanbietern akzeptieren
     .accesskey = k
 sitedata-accept-third-party-always-option =

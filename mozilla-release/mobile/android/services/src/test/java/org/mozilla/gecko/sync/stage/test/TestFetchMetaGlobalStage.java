@@ -15,14 +15,12 @@ import org.mozilla.android.sync.test.helpers.HTTPServerTestHelper;
 import org.mozilla.android.sync.test.helpers.MockGlobalSessionCallback;
 import org.mozilla.android.sync.test.helpers.MockServer;
 import org.mozilla.gecko.background.testhelpers.MockGlobalSession;
-import org.mozilla.gecko.background.testhelpers.TestRunner;
 import org.mozilla.gecko.background.testhelpers.WaitHelper;
 import org.mozilla.gecko.sync.AlreadySyncingException;
 import org.mozilla.gecko.sync.CollectionKeys;
 import org.mozilla.gecko.sync.CryptoRecord;
 import org.mozilla.gecko.sync.ExtendedJSONObject;
 import org.mozilla.gecko.sync.GlobalSession;
-import org.mozilla.gecko.sync.HTTPFailureException;
 import org.mozilla.gecko.sync.InfoCollections;
 import org.mozilla.gecko.sync.MetaGlobal;
 import org.mozilla.gecko.sync.NonObjectJSONException;
@@ -34,29 +32,25 @@ import org.mozilla.gecko.sync.delegates.GlobalSessionCallback;
 import org.mozilla.gecko.sync.delegates.KeyUploadDelegate;
 import org.mozilla.gecko.sync.delegates.WipeServerDelegate;
 import org.mozilla.gecko.sync.net.AuthHeaderProvider;
-import org.mozilla.gecko.sync.net.SyncStorageResponse;
 import org.mozilla.gecko.sync.stage.FetchMetaGlobalStage;
 import org.mozilla.gecko.sync.stage.GlobalSyncStage.Stage;
+import org.robolectric.RobolectricTestRunner;
 import org.simpleframework.http.Request;
 import org.simpleframework.http.Response;
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import ch.boye.httpclientandroidlib.HttpResponse;
-import ch.boye.httpclientandroidlib.ProtocolVersion;
-import ch.boye.httpclientandroidlib.message.BasicHttpResponse;
-import ch.boye.httpclientandroidlib.message.BasicStatusLine;
-
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-@RunWith(TestRunner.class)
+@RunWith(RobolectricTestRunner.class)
 public class TestFetchMetaGlobalStage {
   @SuppressWarnings("unused")
   private static final String  LOG_TAG          = "TestMetaGlobalStage";
@@ -307,7 +301,7 @@ public class TestFetchMetaGlobalStage {
     doSession(server);
 
     // Declined engines propagate from the server meta/global, and are NOT merged.
-    final Set<String> expected = new HashSet<String>(testingDeclinedEngines);
+    final Set<String> expected = new HashSet<String>((ArrayList) testingDeclinedEngines);
     // expected.add("baznoo");   // Not until we merge. Local is lost.
 
     final Set<String> newDeclined = session.config.metaGlobal.getDeclinedEngineNames();

@@ -72,12 +72,14 @@ Library::Name(JSContext* cx, unsigned argc, Value* vp)
   }
 
   AutoString resultString;
-  AppendString(resultString, DLL_PREFIX);
-  AppendString(resultString, str);
-  AppendString(resultString, DLL_SUFFIX);
+  AppendString(cx, resultString, DLL_PREFIX);
+  AppendString(cx, resultString, str);
+  AppendString(cx, resultString, DLL_SUFFIX);
+  if (!resultString)
+    return false;
+  auto resultStr = resultString.finish();
 
-  JSString* result = JS_NewUCStringCopyN(cx, resultString.begin(),
-                                         resultString.length());
+  JSString* result = JS_NewUCStringCopyN(cx, resultStr.begin(), resultStr.length());
   if (!result)
     return false;
 
@@ -213,9 +215,10 @@ bool
 Library::Open(JSContext* cx, unsigned argc, Value* vp)
 {
   CallArgs args = CallArgsFromVp(argc, vp);
-  JSObject* ctypesObj = JS_THIS_OBJECT(cx, vp);
+  JSObject* ctypesObj = GetThisObject(cx, args, "ctypes.open");
   if (!ctypesObj)
     return false;
+
   if (!IsCTypesGlobal(ctypesObj)) {
     JS_ReportErrorASCII(cx, "not a ctypes object");
     return false;
@@ -239,10 +242,11 @@ Library::Close(JSContext* cx, unsigned argc, Value* vp)
 {
   CallArgs args = CallArgsFromVp(argc, vp);
 
-  RootedObject obj(cx);
-  if (args.thisv().isObject())
-    obj = &args.thisv().toObject();
-  if (!obj || !IsLibrary(obj)) {
+  RootedObject obj(cx, GetThisObject(cx, args, "ctypes.close"));
+  if (!obj)
+    return false;
+
+  if (!IsLibrary(obj)) {
     JS_ReportErrorASCII(cx, "not a library");
     return false;
   }
@@ -264,9 +268,11 @@ bool
 Library::Declare(JSContext* cx, unsigned argc, Value* vp)
 {
   CallArgs args = CallArgsFromVp(argc, vp);
-  RootedObject obj(cx, JS_THIS_OBJECT(cx, vp));
+
+  RootedObject obj(cx, GetThisObject(cx, args, "ctypes.declare"));
   if (!obj)
     return false;
+
   if (!IsLibrary(obj)) {
     JS_ReportErrorASCII(cx, "not a library");
     return false;
@@ -335,11 +341,13 @@ Library::Declare(JSContext* cx, unsigned argc, Value* vp)
   AutoCString symbol;
   if (isFunction) {
     // Build the symbol, with mangling if necessary.
-    FunctionType::BuildSymbolName(nameStr, fnObj, symbol);
-    AppendString(symbol, "\0");
+    FunctionType::BuildSymbolName(cx, nameStr, fnObj, symbol);
+    AppendString(cx, symbol, "\0");
+    if (!symbol)
+      return false;
 
     // Look up the function symbol.
-    fnptr = PR_FindFunctionSymbol(library, symbol.begin());
+    fnptr = PR_FindFunctionSymbol(library, symbol.finish().begin());
     if (!fnptr) {
       JS_ReportErrorASCII(cx, "couldn't find function symbol in library");
       return false;
@@ -348,10 +356,12 @@ Library::Declare(JSContext* cx, unsigned argc, Value* vp)
 
   } else {
     // 'typeObj' is another data type. Look up the data symbol.
-    AppendString(symbol, nameStr);
-    AppendString(symbol, "\0");
+    AppendString(cx, symbol, nameStr);
+    AppendString(cx, symbol, "\0");
+    if (!symbol)
+      return false;
 
-    data = PR_FindSymbol(library, symbol.begin());
+    data = PR_FindSymbol(library, symbol.finish().begin());
     if (!data) {
       JS_ReportErrorASCII(cx, "couldn't find symbol in library");
       return false;

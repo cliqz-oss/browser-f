@@ -6,17 +6,17 @@
 from setuptools import setup, find_packages
 import sys
 
-version = '0.5'
+version = '0.6'
 
 deps = ['httplib2 == 0.9.2',
         'mozfile == 1.2',
         'mozhttpd == 0.7',
-        'mozinfo == 0.9',
-        'mozinstall == 1.12',
-        'mozprocess == 0.23',
-        'mozprofile == 0.28',
-        'mozrunner == 6.12',
-        'mozversion == 1.4',
+        'mozinfo == 0.10',
+        'mozinstall == 1.15',
+        'mozprocess == 0.26',
+        'mozprofile == 1.1.0',
+        'mozrunner == 7.0.1',
+        'mozversion == 1.5',
        ]
 
 # we only support python 2.6+ right now

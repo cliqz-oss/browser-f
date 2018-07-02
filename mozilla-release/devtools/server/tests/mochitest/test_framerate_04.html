@@ -15,7 +15,7 @@ Bug 1023018 - Tests if the framerate actor keeps recording after navigations.
 <script>
 "use strict";
 
-window.onload = function () {
+window.onload = function() {
   SimpleTest.waitForExplicitFinish();
   const {FramerateFront} = require("devtools/shared/fronts/framerate");
   const {TargetFactory} = require("devtools/client/framework/target");
@@ -23,12 +23,13 @@ window.onload = function () {
   let url = document.getElementById("testContent").href;
   attachURL(url, onTab);
 
-  function onTab(_, client, form, contentDoc) {
+  async function onTab(_, client, form, contentDoc) {
     let contentWin = contentDoc.defaultView;
     let chromeWin = Services.wm.getMostRecentWindow("navigator:browser");
     let selectedTab = chromeWin.gBrowser.selectedTab;
 
     let target = TargetFactory.forTab(selectedTab);
+    await target.makeRemote();
     let front = FramerateFront(client, form);
 
     front.startRecording().then(() => {

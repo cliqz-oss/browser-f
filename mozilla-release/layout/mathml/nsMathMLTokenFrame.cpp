@@ -8,17 +8,14 @@
 #include "nsPresContext.h"
 #include "nsContentUtils.h"
 #include "nsTextFrame.h"
-#ifdef MOZ_OLD_STYLE
-#include "mozilla/GeckoRestyleManager.h"
-#endif
 #include <algorithm>
 
 using namespace mozilla;
 
 nsIFrame*
-NS_NewMathMLTokenFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewMathMLTokenFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsMathMLTokenFrame(aContext);
+  return new (aPresShell) nsMathMLTokenFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsMathMLTokenFrame)
@@ -46,7 +43,7 @@ nsMathMLTokenFrame::GetMathMLFrameType()
 
   uint8_t mathVariant = StyleFont()->mMathVariant;
   if ((mathVariant == NS_MATHML_MATHVARIANT_NONE &&
-       (StyleFont()->mFont.style == NS_STYLE_FONT_STYLE_ITALIC ||
+       (StyleFont()->mFont.style == FontSlantStyle::Italic() ||
         HasAnyStateBits(NS_FRAME_IS_IN_SINGLE_CHAR_MI))) ||
       mathVariant == NS_MATHML_MATHVARIANT_ITALIC ||
       mathVariant == NS_MATHML_MATHVARIANT_BOLD_ITALIC ||

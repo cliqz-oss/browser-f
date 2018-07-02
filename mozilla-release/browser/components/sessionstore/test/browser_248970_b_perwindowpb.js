@@ -62,7 +62,7 @@ function test() {
     let node = getElementByXPath(aTab, aQuery);
     if (!node)
       return false;
-    if (node instanceof Ci.nsIDOMHTMLInputElement)
+    if (ChromeUtils.getClassName(node) === "HTMLInputElement")
       return aValue == (node.type == "checkbox" || node.type == "radio" ?
                        node.checked : node.value);
     if (ChromeUtils.getClassName(node) === "HTMLTextAreaElement")
@@ -144,7 +144,7 @@ function test() {
             let tab_C = win.gBrowser.duplicateTab(tab_B);
             promiseTabRestored(tab_C).then(() => {
               // verify the correctness of the duplicated tab
-              is(ss.getTabValue(tab_C, key1), value1,
+              is(ss.getCustomTabValue(tab_C, key1), value1,
                 "tab successfully duplicated - correct state");
 
               for (let item in fieldList)

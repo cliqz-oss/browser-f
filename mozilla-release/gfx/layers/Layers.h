@@ -25,7 +25,6 @@
 #include "mozilla/Maybe.h"              // for Maybe
 #include "mozilla/Poison.h"
 #include "mozilla/RefPtr.h"             // for already_AddRefed
-#include "mozilla/StyleAnimationValue.h" // for StyleAnimationValue, etc
 #include "mozilla/TimeStamp.h"          // for TimeStamp, TimeDuration
 #include "mozilla/UniquePtr.h"          // for UniquePtr
 #include "mozilla/gfx/BaseMargin.h"     // for BaseMargin
@@ -65,7 +64,6 @@ namespace mozilla {
 
 class ComputedTimingFunction;
 class FrameLayerBuilder;
-class StyleAnimationValue;
 
 namespace gl {
 class GLContext;
@@ -88,7 +86,6 @@ class LayerMetricsWrapper;
 class PaintedLayer;
 class ContainerLayer;
 class ImageLayer;
-class DisplayItemLayer;
 class ColorLayer;
 class CompositorAnimations;
 class CompositorBridgeChild;
@@ -446,11 +443,6 @@ public:
    */
   virtual already_AddRefed<RefLayer> CreateRefLayer() { return nullptr; }
   /**
-   * CONSTRUCTION PHASE ONLY
-   * Create a DisplayItemLayer for this manager's layer tree.
-   */
-  virtual already_AddRefed<DisplayItemLayer> CreateDisplayItemLayer() { return nullptr; }
-  /**
    * Can be called anytime, from any thread.
    *
    * Creates an Image container which forwards its images to the compositor within
@@ -460,15 +452,6 @@ public:
    */
   static already_AddRefed<ImageContainer> CreateImageContainer(ImageContainer::Mode flag
                                                                 = ImageContainer::SYNCHRONOUS);
-
-  /**
-   * Since the lifetimes of display items and display item layers are different,
-   * calling this tells the layer manager that the display item layer is valid for
-   * only one transaction. Users should call ClearDisplayItemLayers() to remove
-   * references to the dead display item at the end of a transaction.
-   */
-  virtual void TrackDisplayItemLayer(RefPtr<DisplayItemLayer> aLayer);
-  virtual void ClearDisplayItemLayers();
 
   /**
    * Type of layer manager his is. This is to be used sparsely in order to
@@ -711,7 +694,7 @@ public:
 
   virtual void SetLayerObserverEpoch(uint64_t aLayerObserverEpoch) {}
 
-  virtual void DidComposite(uint64_t aTransactionId,
+  virtual void DidComposite(TransactionId aTransactionId,
                             const mozilla::TimeStamp& aCompositeStart,
                             const mozilla::TimeStamp& aCompositeEnd) {}
 
@@ -727,7 +710,7 @@ public:
 
   virtual void SetTransactionIdAllocator(TransactionIdAllocator* aAllocator) {}
 
-  virtual uint64_t GetLastTransactionId() { return 0; }
+  virtual TransactionId GetLastTransactionId() { return TransactionId{0}; }
 
   virtual CompositorBridgeChild* GetCompositorBridgeChild() { return nullptr; }
 
@@ -789,14 +772,6 @@ public:
   void ClearPendingScrollInfoUpdate();
 private:
   std::map<FrameMetrics::ViewID,ScrollUpdateInfo> mPendingScrollUpdates;
-
-  // Display items are only valid during this transaction.
-  // At the end of the transaction, we have to go and clear out
-  // DisplayItemLayer's and null their display item. See comment
-  // above DisplayItemLayer declaration.
-  // Since layers are ref counted, we also have to stop holding
-  // a reference to the display item layer as well.
-  nsTArray<RefPtr<DisplayItemLayer>> mDisplayItemLayers;
 };
 
 /**
@@ -1048,7 +1023,7 @@ public:
 
   bool GetForceIsolatedGroup() const
   {
-    return mSimpleAttrs.ForceIsolatedGroup();
+    return mSimpleAttrs.GetForceIsolatedGroup();
   }
 
   /**
@@ -1234,6 +1209,8 @@ public:
   // 'initial current time' value.
   void StartPendingAnimations(const TimeStamp& aReadyTime);
 
+  void ClearCompositorAnimations();
+
   /**
    * CONSTRUCTION PHASE ONLY
    * If a layer represents a fixed position element, this data is stored on the
@@ -1282,25 +1259,14 @@ public:
 
   /**
    * CONSTRUCTION PHASE ONLY
-   * If a layer is a scroll thumb container layer, set the scroll identifier
-   * of the scroll frame scrolled by the thumb, and other data related to the
-   * thumb.
+   * If a layer is a scroll thumb container layer or a scrollbar container
+   * layer, set the scroll identifier of the scroll frame scrolled by
+   * the scrollbar, and other data related to the scrollbar.
    */
-  void SetScrollThumbData(FrameMetrics::ViewID aScrollId, const ScrollThumbData& aThumbData)
+  void SetScrollbarData(const ScrollbarData& aThumbData)
   {
-    if (mSimpleAttrs.SetScrollThumbData(aScrollId, aThumbData)) {
+    if (mSimpleAttrs.SetScrollbarData(aThumbData)) {
       MOZ_LAYERS_LOG_IF_SHADOWABLE(this, ("Layer::Mutated(%p) ScrollbarData", this));
-      MutatedSimple();
-    }
-  }
-
-  // Set during construction for the container layer of scrollbar components.
-  // |aScrollId| holds the scroll identifier of the scrollable content that
-  // the scrollbar is for.
-  void SetScrollbarContainer(FrameMetrics::ViewID aScrollId,
-                             ScrollDirection aDirection)
-  {
-    if (mSimpleAttrs.SetScrollbarContainer(aScrollId, aDirection)) {
       MutatedSimple();
     }
   }
@@ -1314,12 +1280,12 @@ public:
   }
 
   // These getters can be used anytime.
-  float GetOpacity() { return mSimpleAttrs.Opacity(); }
-  gfx::CompositionOp GetMixBlendMode() const { return mSimpleAttrs.MixBlendMode(); }
+  float GetOpacity() { return mSimpleAttrs.GetOpacity(); }
+  gfx::CompositionOp GetMixBlendMode() const { return mSimpleAttrs.GetMixBlendMode(); }
   const Maybe<ParentLayerIntRect>& GetClipRect() const { return mClipRect; }
-  const Maybe<LayerClip>& GetScrolledClip() const { return mSimpleAttrs.ScrolledClip(); }
+  const Maybe<LayerClip>& GetScrolledClip() const { return mSimpleAttrs.GetScrolledClip(); }
   Maybe<ParentLayerIntRect> GetScrolledClipRect() const;
-  uint32_t GetContentFlags() { return mSimpleAttrs.ContentFlags(); }
+  uint32_t GetContentFlags() { return mSimpleAttrs.GetContentFlags(); }
   const LayerIntRegion& GetVisibleRegion() const { return mVisibleRegion; }
   const ScrollMetadata& GetScrollMetadata(uint32_t aIndex) const;
   const FrameMetrics& GetFrameMetrics(uint32_t aIndex) const;
@@ -1349,23 +1315,21 @@ public:
   // Same as GetTransform(), but returns the transform as a strongly-typed
   // matrix. Eventually this will replace GetTransform().
   const CSSTransformMatrix GetTransformTyped() const;
-  const gfx::Matrix4x4& GetBaseTransform() const { return mSimpleAttrs.Transform(); }
+  const gfx::Matrix4x4& GetBaseTransform() const { return mSimpleAttrs.GetTransform(); }
   // Note: these are virtual because ContainerLayerComposite overrides them.
-  virtual float GetPostXScale() const { return mSimpleAttrs.PostXScale(); }
-  virtual float GetPostYScale() const { return mSimpleAttrs.PostYScale(); }
+  virtual float GetPostXScale() const { return mSimpleAttrs.GetPostXScale(); }
+  virtual float GetPostYScale() const { return mSimpleAttrs.GetPostYScale(); }
   bool GetIsFixedPosition() { return mSimpleAttrs.IsFixedPosition(); }
-  bool GetTransformIsPerspective() const { return mSimpleAttrs.TransformIsPerspective(); }
+  bool GetTransformIsPerspective() const { return mSimpleAttrs.GetTransformIsPerspective(); }
   bool GetIsStickyPosition() { return mSimpleAttrs.IsStickyPosition(); }
-  FrameMetrics::ViewID GetFixedPositionScrollContainerId() { return mSimpleAttrs.FixedPositionScrollContainerId(); }
-  LayerPoint GetFixedPositionAnchor() { return mSimpleAttrs.FixedPositionAnchor(); }
-  int32_t GetFixedPositionSides() { return mSimpleAttrs.FixedPositionSides(); }
-  FrameMetrics::ViewID GetStickyScrollContainerId() { return mSimpleAttrs.StickyScrollContainerId(); }
-  const LayerRectAbsolute& GetStickyScrollRangeOuter() { return mSimpleAttrs.StickyScrollRangeOuter(); }
-  const LayerRectAbsolute& GetStickyScrollRangeInner() { return mSimpleAttrs.StickyScrollRangeInner(); }
-  FrameMetrics::ViewID GetScrollbarTargetContainerId() { return mSimpleAttrs.ScrollbarTargetContainerId(); }
-  const ScrollThumbData& GetScrollThumbData() const { return mSimpleAttrs.ThumbData(); }
-  bool IsScrollbarContainer() { return mSimpleAttrs.GetScrollbarContainerDirection().isSome(); }
-  Maybe<ScrollDirection> GetScrollbarContainerDirection() { return mSimpleAttrs.GetScrollbarContainerDirection(); }
+  FrameMetrics::ViewID GetFixedPositionScrollContainerId() { return mSimpleAttrs.GetFixedPositionScrollContainerId(); }
+  LayerPoint GetFixedPositionAnchor() { return mSimpleAttrs.GetFixedPositionAnchor(); }
+  int32_t GetFixedPositionSides() { return mSimpleAttrs.GetFixedPositionSides(); }
+  FrameMetrics::ViewID GetStickyScrollContainerId() { return mSimpleAttrs.GetStickyScrollContainerId(); }
+  const LayerRectAbsolute& GetStickyScrollRangeOuter() { return mSimpleAttrs.GetStickyScrollRangeOuter(); }
+  const LayerRectAbsolute& GetStickyScrollRangeInner() { return mSimpleAttrs.GetStickyScrollRangeInner(); }
+  const ScrollbarData& GetScrollbarData() const { return mSimpleAttrs.GetScrollbarData(); }
+  bool IsScrollbarContainer() const;
   Layer* GetMaskLayer() const { return mMaskLayer; }
   bool HasPendingTransform() const { return mPendingTransform; }
 
@@ -1423,7 +1387,7 @@ public:
   bool HasTransformAnimation() const;
   bool HasOpacityAnimation() const;
 
-  AnimationValue GetBaseAnimationStyle() const
+  RawServoAnimationValue* GetBaseAnimationStyle() const
   {
     return mAnimationInfo.GetBaseAnimationStyle();
   }
@@ -1577,12 +1541,6 @@ public:
    * ShadowableLayer.  Can be used anytime.
    */
   virtual ShadowableLayer* AsShadowableLayer() { return nullptr; }
-
-  /**
-   * Dynamic cast as a DisplayItemLayer. Return null if not a
-   * DisplayItemLayer. Can be used anytime.
-   */
-  virtual DisplayItemLayer* AsDisplayItemLayer() { return nullptr; }
 
   // These getters can be used anytime.  They return the effective
   // values that should be used when drawing this layer to screen,
@@ -1798,6 +1756,13 @@ public:
   // and can be used anytime.
   // A layer has an APZC at index aIndex only-if GetFrameMetrics(aIndex).IsScrollable();
   // attempting to get an APZC for a non-scrollable metrics will return null.
+  // The reverse is also generally true (that if GetFrameMetrics(aIndex).IsScrollable()
+  // is true, then the layer will have an APZC). However, it only holds on the
+  // the compositor-side layer tree, and only after the APZ code has had a chance
+  // to rebuild its internal hit-testing tree using the layer tree. Also, it may
+  // not hold in certain "exceptional" scenarios such as if the layer tree
+  // doesn't have a GeckoContentController registered for it, or if there is a
+  // malicious content process trying to trip up the compositor over IPC.
   // The aIndex for these functions must be less than GetScrollMetadataCount().
   void SetAsyncPanZoomController(uint32_t aIndex, AsyncPanZoomController *controller);
   AsyncPanZoomController* GetAsyncPanZoomController(uint32_t aIndex) const;
@@ -1832,6 +1797,9 @@ public:
    * a translation by integers, or if this layer or some ancestor layer
    * is marked as having a transform that may change without a full layer
    * transaction.
+   *
+   * Note: This function ignores ancestor layers across layer tree boundaries
+   * so that it returns a consistent value when compositing and when painting.
    */
   bool MayResample();
 
@@ -2387,61 +2355,6 @@ protected:
 };
 
 /**
- * A generic layer that references back to its display item.
- *
- * In order to not throw away information early in the pipeline from layout -> webrender,
- * we'd like a generic layer type that can represent all the nsDisplayItems instead of
- * creating a new layer type for each nsDisplayItem for Webrender. Another option
- * is to break down nsDisplayItems into smaller nsDisplayItems early in the pipeline.
- * The problem with this is that the whole pipeline would have to deal with more
- * display items, which is slower.
- *
- * An alternative is to create a DisplayItemLayer, but the wrinkle with this is that
- * it has a pointer to its nsDisplayItem. Managing the lifetime is key as display items
- * only live as long as their display list builder, which goes away at the end of a paint.
- * Layers however, are retained between paints.
- * It's ok to recycle a DisplayItemLayer for a different display item since its just a pointer.
- * Instead, when a layer transaction is completed, it is up to the layer manager to tell
- * DisplayItemLayers that the display item pointer is no longer valid.
- */
-class DisplayItemLayer : public Layer {
-  public:
-    virtual DisplayItemLayer* AsDisplayItemLayer() override { return this; }
-    void EndTransaction();
-
-    MOZ_LAYER_DECL_NAME("DisplayItemLayer", TYPE_DISPLAYITEM)
-
-    void SetDisplayItem(nsDisplayItem* aItem, nsDisplayListBuilder* aBuilder) {
-      mItem = aItem;
-      mBuilder = aBuilder;
-    }
-
-    nsDisplayItem* GetDisplayItem() { return mItem; }
-    nsDisplayListBuilder* GetDisplayListBuilder() { return mBuilder; }
-
-    virtual void ComputeEffectiveTransforms(const gfx::Matrix4x4& aTransformToSurface) override
-    {
-      gfx::Matrix4x4 idealTransform = GetLocalTransform() * aTransformToSurface;
-      mEffectiveTransform = SnapTransformTranslation(idealTransform, nullptr);
-      ComputeEffectiveTransformForMaskLayers(aTransformToSurface);
-    }
-
-  protected:
-    DisplayItemLayer(LayerManager* aManager, void* aImplData)
-      : Layer(aManager, aImplData)
-      , mItem(nullptr)
-  {}
-
-  virtual void PrintInfo(std::stringstream& aStream, const char* aPrefix) override;
-
-  virtual void DumpPacket(layerscope::LayersPacket* aPacket, const void* aParent) override;
-
-  // READ COMMENT ABOVE TO ENSURE WE DON'T HAVE A DANGLING POINTER
-  nsDisplayItem* mItem;
-  nsDisplayListBuilder* mBuilder;
-};
-
-/**
  * A Layer which just renders a solid color in its visible region. It actually
  * can fill any area that contains the visible region, so if you need to
  * restrict the area filled, set a clip region on this layer.
@@ -2713,9 +2626,9 @@ public:
    * CONSTRUCTION PHASE ONLY
    * Set the ID of the layer's referent.
    */
-  void SetReferentId(uint64_t aId)
+  void SetReferentId(LayersId aId)
   {
-    MOZ_ASSERT(aId != 0);
+    MOZ_ASSERT(aId.IsValid());
     if (mId != aId) {
       MOZ_LAYERS_LOG_IF_SHADOWABLE(this, ("Layer::Mutated(%p) ReferentId", this));
       mId = aId;
@@ -2777,7 +2690,7 @@ public:
   // These getters can be used anytime.
   virtual RefLayer* AsRefLayer() override { return this; }
 
-  virtual uint64_t GetReferentId() { return mId; }
+  virtual LayersId GetReferentId() { return mId; }
 
   /**
    * DRAWING PHASE ONLY
@@ -2789,7 +2702,7 @@ public:
 protected:
   RefLayer(LayerManager* aManager, void* aImplData)
     : ContainerLayer(aManager, aImplData)
-    , mId(0)
+    , mId{0}
     , mEventRegionsOverride(EventRegionsOverride::NoOverride)
   {}
 
@@ -2798,7 +2711,7 @@ protected:
   virtual void DumpPacket(layerscope::LayersPacket* aPacket, const void* aParent) override;
 
   // 0 is a special value that means "no ID".
-  uint64_t mId;
+  LayersId mId;
   EventRegionsOverride mEventRegionsOverride;
 };
 

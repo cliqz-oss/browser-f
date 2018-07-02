@@ -285,7 +285,7 @@ class FloatRegisters
         float s;
         double d;
     };
-    enum Kind {
+    enum Kind : uint8_t {
         Double,
         Single
     };
@@ -366,10 +366,10 @@ struct FloatRegister
     bool volatile_() const {
         return !!((SetType(1) << code()) & FloatRegisters::VolatileMask);
     }
-    bool operator!=(FloatRegister other) const {
+    constexpr bool operator!=(FloatRegister other) const {
         return other.code_ != code_ || other.k_ != k_;
     }
-    bool operator==(FloatRegister other) const {
+    constexpr bool operator==(FloatRegister other) const {
         return other.code_ == code_ && other.k_ == k_;
     }
     bool aliases(FloatRegister other) const {
@@ -383,11 +383,10 @@ struct FloatRegister
             return FloatRegisters::Single;
         return FloatRegisters::Double;
     }
-    void aliased(uint32_t aliasIdx, FloatRegister* ret) {
+    FloatRegister aliased(uint32_t aliasIdx) {
         if (aliasIdx == 0)
-            *ret = *this;
-        else
-            *ret = FloatRegister(code_, otherkind(k_));
+            return *this;
+        return FloatRegister(code_, otherkind(k_));
     }
     // This function mostly exists for the ARM backend.  It is to ensure that two
     // floating point registers' types are equivalent.  e.g. S0 is not equivalent
@@ -403,9 +402,9 @@ struct FloatRegister
     uint32_t numAlignedAliased() {
         return numAliased();
     }
-    void alignedAliased(uint32_t aliasIdx, FloatRegister* ret) {
+    FloatRegister alignedAliased(uint32_t aliasIdx) {
         MOZ_ASSERT(aliasIdx < numAliased());
-        aliased(aliasIdx, ret);
+        return aliased(aliasIdx);
     }
     SetType alignedOrDominatedAliasedSet() const {
         return Codes::SpreadCoefficient << code_;
@@ -453,8 +452,8 @@ struct FloatRegister
     uint32_t getRegisterDumpOffsetInBytes();
 
   public:
-    Code code_ : 8;
-    FloatRegisters::Kind k_ : 1;
+    Code code_;
+    FloatRegisters::Kind k_;
 };
 
 template <> inline FloatRegister::SetType

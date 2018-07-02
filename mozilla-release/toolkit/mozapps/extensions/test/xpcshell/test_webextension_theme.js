@@ -8,11 +8,12 @@
  * Coverage may overlap with other tests in this folder.
  */
 
-const {LightweightThemeManager} = AM_Cu.import("resource://gre/modules/LightweightThemeManager.jsm", {});
+ChromeUtils.defineModuleGetter(this, "LightweightThemeManager",
+                               "resource://gre/modules/LightweightThemeManager.jsm");
 const THEME_IDS = [
   "theme3@tests.mozilla.org",
   "theme2@personas.mozilla.org",
-  "default@tests.mozilla.org"
+  "default-theme@mozilla.org",
 ];
 const DEFAULT_THEME = THEME_IDS[2];
 
@@ -36,19 +37,6 @@ add_task(async function setup_to_default_browserish_state() {
         id: THEME_IDS[0]
       }
     }
-  }, profileDir);
-  // We need a default theme for some of these things to work but we have hidden
-  // the one in the application directory.
-  writeInstallRDFForExtension({
-    id: DEFAULT_THEME,
-    version: "1.0",
-    name: "Default",
-    internalName: "classic/1.0",
-    targetApplications: [{
-      id: "xpcshell@tests.mozilla.org",
-      minVersion: "1",
-      maxVersion: "2"
-    }]
   }, profileDir);
 
   startupManager();
@@ -235,4 +223,42 @@ add_task(async function uninstall_offers_undo() {
 
   theme.uninstall();
   await promiseRestartManager();
+});
+
+// Test that default_locale works with WE themes
+add_task(async function default_locale_themes() {
+  let addon = await promiseInstallWebExtension({
+    manifest: {
+      applications: {
+        gecko: {
+          id: "locale-theme@tests.mozilla.org",
+        }
+      },
+      default_locale: "en",
+      name: "__MSG_name__",
+      description: "__MSG_description__",
+      theme: {
+        "colors": {
+          "accentcolor": "black",
+          "textcolor": "white",
+        }
+      }
+    },
+    files: {
+      "_locales/en/messages.json": `{
+        "name": {
+          "message": "the name"
+        },
+        "description": {
+          "message": "the description"
+        }
+      }`
+    }
+  });
+
+  addon = await promiseAddonByID(addon.id);
+  equal(addon.name, "the name");
+  equal(addon.description, "the description");
+  equal(addon.type, "theme");
+  addon.uninstall();
 });

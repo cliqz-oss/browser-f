@@ -28,8 +28,7 @@ const {
 } = require("devtools/shared/css/parsing-utils");
 const promise = require("promise");
 const Services = require("Services");
-const EventEmitter = require("devtools/shared/old-event-emitter");
-const {Task} = require("devtools/shared/task");
+const EventEmitter = require("devtools/shared/event-emitter");
 const {Tools} = require("devtools/client/definitions");
 const {gDevTools} = require("devtools/client/framework/devtools");
 const CssLogic = require("devtools/shared/inspector/css-logic");
@@ -65,6 +64,7 @@ function RuleEditor(ruleView, rule) {
   // being edited
   this.isEditing = false;
 
+  this._onFontSwatchClick = this._onFontSwatchClick.bind(this);
   this._onNewProperty = this._onNewProperty.bind(this);
   this._newPropertyDestroy = this._newPropertyDestroy.bind(this);
   this._onSelectorDone = this._onSelectorDone.bind(this);
@@ -73,19 +73,26 @@ function RuleEditor(ruleView, rule) {
   this._onToolChanged = this._onToolChanged.bind(this);
   this._updateLocation = this._updateLocation.bind(this);
   this._onSourceClick = this._onSourceClick.bind(this);
+  this._onRuleUnselected = this._onRuleUnselected.bind(this);
 
   this.rule.domRule.on("location-changed", this._locationChanged);
   this.toolbox.on("tool-registered", this._onToolChanged);
   this.toolbox.on("tool-unregistered", this._onToolChanged);
+  this.ruleView.on("ruleview-rule-unselected", this._onRuleUnselected);
 
   this._create();
 }
 
 RuleEditor.prototype = {
-  destroy: function () {
+  destroy: function() {
     this.rule.domRule.off("location-changed");
     this.toolbox.off("tool-registered", this._onToolChanged);
     this.toolbox.off("tool-unregistered", this._onToolChanged);
+    this.ruleView.off("ruleview-rule-unselected", this._onRuleUnselected);
+
+    if (this.fontSwatch) {
+      this.fontSwatch.removeEventListener("click", this._onFontSwatchClick);
+    }
 
     let url = null;
     if (this.rule.sheet) {
@@ -112,7 +119,7 @@ RuleEditor.prototype = {
     return trait && !this.rule.elementStyle.element.isAnonymous;
   },
 
-  _create: function () {
+  _create: function() {
     this.element = this.doc.createElement("div");
     this.element.className = "ruleview-rule devtools-monospace";
     this.element.setAttribute("uneditable", !this.isEditable);
@@ -160,7 +167,7 @@ RuleEditor.prototype = {
     }
 
     if (this.rule.domRule.type !== CSSRule.KEYFRAME_RULE) {
-      Task.spawn(function* () {
+      (async function() {
         let selector;
 
         if (this.rule.domRule.selectors) {
@@ -169,7 +176,7 @@ RuleEditor.prototype = {
         } else if (this.rule.inherited) {
           // This is an inline style from an inherited rule. Need to resolve the unique
           // selector from the node which rule this is inherited from.
-          selector = yield this.rule.inherited.getUniqueSelector();
+          selector = await this.rule.inherited.getUniqueSelector();
         } else {
           // This is an inline style from the current node.
           selector = this.ruleView.inspector.selectionCssSelector;
@@ -187,7 +194,7 @@ RuleEditor.prototype = {
 
         this.uniqueSelector = selector;
         this.emit("selector-icon-created");
-      }.bind(this));
+      }.bind(this))();
     }
 
     this.openBrace = createChild(header, "span", {
@@ -235,12 +242,59 @@ RuleEditor.prototype = {
         this.newProperty();
       });
     }
+
+    // Create the font editor toggle icon visible on hover.
+    if (this.ruleView.showFontEditor) {
+      this.fontSwatch = createChild(this.element, "div", {
+        class: "ruleview-font-editor-toggle"
+      });
+      this.fontSwatch.textContent = "Aa";
+
+      this.fontSwatch.addEventListener("click", this._onFontSwatchClick);
+    }
+  },
+
+  /**
+   * Handler for clicks on font swatch icon.
+   * Toggles the selected state of the the current rule for the font editor.
+   *
+   * @param {MouseEvent} e
+   *        Mouse click event.
+   */
+  _onFontSwatchClick: function(e) {
+    const editorId = "fonteditor";
+    const isActive = e.target.classList.toggle("active");
+
+    if (isActive) {
+      this.ruleView.selectRule(this.rule, editorId);
+    } else {
+      this.ruleView.unselectRule(this.rule, editorId);
+    }
+  },
+
+  /**
+   * Called when a rule was released from being selected for an editor.
+   * A rule may be released by: toggling a swatch icon, an action from an editor
+   * (ex: close), selecting a different node in the markup view, etc.
+   *
+   * @param {Object} eventData
+   *        Data payload for the event. Contains:
+   *        - {String} editorId - id of the editor for which the rule was released
+   *        - {Rule} rule - reference to rule that was released
+   */
+  _onRuleUnselected: function(eventData) {
+    const { rule, editorId } = eventData;
+
+    // If no longer selected for the font editor, toggle the swatch icon.
+    if (editorId === "fonteditor" && rule == this.rule) {
+      this.fontSwatch.classList.remove("active");
+    }
   },
 
   /**
    * Called when a tool is registered or unregistered.
    */
-  _onToolChanged: function () {
+  _onToolChanged: function() {
     // When the source editor is registered, update the source links
     // to be clickable; and if it is unregistered, update the links to
     // be unclickable.  However, some links are never clickable, so
@@ -258,11 +312,11 @@ RuleEditor.prototype = {
    * Event handler called when a property changes on the
    * StyleRuleActor.
    */
-  _locationChanged: function () {
+  _locationChanged: function() {
     this.updateSourceLink();
   },
 
-  _onSourceClick: function () {
+  _onSourceClick: function() {
     if (this.source.hasAttribute("unselectable") || !this._currentLocation) {
       return;
     }
@@ -293,7 +347,7 @@ RuleEditor.prototype = {
    * @param {number} column
    *        The original column number
    */
-  _updateLocation: function (enabled, url, line, column) {
+  _updateLocation: function(enabled, url, line, column) {
     let displayURL = url;
     if (!enabled) {
       url = null;
@@ -328,7 +382,7 @@ RuleEditor.prototype = {
     sourceLabel.textContent = sourceTextContent;
   },
 
-  updateSourceLink: function () {
+  updateSourceLink: function() {
     if (this.rule.isSystem) {
       let sourceLabel = this.element.querySelector(".ruleview-rule-source-label");
       let title = this.rule.title;
@@ -378,7 +432,7 @@ RuleEditor.prototype = {
   /**
    * Update the rule editor with the contents of the rule.
    */
-  populate: function () {
+  populate: function() {
     // Clear out existing viewers.
     while (this.selectorText.hasChildNodes()) {
       this.selectorText.removeChild(this.selectorText.lastChild);
@@ -461,7 +515,7 @@ RuleEditor.prototype = {
    * @return {TextProperty}
    *        The new property
    */
-  addProperty: function (name, value, priority, enabled, siblingProp) {
+  addProperty: function(name, value, priority, enabled, siblingProp) {
     let prop = this.rule.createProperty(name, value, priority, enabled,
       siblingProp);
     let index = this.rule.textProps.indexOf(prop);
@@ -493,7 +547,7 @@ RuleEditor.prototype = {
    * @param {TextProperty} siblingProp
    *        Optional, the property next to which all new props should be added.
    */
-  addProperties: function (properties, siblingProp) {
+  addProperties: function(properties, siblingProp) {
     if (!properties || !properties.length) {
       return;
     }
@@ -519,7 +573,7 @@ RuleEditor.prototype = {
    * name is given, we'll create a real TextProperty and add it to the
    * rule.
    */
-  newProperty: function () {
+  newProperty: function() {
     // If we're already creating a new property, ignore this.
     if (!this.closeBrace.hasAttribute("tabindex")) {
       return;
@@ -564,7 +618,7 @@ RuleEditor.prototype = {
    * @param {Boolean} commit
    *        True if the value should be committed.
    */
-  _onNewProperty: function (value, commit) {
+  _onNewProperty: function(value, commit) {
     if (!value || !commit) {
       return;
     }
@@ -586,7 +640,7 @@ RuleEditor.prototype = {
    * added, since we want to wait until after the inplace editor `destroy`
    * event has been fired to keep consistent UI state.
    */
-  _newPropertyDestroy: function () {
+  _newPropertyDestroy: function() {
     // We're done, make the close brace focusable again.
     this.closeBrace.setAttribute("tabindex", "0");
 
@@ -614,7 +668,7 @@ RuleEditor.prototype = {
    * @param {Number} direction
    *        The move focus direction number.
    */
-  _onSelectorDone: Task.async(function* (value, commit, direction) {
+  async _onSelectorDone(value, commit, direction) {
     if (!commit || this.isEditing || value === "" ||
         value === this.rule.selectorText) {
       return;
@@ -629,7 +683,7 @@ RuleEditor.prototype = {
     this.isEditing = true;
 
     try {
-      let response = yield this.rule.domRule.modifySelector(element, value);
+      let response = await this.rule.domRule.modifySelector(element, value);
 
       if (!supportsUnmatchedRules) {
         this.isEditing = false;
@@ -642,7 +696,7 @@ RuleEditor.prototype = {
 
       // We recompute the list of applied styles, because editing a
       // selector might cause this rule's position to change.
-      let applied = yield elementStyle.pageStyle.getApplied(element, {
+      let applied = await elementStyle.pageStyle.getApplied(element, {
         inherited: true,
         matchedSelectors: true,
         filter: elementStyle.showUserAgentStyles ? "ua" : undefined
@@ -695,7 +749,7 @@ RuleEditor.prototype = {
       this.isEditing = false;
       promiseWarn(err);
     }
-  }),
+  },
 
   /**
    * Handle moving the focus change after a tab or return keypress in the
@@ -704,7 +758,7 @@ RuleEditor.prototype = {
    * @param {Number} direction
    *        The move focus direction number.
    */
-  _moveSelectorFocus: function (direction) {
+  _moveSelectorFocus: function(direction) {
     if (!direction || direction === Services.focus.MOVEFOCUS_BACKWARD) {
       return;
     }

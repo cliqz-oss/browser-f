@@ -7,8 +7,9 @@
 #include "nsISupports.idl"
 
 interface mozIDOMWindowProxy;
-interface nsIDOMElement;
 interface nsIPrivacyTransitionObserver;
+
+webidl Element;
 
 [ref] native OriginAttributes(mozilla::OriginAttributes);
 
@@ -53,7 +54,7 @@ interface nsILoadContext : nsISupports
    * Note that topFrameElement may be in chrome even when the nsILoadContext is
    * associated with content.
    */
-  readonly attribute nsIDOMElement topFrameElement;
+  readonly attribute Element topFrameElement;
 
   /**
    * If this LoadContext corresponds to a nested remote iframe, we don't have

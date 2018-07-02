@@ -10,15 +10,8 @@
    xmlns:xul="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
    xmlns:xbl="http://www.mozilla.org/xbl">
 
-  <binding id="menulist-base" extends="chrome://global/content/bindings/general.xml#basecontrol">
-    <resources>
-      <stylesheet src="chrome://global/content/menulist.css"/>
-      <stylesheet src="chrome://global/skin/menulist.css"/>
-    </resources>
-  </binding>
-
   <binding id="menulist" display="xul:menu"
-           extends="chrome://global/content/bindings/menulist.xml#menulist-base">
+           extends="chrome://global/content/bindings/general.xml#basecontrol">
     <content sizetopopup="pref">
       <xul:hbox class="menulist-label-box" flex="1">
         <xul:image class="menulist-icon" xbl:inherits="src=image,src"/>
@@ -336,46 +329,6 @@
 
           popup.appendChild(item);
           return item;
-        ]]>
-        </body>
-      </method>
-
-      <method name="insertItemAt">
-        <parameter name="index"/>
-        <parameter name="label"/>
-        <parameter name="value"/>
-        <parameter name="description"/>
-        <body>
-        <![CDATA[
-          const XULNS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
-          var popup = this.menupopup ||
-                      this.appendChild(document.createElementNS(XULNS, "menupopup"));
-          var item = document.createElementNS(XULNS, "menuitem");
-          item.setAttribute("label", label);
-          item.setAttribute("value", value);
-          if (description)
-            item.setAttribute("description", description);
-
-          if (index >= 0 && index < popup.childNodes.length)
-            popup.insertBefore(item, popup.childNodes[index]);
-          else
-            popup.appendChild(item);
-          return item;
-        ]]>
-        </body>
-      </method>
-
-      <method name="removeItemAt">
-        <parameter name="index"/>
-        <body>
-        <![CDATA[
-          var popup = this.menupopup;
-          if (popup && 0 <= index && index < popup.childNodes.length) {
-            var remove = popup.childNodes[index];
-            popup.removeChild(remove);
-            return remove;
-          }
-          return null;
         ]]>
         </body>
       </method>

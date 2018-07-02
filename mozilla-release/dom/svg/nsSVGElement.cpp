@@ -23,12 +23,7 @@
 #include "nsError.h"
 #include "nsIPresShell.h"
 #include "nsGkAtoms.h"
-#ifdef MOZ_OLD_STYLE
-#include "nsRuleWalker.h"
-#include "mozilla/css/Declaration.h"
-#endif
 #include "nsCSSProps.h"
-#include "nsCSSParser.h"
 #include "mozilla/EventListenerManager.h"
 #include "nsLayoutUtils.h"
 #include "nsSVGAnimatedTransformList.h"
@@ -61,7 +56,6 @@
 #include "mozilla/DeclarationBlockInlines.h"
 #include "mozilla/Unused.h"
 #include "mozilla/RestyleManager.h"
-#include "mozilla/RestyleManagerInlines.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -122,10 +116,8 @@ nsSVGElement::DidAnimateClass()
   nsIPresShell* shell = OwnerDoc()->GetShell();
   if (shell) {
     nsPresContext* presContext = shell->GetPresContext();
-    if (presContext && presContext->RestyleManager()->IsServo()) {
-      presContext->RestyleManager()
-                 ->AsServo()
-                 ->ClassAttributeWillBeChangedBySMIL(this);
+    if (presContext) {
+      presContext->RestyleManager()->ClassAttributeWillBeChangedBySMIL(this);
     }
   }
 
@@ -240,7 +232,7 @@ nsSVGElement::Init()
 // nsISupports methods
 
 NS_IMPL_ISUPPORTS_INHERITED(nsSVGElement, nsSVGElementBase,
-                            nsIDOMNode, nsIDOMElement)
+                            nsIDOMNode)
 
 //----------------------------------------------------------------------
 // Implementation
@@ -308,9 +300,7 @@ nsSVGElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
   // just delete the style rule and lazily reconstruct it as needed).
   if (aNamespaceID == kNameSpaceID_None && IsAttributeMapped(aName)) {
     mContentDeclarationBlock = nullptr;
-    if (OwnerDoc()->GetStyleBackendType() == StyleBackendType::Servo) {
-      OwnerDoc()->ScheduleSVGForPresAttrEvaluation(this);
-    }
+    OwnerDoc()->ScheduleSVGForPresAttrEvaluation(this);
   }
 
   if (IsEventAttributeName(aName) && aValue) {
@@ -544,7 +534,7 @@ nsSVGElement::ParseAttribute(int32_t aNamespaceID,
           RefPtr<nsAtom> valAtom = NS_Atomize(aValue);
           rv = enumInfo.mEnums[i].SetBaseValueAtom(valAtom, this);
           if (NS_FAILED(rv)) {
-            enumInfo.Reset(i);
+            enumInfo.SetUnknownValue(i);
           } else {
             aResult.SetTo(valAtom);
             didSetResult = true;
@@ -632,6 +622,11 @@ nsSVGElement::ParseAttribute(int32_t aNamespaceID,
 
     if (aAttribute == nsGkAtoms::_class) {
       mClassAttribute.SetBaseValue(aValue, this, false);
+      aResult.ParseAtomArray(aValue);
+      return true;
+    }
+
+    if (aAttribute == nsGkAtoms::rel) {
       aResult.ParseAtomArray(aValue);
       return true;
     }
@@ -925,26 +920,6 @@ nsSVGElement::NodeInfoChanged(nsIDocument* aOldDoc)
   OwnerDoc()->ScheduleSVGForPresAttrEvaluation(this);
 }
 
-#ifdef MOZ_OLD_STYLE
-NS_IMETHODIMP
-nsSVGElement::WalkContentStyleRules(nsRuleWalker* aRuleWalker)
-{
-#ifdef DEBUG
-//  printf("nsSVGElement(%p)::WalkContentStyleRules()\n", this);
-#endif
-  if (!mContentDeclarationBlock) {
-    UpdateContentDeclarationBlock(StyleBackendType::Gecko);
-  }
-
-  if (mContentDeclarationBlock) {
-    css::Declaration* declaration = mContentDeclarationBlock->AsGecko();
-    declaration->SetImmutable();
-    aRuleWalker->Forward(declaration);
-  }
-
-  return NS_OK;
-}
-#endif
 
 NS_IMETHODIMP_(bool)
 nsSVGElement::IsAttributeMapped(const nsAtom* name) const
@@ -1085,7 +1060,7 @@ nsSVGElement::sMaskMap[] = {
 };
 
 //----------------------------------------------------------------------
-// nsIDOMElement methods
+// Element methods
 
 // forwarded to Element implementations
 
@@ -1145,8 +1120,7 @@ nsSVGElement::IsSVGFocusable(bool* aIsFocusable, int32_t* aTabIndex)
   }
 
   // If a tabindex is specified at all, or the default tabindex is 0, we're focusable
-  *aIsFocusable =
-    tabIndex >= 0 || HasAttr(kNameSpaceID_None, nsGkAtoms::tabindex);
+  *aIsFocusable = tabIndex >= 0 || HasAttr(nsGkAtoms::tabindex);
 
   return false;
 }
@@ -1169,8 +1143,7 @@ public:
   MappedAttrParser(css::Loader* aLoader,
                    nsIURI* aDocURI,
                    already_AddRefed<nsIURI> aBaseURI,
-                   nsSVGElement* aElement,
-                   StyleBackendType aBackend);
+                   nsSVGElement* aElement);
   ~MappedAttrParser();
 
   // Parses a mapped attribute value.
@@ -1186,9 +1159,6 @@ private:
   // MEMBER DATA
   // -----------
   css::Loader*      mLoader;
-#ifdef MOZ_OLD_STYLE
-  nsCSSParser       mParser;
-#endif
 
   // Arguments for nsCSSParser::ParseProperty
   nsIURI*           mDocURI;
@@ -1199,23 +1169,16 @@ private:
 
   // For reporting use counters
   nsSVGElement*     mElement;
-
-  StyleBackendType mBackend;
 };
 
 MappedAttrParser::MappedAttrParser(css::Loader* aLoader,
                                    nsIURI* aDocURI,
                                    already_AddRefed<nsIURI> aBaseURI,
-                                   nsSVGElement* aElement,
-                                   StyleBackendType aBackend)
+                                   nsSVGElement* aElement)
   : mLoader(aLoader)
-#ifdef MOZ_OLD_STYLE
-  , mParser(aLoader)
-#endif
   , mDocURI(aDocURI)
   , mBaseURI(aBaseURI)
   , mElement(aElement)
-  , mBackend(aBackend)
 {
 }
 
@@ -1231,16 +1194,7 @@ MappedAttrParser::ParseMappedAttrValue(nsAtom* aMappedAttrName,
                                        const nsAString& aMappedAttrValue)
 {
   if (!mDecl) {
-    if (mBackend == StyleBackendType::Gecko) {
-#ifdef MOZ_OLD_STYLE
-      mDecl = new css::Declaration();
-      mDecl->AsGecko()->InitializeEmpty();
-#else
-      MOZ_CRASH("old style system disabled");
-#endif
-    } else {
-      mDecl = new ServoDeclarationBlock();
-    }
+    mDecl = new ServoDeclarationBlock();
   }
 
   // Get the nsCSSPropertyID ID for our mapped attribute.
@@ -1249,22 +1203,13 @@ MappedAttrParser::ParseMappedAttrValue(nsAtom* aMappedAttrName,
                                CSSEnabledState::eForAllContent);
   if (propertyID != eCSSProperty_UNKNOWN) {
     bool changed = false; // outparam for ParseProperty.
-    if (mBackend == StyleBackendType::Gecko) {
-#ifdef MOZ_OLD_STYLE
-      mParser.ParseProperty(propertyID, aMappedAttrValue, mDocURI, mBaseURI,
-                            mElement->NodePrincipal(), mDecl->AsGecko(), &changed, false, true);
-#else
-      MOZ_CRASH("old style system disabled");
-#endif
-    } else {
-      NS_ConvertUTF16toUTF8 value(aMappedAttrValue);
-      // FIXME (bug 1343964): Figure out a better solution for sending the base uri to servo
-      RefPtr<URLExtraData> data = new URLExtraData(mBaseURI, mDocURI,
-                                                   mElement->NodePrincipal());
-      changed = Servo_DeclarationBlock_SetPropertyById(
-        mDecl->AsServo()->Raw(), propertyID, &value, false, data,
-        ParsingMode::AllowUnitlessLength, mElement->OwnerDoc()->GetCompatibilityMode(), mLoader);
-    }
+    NS_ConvertUTF16toUTF8 value(aMappedAttrValue);
+    // FIXME (bug 1343964): Figure out a better solution for sending the base uri to servo
+    RefPtr<URLExtraData> data = new URLExtraData(mBaseURI, mDocURI,
+                                                 mElement->NodePrincipal());
+    changed = Servo_DeclarationBlock_SetPropertyById(
+      mDecl->AsServo()->Raw(), propertyID, &value, false, data,
+      ParsingMode::AllowUnitlessLength, mElement->OwnerDoc()->GetCompatibilityMode(), mLoader);
 
     if (changed) {
       // The normal reporting of use counters by the nsCSSParser won't happen
@@ -1291,21 +1236,8 @@ MappedAttrParser::ParseMappedAttrValue(nsAtom* aMappedAttrName,
   // nsCSSParser doesn't know about 'lang', so we need to handle it specially.
   if (aMappedAttrName == nsGkAtoms::lang) {
     propertyID = eCSSProperty__x_lang;
-    if (mBackend == StyleBackendType::Gecko) {
-#ifdef MOZ_OLD_STYLE
-      nsCSSExpandedDataBlock block;
-      mDecl->AsGecko()->ExpandTo(&block);
-      nsCSSValue cssValue(PromiseFlatString(aMappedAttrValue), eCSSUnit_Ident);
-      block.AddLonghandProperty(propertyID, cssValue);
-      mDecl->AsGecko()->ValueAppended(propertyID);
-      mDecl->AsGecko()->CompressFrom(&block);
-#else
-      MOZ_CRASH("old style system disabled");
-#endif
-    } else {
-      RefPtr<nsAtom> atom = NS_Atomize(aMappedAttrValue);
-      Servo_DeclarationBlock_SetIdentStringValue(mDecl->AsServo()->Raw(), propertyID, atom);
-    }
+    RefPtr<nsAtom> atom = NS_Atomize(aMappedAttrValue);
+    Servo_DeclarationBlock_SetIdentStringValue(mDecl->AsServo()->Raw(), propertyID, atom);
   }
 }
 
@@ -1321,7 +1253,7 @@ MappedAttrParser::GetDeclarationBlock()
 // Implementation Helpers:
 
 void
-nsSVGElement::UpdateContentDeclarationBlock(mozilla::StyleBackendType aBackend)
+nsSVGElement::UpdateContentDeclarationBlock()
 {
   NS_ASSERTION(!mContentDeclarationBlock,
                "we already have a content declaration block");
@@ -1334,7 +1266,7 @@ nsSVGElement::UpdateContentDeclarationBlock(mozilla::StyleBackendType aBackend)
 
   nsIDocument* doc = OwnerDoc();
   MappedAttrParser mappedAttrParser(doc->CSSLoader(), doc->GetDocumentURI(),
-                                    GetBaseURI(), this, aBackend);
+                                    GetBaseURI(), this);
 
   for (uint32_t i = 0; i < attrCount; ++i) {
     const nsAttrName* attrName = mAttrsAndChildren.AttrNameAt(i);
@@ -1575,7 +1507,8 @@ nsSVGElement::GetLengthInfo()
   return LengthAttributesInfo(nullptr, nullptr, 0);
 }
 
-void nsSVGElement::LengthAttributesInfo::Reset(uint8_t aAttrEnum)
+void
+nsSVGElement::LengthAttributesInfo::Reset(uint8_t aAttrEnum)
 {
   mLengths[aAttrEnum].Init(mLengthInfo[aAttrEnum].mCtxType,
                            aAttrEnum,
@@ -1925,7 +1858,8 @@ nsSVGElement::GetNumberInfo()
   return NumberAttributesInfo(nullptr, nullptr, 0);
 }
 
-void nsSVGElement::NumberAttributesInfo::Reset(uint8_t aAttrEnum)
+void
+nsSVGElement::NumberAttributesInfo::Reset(uint8_t aAttrEnum)
 {
   mNumbers[aAttrEnum].Init(aAttrEnum,
                            mNumberInfo[aAttrEnum].mDefaultValue);
@@ -1987,7 +1921,8 @@ nsSVGElement::GetNumberPairInfo()
   return NumberPairAttributesInfo(nullptr, nullptr, 0);
 }
 
-void nsSVGElement::NumberPairAttributesInfo::Reset(uint8_t aAttrEnum)
+void
+nsSVGElement::NumberPairAttributesInfo::Reset(uint8_t aAttrEnum)
 {
   mNumberPairs[aAttrEnum].Init(aAttrEnum,
                                mNumberPairInfo[aAttrEnum].mDefaultValue1,
@@ -2036,7 +1971,8 @@ nsSVGElement::GetIntegerInfo()
   return IntegerAttributesInfo(nullptr, nullptr, 0);
 }
 
-void nsSVGElement::IntegerAttributesInfo::Reset(uint8_t aAttrEnum)
+void
+nsSVGElement::IntegerAttributesInfo::Reset(uint8_t aAttrEnum)
 {
   mIntegers[aAttrEnum].Init(aAttrEnum,
                             mIntegerInfo[aAttrEnum].mDefaultValue);
@@ -2098,7 +2034,8 @@ nsSVGElement::GetIntegerPairInfo()
   return IntegerPairAttributesInfo(nullptr, nullptr, 0);
 }
 
-void nsSVGElement::IntegerPairAttributesInfo::Reset(uint8_t aAttrEnum)
+void
+nsSVGElement::IntegerPairAttributesInfo::Reset(uint8_t aAttrEnum)
 {
   mIntegerPairs[aAttrEnum].Init(aAttrEnum,
                                 mIntegerPairInfo[aAttrEnum].mDefaultValue1,
@@ -2148,7 +2085,8 @@ nsSVGElement::GetAngleInfo()
   return AngleAttributesInfo(nullptr, nullptr, 0);
 }
 
-void nsSVGElement::AngleAttributesInfo::Reset(uint8_t aAttrEnum)
+void
+nsSVGElement::AngleAttributesInfo::Reset(uint8_t aAttrEnum)
 {
   mAngles[aAttrEnum].Init(aAttrEnum,
                           mAngleInfo[aAttrEnum].mDefaultValue,
@@ -2196,7 +2134,8 @@ nsSVGElement::GetBooleanInfo()
   return BooleanAttributesInfo(nullptr, nullptr, 0);
 }
 
-void nsSVGElement::BooleanAttributesInfo::Reset(uint8_t aAttrEnum)
+void
+nsSVGElement::BooleanAttributesInfo::Reset(uint8_t aAttrEnum)
 {
   mBooleans[aAttrEnum].Init(aAttrEnum,
                             mBooleanInfo[aAttrEnum].mDefaultValue);
@@ -2235,10 +2174,18 @@ nsSVGElement::GetEnumInfo()
   return EnumAttributesInfo(nullptr, nullptr, 0);
 }
 
-void nsSVGElement::EnumAttributesInfo::Reset(uint8_t aAttrEnum)
+void
+nsSVGElement::EnumAttributesInfo::Reset(uint8_t aAttrEnum)
 {
   mEnums[aAttrEnum].Init(aAttrEnum,
                          mEnumInfo[aAttrEnum].mDefaultValue);
+}
+
+void
+nsSVGElement::EnumAttributesInfo::SetUnknownValue(uint8_t aAttrEnum)
+{
+  // Fortunately in SVG every enum's unknown value is 0
+  mEnums[aAttrEnum].Init(aAttrEnum, 0);
 }
 
 void
@@ -2399,12 +2346,14 @@ nsSVGElement::GetStringInfo()
   return StringAttributesInfo(nullptr, nullptr, 0);
 }
 
-void nsSVGElement::StringAttributesInfo::Reset(uint8_t aAttrEnum)
+void
+nsSVGElement::StringAttributesInfo::Reset(uint8_t aAttrEnum)
 {
   mStrings[aAttrEnum].Init(aAttrEnum);
 }
 
-void nsSVGElement::GetStringBaseValue(uint8_t aAttrEnum, nsAString& aResult) const
+void
+nsSVGElement::GetStringBaseValue(uint8_t aAttrEnum, nsAString& aResult) const
 {
   nsSVGElement::StringAttributesInfo info = const_cast<nsSVGElement*>(this)->GetStringInfo();
 
@@ -2417,7 +2366,8 @@ void nsSVGElement::GetStringBaseValue(uint8_t aAttrEnum, nsAString& aResult) con
           *info.mStringInfo[aAttrEnum].mName, aResult);
 }
 
-void nsSVGElement::SetStringBaseValue(uint8_t aAttrEnum, const nsAString& aValue)
+void
+nsSVGElement::SetStringBaseValue(uint8_t aAttrEnum, const nsAString& aValue)
 {
   nsSVGElement::StringAttributesInfo info = GetStringInfo();
 
@@ -2455,7 +2405,7 @@ nsSVGElement::WillChangeStringList(bool aIsConditionalProcessingAttribute,
 {
   nsAtom* name;
   if (aIsConditionalProcessingAttribute) {
-    nsCOMPtr<SVGTests> tests(do_QueryInterface(static_cast<nsIDOMElement*>(this)));
+    nsCOMPtr<SVGTests> tests(do_QueryInterface(static_cast<nsIDOMNode*>(this)));
     name = tests->GetAttrName(aAttrEnum);
   } else {
     name = *GetStringListInfo().mStringListInfo[aAttrEnum].mName;
@@ -2532,7 +2482,7 @@ nsSVGElement::RecompileScriptEventListeners()
     }
 
     nsAutoString value;
-    GetAttr(kNameSpaceID_None, attr, value);
+    GetAttr(attr, value);
     SetEventHandler(GetEventNameForAttr(attr), value, true);
   }
 }

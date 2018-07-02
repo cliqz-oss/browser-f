@@ -26,10 +26,9 @@ enum PromiseSlots {
 #define PROMISE_FLAG_RESOLVED  0x1
 #define PROMISE_FLAG_FULFILLED 0x2
 #define PROMISE_FLAG_HANDLED   0x4
-#define PROMISE_FLAG_REPORTED  0x8
-#define PROMISE_FLAG_DEFAULT_RESOLVE_FUNCTION 0x10
-#define PROMISE_FLAG_DEFAULT_REJECT_FUNCTION  0x20
-#define PROMISE_FLAG_ASYNC    0x40
+#define PROMISE_FLAG_DEFAULT_RESOLVE_FUNCTION 0x08
+#define PROMISE_FLAG_DEFAULT_REJECT_FUNCTION  0x10
+#define PROMISE_FLAG_ASYNC    0x20
 
 class AutoSetNewObjectMetadata;
 
@@ -88,11 +87,6 @@ class PromiseObject : public NativeObject
         MOZ_ASSERT(state() == JS::PromiseState::Rejected);
         return !(getFixedSlot(PromiseSlot_Flags).toInt32() & PROMISE_FLAG_HANDLED);
     }
-    void markAsReported() {
-        MOZ_ASSERT(isUnhandled());
-        int32_t flags = getFixedSlot(PromiseSlot_Flags).toInt32();
-        setFixedSlot(PromiseSlot_Flags, Int32Value(flags | PROMISE_FLAG_REPORTED));
-    }
 };
 
 /**
@@ -109,6 +103,12 @@ class PromiseObject : public NativeObject
 MOZ_MUST_USE JSObject*
 GetWaitForAllPromise(JSContext* cx, const JS::AutoObjectVector& promises);
 
+enum class CreateDependentPromise {
+    Always,
+    SkipIfCtorUnobservable,
+    Never
+};
+
 /**
  * Enqueues resolve/reject reactions in the given Promise's reactions lists
  * as though calling the original value of Promise.prototype.then.
@@ -122,7 +122,7 @@ GetWaitForAllPromise(JSContext* cx, const JS::AutoObjectVector& promises);
 MOZ_MUST_USE bool
 OriginalPromiseThen(JSContext* cx, Handle<PromiseObject*> promise,
                     HandleValue onFulfilled, HandleValue onRejected,
-                    MutableHandleObject dependent, bool createDependent);
+                    MutableHandleObject dependent, CreateDependentPromise createDependent);
 
 /**
  * PromiseResolve ( C, x )
@@ -258,13 +258,6 @@ class OffThreadPromiseRuntimeState
     // shutdown() must be called by the JSRuntime while the JSRuntime is valid.
     void shutdown(JSContext* cx);
 };
-
-bool
-Promise_static_resolve(JSContext* cx, unsigned argc, Value* vp);
-bool
-Promise_reject(JSContext* cx, unsigned argc, Value* vp);
-bool
-Promise_then(JSContext* cx, unsigned argc, Value* vp);
 
 } // namespace js
 

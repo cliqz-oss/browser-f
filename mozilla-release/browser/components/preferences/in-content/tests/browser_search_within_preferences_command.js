@@ -1,12 +1,9 @@
 "use strict";
 
-/* eslint-disable mozilla/no-cpows-in-tests */
-
 /**
  * Test for "command" event on search input (when user clicks the x button)
  */
 add_task(async function() {
-  await SpecialPowers.pushPrefEnv({"set": [["browser.storageManager.enabled", false]]});
   await openPreferencesViaOpenPreferencesAPI("privacy", {leaveOpen: true});
   let generalPane = gBrowser.contentDocument.getElementById("generalCategory");
 
@@ -35,5 +32,5 @@ add_task(async function() {
   // Checks if back to normal
   is_element_visible(generalPane, "Should be in generalPane");
 
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
 });

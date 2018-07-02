@@ -17,10 +17,10 @@
 
 #include <string.h>
 
-#include "jsarray.h"
 #include "jslibmath.h"
 #include "jsnum.h"
 
+#include "builtin/Array.h"
 #include "builtin/Eval.h"
 #include "builtin/String.h"
 #include "jit/AtomicOperations.h"
@@ -47,8 +47,7 @@
 #include "vm/StringType.h"
 #include "vm/TraceLogging.h"
 
-#include "jsboolinlines.h"
-
+#include "builtin/Boolean-inl.h"
 #include "jit/JitFrames-inl.h"
 #include "vm/Debugger-inl.h"
 #include "vm/EnvironmentObject-inl.h"
@@ -1190,11 +1189,30 @@ UnwindIteratorsForUncatchableException(JSContext* cx, const InterpreterRegs& reg
 {
     // c.f. the regular (catchable) TryNoteIterInterpreter loop in
     // ProcessTryNotes.
+    bool inForOfIterClose = false;
     for (TryNoteIterInterpreter tni(cx, regs); !tni.done(); ++tni) {
         JSTryNote* tn = *tni;
-        if (tn->kind == JSTRY_FOR_IN) {
+        switch (tn->kind) {
+          case JSTRY_FOR_IN: {
+            // See corresponding comment in ProcessTryNotes.
+            if (inForOfIterClose)
+                break;
+
             Value* sp = regs.spForStackDepth(tn->stackDepth);
             UnwindIteratorForUncatchableException(&sp[-1].toObject());
+            break;
+          }
+
+          case JSTRY_FOR_OF_ITERCLOSE:
+            inForOfIterClose = true;
+            break;
+
+          case JSTRY_FOR_OF:
+            inForOfIterClose = false;
+            break;
+
+          default:
+            break;
         }
     }
 }
@@ -1255,6 +1273,12 @@ ProcessTryNotes(JSContext* cx, EnvironmentIter& ei, InterpreterRegs& regs)
             return FinallyContinuation;
 
           case JSTRY_FOR_IN: {
+            // Don't let (extra) values pushed on the stack while closing a
+            // for-of iterator confuse us into thinking we still have to close
+            // an inner for-in iterator.
+            if (inForOfIterClose)
+                break;
+
             /* This is similar to JSOP_ENDITER in the interpreter loop. */
             DebugOnly<jsbytecode*> pc = regs.fp()->script()->main() + tn->start + tn->length;
             MOZ_ASSERT(JSOp(*pc) == JSOP_ENDITER);
@@ -1265,6 +1289,10 @@ ProcessTryNotes(JSContext* cx, EnvironmentIter& ei, InterpreterRegs& regs)
           }
 
           case JSTRY_DESTRUCTURING_ITERCLOSE: {
+            // See note above.
+            if (inForOfIterClose)
+                break;
+
             // Whether the destructuring iterator is done is at the top of the
             // stack. The iterator object is second from the top.
             MOZ_ASSERT(tn->stackDepth > 1);
@@ -1335,23 +1363,23 @@ HandleError(JSContext* cx, InterpreterRegs& regs)
     if (cx->isExceptionPending()) {
         /* Call debugger throw hooks. */
         if (!cx->isClosingGenerator()) {
-            JSTrapStatus status = Debugger::onExceptionUnwind(cx, regs.fp());
-            switch (status) {
-              case JSTRAP_ERROR:
+            ResumeMode mode = Debugger::onExceptionUnwind(cx, regs.fp());
+            switch (mode) {
+              case ResumeMode::Terminate:
                 goto again;
 
-              case JSTRAP_CONTINUE:
-              case JSTRAP_THROW:
+              case ResumeMode::Continue:
+              case ResumeMode::Throw:
                 break;
 
-              case JSTRAP_RETURN:
+              case ResumeMode::Return:
                 UnwindIteratorsForUncatchableException(cx, regs);
                 if (!ForcedReturn(cx, regs))
                     return ErrorReturnContinuation;
                 return SuccessfulReturnContinuation;
 
               default:
-                MOZ_CRASH("Bad Debugger::onExceptionUnwind status");
+                MOZ_CRASH("bad Debugger::onExceptionUnwind resume mode");
             }
         }
 
@@ -1909,17 +1937,17 @@ Interpret(JSContext* cx, RunState& state)
         goto prologue_error;
 
     switch (Debugger::onEnterFrame(cx, activation.entryFrame())) {
-      case JSTRAP_CONTINUE:
+      case ResumeMode::Continue:
         break;
-      case JSTRAP_RETURN:
+      case ResumeMode::Return:
         if (!ForcedReturn(cx, REGS))
             goto error;
         goto successful_return_continuation;
-      case JSTRAP_THROW:
-      case JSTRAP_ERROR:
+      case ResumeMode::Throw:
+      case ResumeMode::Terminate:
         goto error;
       default:
-        MOZ_CRASH("bad Debugger::onEnterFrame status");
+        MOZ_CRASH("bad Debugger::onEnterFrame resume mode");
     }
 
     // Increment the coverage for the main entry point.
@@ -1944,19 +1972,18 @@ CASE(EnableInterruptsPseudoOpcode)
     if (script->isDebuggee()) {
         if (script->stepModeEnabled()) {
             RootedValue rval(cx);
-            JSTrapStatus status = JSTRAP_CONTINUE;
-            status = Debugger::onSingleStep(cx, &rval);
-            switch (status) {
-              case JSTRAP_ERROR:
+            ResumeMode mode = Debugger::onSingleStep(cx, &rval);
+            switch (mode) {
+              case ResumeMode::Terminate:
                 goto error;
-              case JSTRAP_CONTINUE:
+              case ResumeMode::Continue:
                 break;
-              case JSTRAP_RETURN:
+              case ResumeMode::Return:
                 REGS.fp()->setReturnValue(rval);
                 if (!ForcedReturn(cx, REGS))
                     goto error;
                 goto successful_return_continuation;
-              case JSTRAP_THROW:
+              case ResumeMode::Throw:
                 cx->setPendingException(rval);
                 goto error;
               default:;
@@ -1969,22 +1996,22 @@ CASE(EnableInterruptsPseudoOpcode)
 
         if (script->hasBreakpointsAt(REGS.pc)) {
             RootedValue rval(cx);
-            JSTrapStatus status = Debugger::onTrap(cx, &rval);
-            switch (status) {
-              case JSTRAP_ERROR:
+            ResumeMode mode = Debugger::onTrap(cx, &rval);
+            switch (mode) {
+              case ResumeMode::Terminate:
                 goto error;
-              case JSTRAP_RETURN:
+              case ResumeMode::Return:
                 REGS.fp()->setReturnValue(rval);
                 if (!ForcedReturn(cx, REGS))
                     goto error;
                 goto successful_return_continuation;
-              case JSTRAP_THROW:
+              case ResumeMode::Throw:
                 cx->setPendingException(rval);
                 goto error;
               default:
                 break;
             }
-            MOZ_ASSERT(status == JSTRAP_CONTINUE);
+            MOZ_ASSERT(mode == ResumeMode::Continue);
             MOZ_ASSERT(rval.isInt32() && rval.toInt32() == op);
         }
     }
@@ -3070,8 +3097,10 @@ CASE(JSOP_FUNCALL)
     JSFunction* maybeFun;
     bool isFunction = IsFunctionObject(args.calleev(), &maybeFun);
 
-    /* Don't bother trying to fast-path calls to scripted non-constructors. */
-    if (!isFunction || !maybeFun->isInterpreted() || !maybeFun->isConstructor() ||
+    // Use the slow path if the callee is not an interpreted function or if we
+    // have to throw an exception.
+    if (!isFunction || !maybeFun->isInterpreted() ||
+        (construct && !maybeFun->isConstructor()) ||
         (!construct && maybeFun->isClassConstructor()))
     {
         if (construct) {
@@ -3144,17 +3173,17 @@ CASE(JSOP_FUNCALL)
         goto prologue_error;
 
     switch (Debugger::onEnterFrame(cx, REGS.fp())) {
-      case JSTRAP_CONTINUE:
+      case ResumeMode::Continue:
         break;
-      case JSTRAP_RETURN:
+      case ResumeMode::Return:
         if (!ForcedReturn(cx, REGS))
             goto error;
         goto successful_return_continuation;
-      case JSTRAP_THROW:
-      case JSTRAP_ERROR:
+      case ResumeMode::Throw:
+      case ResumeMode::Terminate:
         goto error;
       default:
-        MOZ_CRASH("bad Debugger::onEnterFrame status");
+        MOZ_CRASH("bad Debugger::onEnterFrame resume mode");
     }
 
     // Increment the coverage for the main entry point.
@@ -3179,7 +3208,7 @@ END_CASE(JSOP_OPTIMIZE_SPREADCALL)
 
 CASE(JSOP_THROWMSG)
 {
-    JS_ALWAYS_FALSE(ThrowMsgOperation(cx, GET_UINT16(REGS.pc)));
+    MOZ_ALWAYS_FALSE(ThrowMsgOperation(cx, GET_UINT16(REGS.pc)));
     goto error;
 }
 END_CASE(JSOP_THROWMSG)
@@ -3920,7 +3949,7 @@ CASE(JSOP_THROW)
     CHECK_BRANCH();
     ReservedRooted<Value> v(&rootValue0);
     POP_COPY_TO(v);
-    JS_ALWAYS_FALSE(Throw(cx, v));
+    MOZ_ALWAYS_FALSE(Throw(cx, v));
     /* let the code at error try to catch the exception. */
     goto error;
 }
@@ -3945,15 +3974,15 @@ CASE(JSOP_DEBUGGER)
 {
     RootedValue rval(cx);
     switch (Debugger::onDebuggerStatement(cx, REGS.fp())) {
-      case JSTRAP_ERROR:
+      case ResumeMode::Terminate:
         goto error;
-      case JSTRAP_CONTINUE:
+      case ResumeMode::Continue:
         break;
-      case JSTRAP_RETURN:
+      case ResumeMode::Return:
         if (!ForcedReturn(cx, REGS))
             goto error;
         goto successful_return_continuation;
-      case JSTRAP_THROW:
+      case ResumeMode::Throw:
         goto error;
       default:;
     }
@@ -4950,16 +4979,21 @@ js::NewObjectOperation(JSContext* cx, HandleScript script, jsbytecode* pc,
         group = ObjectGroup::allocationSiteGroup(cx, script, pc, JSProto_Object);
         if (!group)
             return nullptr;
-        if (group->maybePreliminaryObjects()) {
-            group->maybePreliminaryObjects()->maybeAnalyze(cx, group);
-            if (group->maybeUnboxedLayout())
-                group->maybeUnboxedLayout()->setAllocationSite(script, pc);
+
+        bool isUnboxed;
+        {
+            AutoSweepObjectGroup sweep(group);
+            if (group->maybePreliminaryObjects(sweep)) {
+                group->maybePreliminaryObjects(sweep)->maybeAnalyze(cx, group);
+                if (group->maybeUnboxedLayout(sweep))
+                    group->maybeUnboxedLayout(sweep)->setAllocationSite(script, pc);
+            }
+
+            if (group->shouldPreTenure(sweep) || group->maybePreliminaryObjects(sweep))
+                newKind = TenuredObject;
+            isUnboxed = group->maybeUnboxedLayout(sweep);
         }
-
-        if (group->shouldPreTenure() || group->maybePreliminaryObjects())
-            newKind = TenuredObject;
-
-        if (group->maybeUnboxedLayout())
+        if (isUnboxed)
             return UnboxedPlainObject::create(cx, group, newKind);
     }
 
@@ -4983,7 +5017,8 @@ js::NewObjectOperation(JSContext* cx, HandleScript script, jsbytecode* pc,
     } else {
         obj->setGroup(group);
 
-        if (PreliminaryObjectArray* preliminaryObjects = group->maybePreliminaryObjects())
+        AutoSweepObjectGroup sweep(group);
+        if (PreliminaryObjectArray* preliminaryObjects = group->maybePreliminaryObjects(sweep))
             preliminaryObjects->registerNewObject(obj);
     }
 
@@ -4998,9 +5033,15 @@ js::NewObjectOperationWithTemplate(JSContext* cx, HandleObject templateObject)
     // with the template object a copy of the object to create.
     MOZ_ASSERT(!templateObject->isSingleton());
 
-    NewObjectKind newKind = templateObject->group()->shouldPreTenure() ? TenuredObject : GenericObject;
-
-    if (templateObject->group()->maybeUnboxedLayout()) {
+    NewObjectKind newKind;
+    bool isUnboxed;
+    {
+        ObjectGroup* group = templateObject->group();
+        AutoSweepObjectGroup sweep(group);
+        newKind = group->shouldPreTenure(sweep) ? TenuredObject : GenericObject;
+        isUnboxed = group->maybeUnboxedLayout(sweep);
+    }
+    if (isUnboxed) {
         RootedObjectGroup group(cx, templateObject->group());
         return UnboxedPlainObject::create(cx, group, newKind);
     }
@@ -5026,10 +5067,11 @@ js::NewArrayOperation(JSContext* cx, HandleScript script, jsbytecode* pc, uint32
         group = ObjectGroup::allocationSiteGroup(cx, script, pc, JSProto_Array);
         if (!group)
             return nullptr;
-        if (group->maybePreliminaryObjects())
-            group->maybePreliminaryObjects()->maybeAnalyze(cx, group);
+        AutoSweepObjectGroup sweep(group);
+        if (group->maybePreliminaryObjects(sweep))
+            group->maybePreliminaryObjects(sweep)->maybeAnalyze(cx, group);
 
-        if (group->shouldPreTenure() || group->maybePreliminaryObjects())
+        if (group->shouldPreTenure(sweep) || group->maybePreliminaryObjects(sweep))
             newKind = TenuredObject;
     }
 
@@ -5050,7 +5092,12 @@ js::NewArrayOperationWithTemplate(JSContext* cx, HandleObject templateObject)
 {
     MOZ_ASSERT(!templateObject->isSingleton());
 
-    NewObjectKind newKind = templateObject->group()->shouldPreTenure() ? TenuredObject : GenericObject;
+    NewObjectKind newKind;
+    {
+        AutoSweepObjectGroup sweep(templateObject->group());
+        newKind =
+            templateObject->group()->shouldPreTenure(sweep) ? TenuredObject : GenericObject;
+    }
 
     ArrayObject* obj = NewDenseFullyAllocatedArray(cx, templateObject->as<ArrayObject>().length(),
                                                    nullptr, newKind);
@@ -5068,7 +5115,7 @@ js::ReportRuntimeLexicalError(JSContext* cx, unsigned errorNumber, HandleId id)
     MOZ_ASSERT(errorNumber == JSMSG_UNINITIALIZED_LEXICAL ||
                errorNumber == JSMSG_BAD_CONST_ASSIGN);
     JSAutoByteString printable;
-    if (ValueToPrintable(cx, IdToValue(id), &printable))
+    if (ValueToPrintableLatin1(cx, IdToValue(id), &printable))
         JS_ReportErrorNumberLatin1(cx, GetErrorMessage, nullptr, errorNumber, printable.ptr());
 }
 

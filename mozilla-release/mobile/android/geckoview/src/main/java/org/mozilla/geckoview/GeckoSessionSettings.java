@@ -90,9 +90,6 @@ public final class GeckoSessionSettings implements Parcelable {
                          Arrays.asList(DISPLAY_MODE_BROWSER, DISPLAY_MODE_MINIMAL_UI,
                                        DISPLAY_MODE_STANDALONE, DISPLAY_MODE_FULLSCREEN));
 
-    public static final Key<Boolean> USE_REMOTE_DEBUGGER =
-        new Key<Boolean>("useRemoteDebugger");
-
     private final GeckoSession mSession;
     private final GeckoBundle mBundle;
 
@@ -121,7 +118,6 @@ public final class GeckoSessionSettings implements Parcelable {
         mBundle.putBoolean(USE_MULTIPROCESS.name, true);
         mBundle.putBoolean(USE_DESKTOP_MODE.name, false);
         mBundle.putInt(DISPLAY_MODE.name, DISPLAY_MODE_BROWSER);
-        mBundle.putBoolean(USE_REMOTE_DEBUGGER.name, false);
     }
 
     public void setBoolean(final Key<Boolean> key, final boolean value) {
@@ -169,8 +165,8 @@ public final class GeckoSessionSettings implements Parcelable {
         }
     }
 
-    /* package */ GeckoBundle asBundle() {
-        return mBundle;
+    /* package */ GeckoBundle toBundle() {
+        return new GeckoBundle(mBundle);
     }
 
     @Override
@@ -182,6 +178,11 @@ public final class GeckoSessionSettings implements Parcelable {
     public boolean equals(final Object other) {
         return other instanceof GeckoSessionSettings &&
                 mBundle.equals(((GeckoSessionSettings) other).mBundle);
+    }
+
+    @Override
+    public int hashCode() {
+        return mBundle.hashCode();
     }
 
     private <T> boolean valueChangedLocked(final Key<T> key, T value) {
@@ -196,8 +197,8 @@ public final class GeckoSessionSettings implements Parcelable {
     }
 
     private void dispatchUpdate() {
-        if (mSession != null) {
-            mSession.getEventDispatcher().dispatch("GeckoView:UpdateSettings", null);
+        if (mSession != null && mSession.isOpen()) {
+            mSession.getEventDispatcher().dispatch("GeckoView:UpdateSettings", toBundle());
         }
     }
 

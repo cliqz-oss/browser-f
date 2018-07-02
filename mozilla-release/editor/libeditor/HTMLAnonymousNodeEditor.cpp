@@ -7,6 +7,7 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/dom/CSSPrimitiveValueBinding.h"
 #include "mozilla/dom/Element.h"
+#include "mozilla/dom/EventTarget.h"
 #include "mozilla/mozalloc.h"
 #include "nsAString.h"
 #include "nsCOMPtr.h"
@@ -18,9 +19,6 @@
 #include "nsAtom.h"
 #include "nsIContent.h"
 #include "nsID.h"
-#include "nsIDOMElement.h"
-#include "nsIDOMEventTarget.h"
-#include "nsIDOMNode.h"
 #include "nsIDOMWindow.h"
 #include "nsIDocument.h"
 #include "nsIDocumentObserver.h"
@@ -49,53 +47,30 @@ namespace mozilla {
 
 using namespace dom;
 
-// retrieve an integer stored into a CSS computed float value
-static int32_t GetCSSFloatValue(nsComputedDOMStyle* aComputedStyle,
-                                const nsAString& aProperty)
+// Retrieve the rounded number of CSS pixels from a computed CSS property.
+//
+// Note that this should only be called for properties whose resolved value
+// is CSS pixels (like width, height, left, top, right, bottom, margin, padding,
+// border-*-width, ...).
+//
+// See: https://drafts.csswg.org/cssom/#resolved-values
+static int32_t
+GetCSSFloatValue(nsComputedDOMStyle* aComputedStyle,
+                 const nsAString& aProperty)
 {
   MOZ_ASSERT(aComputedStyle);
 
   // get the computed CSSValue of the property
-  ErrorResult rv;
-  RefPtr<CSSValue> value = aComputedStyle->GetPropertyCSSValue(aProperty, rv);
-  if (rv.Failed() || !value) {
+  nsAutoString value;
+  nsresult rv = aComputedStyle->GetPropertyValue(aProperty, value);
+  if (NS_FAILED(rv)) {
     return 0;
   }
 
-  // check the type of the returned CSSValue; we handle here only
-  // pixel and enum types
-  RefPtr<nsROCSSPrimitiveValue> val = value->AsPrimitiveValue();
-  uint16_t type = val->PrimitiveType();
-
-  float f = 0;
-  switch (type) {
-    case CSSPrimitiveValueBinding::CSS_PX:
-      // the value is in pixels, just get it
-      f = val->GetFloatValue(CSSPrimitiveValueBinding::CSS_PX, rv);
-      if (rv.Failed()) {
-        return 0;
-      }
-      break;
-    case CSSPrimitiveValueBinding::CSS_IDENT: {
-      // the value is keyword, we have to map these keywords into
-      // numeric values
-      nsAutoString str;
-      val->GetStringValue(str, rv);
-      if (rv.Failed()) {
-        return 0;
-      }
-      if (str.EqualsLiteral("thin")) {
-        f = 1;
-      } else if (str.EqualsLiteral("medium")) {
-        f = 3;
-      } else if (str.EqualsLiteral("thick")) {
-        f = 5;
-      }
-      break;
-    }
-  }
-
-  return (int32_t) f;
+  // We only care about resolved values, not a big deal if the element is
+  // undisplayed, for example, and the value is "auto" or what not.
+  int32_t val = value.ToInteger(&rv);
+  return NS_SUCCEEDED(rv) ? val : 0;
 }
 
 class ElementDeletionObserver final : public nsStubMutationObserver
@@ -232,12 +207,11 @@ HTMLEditor::CreateAnonymousElement(nsAtom* aTag,
 
   // Must style the new element, otherwise the PostRecreateFramesFor call
   // below will do nothing.
-  if (ServoStyleSet* styleSet = ps->StyleSet()->GetAsServo()) {
-    // Sometimes editor likes to append anonymous content to elements
-    // in display:none subtrees, so avoid styling in those cases.
-    if (styleSet->MayTraverseFrom(newContent)) {
-      styleSet->StyleNewSubtree(newContent);
-    }
+  ServoStyleSet* styleSet = ps->StyleSet();
+  // Sometimes editor likes to append anonymous content to elements
+  // in display:none subtrees, so avoid styling in those cases.
+  if (ServoStyleSet::MayTraverseFrom(newContent)) {
+    styleSet->StyleNewSubtree(newContent);
   }
 
   ElementDeletionObserver* observer =
@@ -269,9 +243,8 @@ HTMLEditor::RemoveListenerAndDeleteRef(const nsAString& aEvent,
                                        ManualNACPtr aElement,
                                        nsIPresShell* aShell)
 {
-  nsCOMPtr<nsIDOMEventTarget> evtTarget(do_QueryInterface(aElement));
-  if (evtTarget) {
-    evtTarget->RemoveEventListener(aEvent, aListener, aUseCapture);
+  if (aElement) {
+    aElement->RemoveEventListener(aEvent, aListener, aUseCapture);
   }
   DeleteRefToAnonymousNode(Move(aElement), aShell);
 }
@@ -517,7 +490,7 @@ HTMLEditor::GetPositionAndDimensions(Element& aElement,
   } else {
     mResizedObjectIsAbsolutelyPositioned = false;
     RefPtr<nsGenericHTMLElement> htmlElement =
-      nsGenericHTMLElement::FromContent(&aElement);
+      nsGenericHTMLElement::FromNode(aElement);
     if (!htmlElement) {
       return NS_ERROR_NULL_POINTER;
     }

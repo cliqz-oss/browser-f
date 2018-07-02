@@ -214,6 +214,98 @@ TEST_F(Tls13CompatTest, EnabledHrrZeroRtt) {
   CheckForCompatHandshake();
 }
 
+class TlsSessionIDEchoFilter : public TlsHandshakeFilter {
+ public:
+  TlsSessionIDEchoFilter(const std::shared_ptr<TlsAgent>& a)
+      : TlsHandshakeFilter(
+            a, {kTlsHandshakeClientHello, kTlsHandshakeServerHello}) {}
+
+ protected:
+  virtual PacketFilter::Action FilterHandshake(const HandshakeHeader& header,
+                                               const DataBuffer& input,
+                                               DataBuffer* output) {
+    TlsParser parser(input);
+
+    // Skip version + random.
+    EXPECT_TRUE(parser.Skip(2 + 32));
+
+    // Capture CH.legacy_session_id.
+    if (header.handshake_type() == kTlsHandshakeClientHello) {
+      EXPECT_TRUE(parser.ReadVariable(&sid_, 1));
+      return KEEP;
+    }
+
+    // Check that server sends one too.
+    uint32_t sid_len = 0;
+    EXPECT_TRUE(parser.Read(&sid_len, 1));
+    EXPECT_EQ(sid_len, sid_.len());
+
+    // Echo the one we captured.
+    *output = input;
+    output->Write(parser.consumed(), sid_.data(), sid_.len());
+
+    return CHANGE;
+  }
+
+ private:
+  DataBuffer sid_;
+};
+
+TEST_F(TlsConnectTest, EchoTLS13CompatibilitySessionID) {
+  ConfigureSessionCache(RESUME_SESSIONID, RESUME_SESSIONID);
+
+  client_->SetOption(SSL_ENABLE_TLS13_COMPAT_MODE, PR_TRUE);
+
+  client_->SetVersionRange(SSL_LIBRARY_VERSION_TLS_1_2,
+                           SSL_LIBRARY_VERSION_TLS_1_3);
+
+  server_->SetVersionRange(SSL_LIBRARY_VERSION_TLS_1_2,
+                           SSL_LIBRARY_VERSION_TLS_1_2);
+
+  server_->SetFilter(MakeTlsFilter<TlsSessionIDEchoFilter>(client_));
+  ConnectExpectAlert(client_, kTlsAlertIllegalParameter);
+
+  client_->CheckErrorCode(SSL_ERROR_RX_MALFORMED_SERVER_HELLO);
+  server_->CheckErrorCode(SSL_ERROR_ILLEGAL_PARAMETER_ALERT);
+}
+
+class TlsSessionIDInjectFilter : public TlsHandshakeFilter {
+ public:
+  TlsSessionIDInjectFilter(const std::shared_ptr<TlsAgent>& a)
+      : TlsHandshakeFilter(a, {kTlsHandshakeServerHello}) {}
+
+ protected:
+  virtual PacketFilter::Action FilterHandshake(const HandshakeHeader& header,
+                                               const DataBuffer& input,
+                                               DataBuffer* output) {
+    TlsParser parser(input);
+
+    // Skip version + random.
+    EXPECT_TRUE(parser.Skip(2 + 32));
+
+    *output = input;
+
+    // Inject a Session ID.
+    const uint8_t fake_sid[SSL3_SESSIONID_BYTES] = {0xff};
+    output->Write(parser.consumed(), sizeof(fake_sid), 1);
+    output->Splice(fake_sid, sizeof(fake_sid), parser.consumed() + 1, 0);
+
+    return CHANGE;
+  }
+};
+
+TEST_F(TlsConnectTest, TLS13NonCompatModeSessionID) {
+  ConfigureVersion(SSL_LIBRARY_VERSION_TLS_1_3);
+
+  MakeTlsFilter<TlsSessionIDInjectFilter>(server_);
+  client_->ExpectSendAlert(kTlsAlertIllegalParameter);
+  server_->ExpectSendAlert(kTlsAlertBadRecordMac);
+  ConnectExpectFail();
+
+  client_->CheckErrorCode(SSL_ERROR_RX_MALFORMED_SERVER_HELLO);
+  server_->CheckErrorCode(SSL_ERROR_BAD_MAC_READ);
+}
+
 static const uint8_t kCannedCcs[] = {
     kTlsChangeCipherSpecType,
     SSL_LIBRARY_VERSION_TLS_1_2 >> 8,
@@ -342,6 +434,22 @@ TEST_F(TlsConnectDatagram13, CompatModeDtlsServer) {
   uint32_t session_id_len = 0;
   EXPECT_TRUE(server_hello->buffer().Read(2 + 32, 1, &session_id_len));
   EXPECT_EQ(0U, session_id_len);
+}
+
+TEST_F(Tls13CompatTest, ConnectWith12ThenAttemptToResume13CompatMode) {
+  ConfigureSessionCache(RESUME_SESSIONID, RESUME_SESSIONID);
+  ConfigureVersion(SSL_LIBRARY_VERSION_TLS_1_2);
+  Connect();
+
+  Reset();
+  ExpectResumption(RESUME_NONE);
+  version_ = SSL_LIBRARY_VERSION_TLS_1_3;
+  client_->SetVersionRange(SSL_LIBRARY_VERSION_TLS_1_2,
+                           SSL_LIBRARY_VERSION_TLS_1_3);
+  server_->SetVersionRange(SSL_LIBRARY_VERSION_TLS_1_2,
+                           SSL_LIBRARY_VERSION_TLS_1_3);
+  EnableCompatMode();
+  Connect();
 }
 
 }  // namespace nss_test

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use WindowWrapper;
+use {WindowWrapper, NotifierEvent};
 use base64;
 use image::load as load_piston_image;
 use image::png::PNGEncoder;
@@ -32,6 +32,7 @@ const PLATFORM: &str = "other";
 const OPTION_DISABLE_SUBPX: &str = "disable-subpixel";
 const OPTION_DISABLE_AA: &str = "disable-aa";
 const OPTION_DISABLE_DUAL_SOURCE_BLENDING: &str = "disable-dual-source-blending";
+const OPTION_ALLOW_MIPMAPS: &str = "allow-mipmaps";
 
 pub struct ReftestOptions {
     // These override values that are lower.
@@ -77,6 +78,7 @@ pub struct Reftest {
     expected_alpha_targets: Option<usize>,
     expected_color_targets: Option<usize>,
     disable_dual_source_blending: bool,
+    allow_mipmaps: bool,
     zoom_factor: f32,
 }
 
@@ -196,6 +198,7 @@ impl ReftestManifest {
             let mut expected_draw_calls = None;
             let mut disable_dual_source_blending = false;
             let mut zoom_factor = 1.0;
+            let mut allow_mipmaps = false;
 
             for (i, token) in tokens.iter().enumerate() {
                 match *token {
@@ -248,6 +251,9 @@ impl ReftestManifest {
                         if args.iter().any(|arg| arg == &OPTION_DISABLE_DUAL_SOURCE_BLENDING) {
                             disable_dual_source_blending = true;
                         }
+                        if args.iter().any(|arg| arg == &OPTION_ALLOW_MIPMAPS) {
+                            allow_mipmaps = true;
+                        }
                     }
                     "==" => {
                         op = ReftestOp::Equal;
@@ -267,6 +273,7 @@ impl ReftestManifest {
                             expected_alpha_targets,
                             expected_color_targets,
                             disable_dual_source_blending,
+                            allow_mipmaps,
                             zoom_factor,
                         });
 
@@ -292,10 +299,10 @@ impl ReftestManifest {
 pub struct ReftestHarness<'a> {
     wrench: &'a mut Wrench,
     window: &'a mut WindowWrapper,
-    rx: Receiver<()>,
+    rx: &'a Receiver<NotifierEvent>,
 }
 impl<'a> ReftestHarness<'a> {
-    pub fn new(wrench: &'a mut Wrench, window: &'a mut WindowWrapper, rx: Receiver<()>) -> Self {
+    pub fn new(wrench: &'a mut Wrench, window: &'a mut WindowWrapper, rx: &'a Receiver<NotifierEvent>) -> Self {
         ReftestHarness { wrench, window, rx }
     }
 
@@ -334,6 +341,12 @@ impl<'a> ReftestHarness<'a> {
     fn run_reftest(&mut self, t: &Reftest) -> bool {
         println!("REFTEST {}", t);
 
+        self.wrench
+            .api
+            .send_debug_cmd(
+                DebugCommand::ClearCaches(ClearCache::all())
+            );
+
         self.wrench.set_page_zoom(ZoomFactor::new(t.zoom_factor));
 
         if t.disable_dual_source_blending {
@@ -351,6 +364,7 @@ impl<'a> ReftestHarness<'a> {
                     t.reference.as_path(),
                     window_size,
                     t.font_render_mode,
+                    t.allow_mipmaps,
                 );
                 reference
             }
@@ -366,6 +380,7 @@ impl<'a> ReftestHarness<'a> {
             t.test.as_path(),
             reference.size,
             t.font_render_mode,
+            t.allow_mipmaps,
         );
 
         if t.disable_dual_source_blending {
@@ -464,9 +479,11 @@ impl<'a> ReftestHarness<'a> {
         filename: &Path,
         size: DeviceUintSize,
         font_render_mode: Option<FontRenderMode>,
+        allow_mipmaps: bool,
     ) -> (ReftestImage, RendererStats) {
         let mut reader = YamlFrameReader::new(filename);
         reader.set_font_render_mode(font_render_mode);
+        reader.allow_mipmaps(allow_mipmaps);
         reader.do_frame(self.wrench);
 
         // wait for the frame
@@ -474,7 +491,11 @@ impl<'a> ReftestHarness<'a> {
         let stats = self.wrench.render();
 
         let window_size = self.window.get_inner_size();
-        assert!(size.width <= window_size.width && size.height <= window_size.height);
+        assert!(
+            size.width <= window_size.width &&
+            size.height <= window_size.height,
+            format!("size={:?} ws={:?}", size, window_size)
+        );
 
         // taking the bottom left sub-rectangle
         let rect = DeviceUintRect::new(DeviceUintPoint::new(0, window_size.height - size.height), size);

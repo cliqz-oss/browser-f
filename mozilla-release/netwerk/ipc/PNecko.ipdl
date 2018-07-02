@@ -36,7 +36,7 @@ include protocol PAltDataOutputStream;
 using class IPC::SerializedLoadContext from "SerializedLoadContext.h";
 using mozilla::dom::TabId from "mozilla/dom/ipc/IdType.h";
 using class IPC::Principal from "mozilla/dom/PermissionMessageUtils.h";
-using nsCOMPtr<nsIInputStream> from "mozilla/ipc/IPCStreamUtils.h";
+using refcounted class nsIInputStream from "mozilla/ipc/IPCStreamUtils.h";
 
 namespace mozilla {
 namespace net {
@@ -121,14 +121,14 @@ parent:
   async RequestContextAfterDOMContentLoaded(uint64_t rcid);
   async RemoveRequestContext(uint64_t rcid);
 
-  async PAltDataOutputStream(nsCString type, PHttpChannel channel);
+  async PAltDataOutputStream(nsCString type, int64_t predictedSize, PHttpChannel channel);
 
   async PStunAddrsRequest();
 
   /**
    * WebExtension-specific remote resource loading
    */
-  async GetExtensionStream(URIParams uri) returns (nsCOMPtr<nsIInputStream> stream);
+  async GetExtensionStream(URIParams uri) returns (nsIInputStream stream);
   async GetExtensionFD(URIParams uri) returns (FileDescriptor fd);
 
 child:

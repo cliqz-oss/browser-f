@@ -22,7 +22,6 @@
 interface ApplicationCache;
 interface IID;
 interface nsIBrowserDOMWindow;
-interface nsIMessageBroadcaster;
 interface XULControllers;
 
 // http://www.whatwg.org/specs/web-apps/current-work/
@@ -349,6 +348,14 @@ partial interface Window {
    */
   [ChromeOnly]
   boolean shouldReportForServiceWorkerScope(USVString aScope);
+
+  /**
+   * InstallTrigger is used for extension installs.  Ideally it would
+   * be something like a WebIDL namespace, but we don't support
+   * JS-implemented static things yet.  See bug 863952.
+   */
+  [Replaceable]
+  readonly attribute InstallTriggerImpl? InstallTrigger;
 };
 
 Window implements TouchEventHandlers;
@@ -423,15 +430,15 @@ partial interface Window {
   [Throws, Func="nsGlobalWindowInner::IsPrivilegedChromeWindow"]
   void notifyDefaultButtonLoaded(Element defaultButton);
 
-  [Throws, Func="nsGlobalWindowInner::IsPrivilegedChromeWindow"]
-  readonly attribute nsIMessageBroadcaster messageManager;
+  [Func="nsGlobalWindowInner::IsPrivilegedChromeWindow"]
+  readonly attribute ChromeMessageBroadcaster messageManager;
 
   /**
    * Returns the message manager identified by the given group name that
    * manages all frame loaders belonging to that group.
    */
-  [Throws, Func="nsGlobalWindowInner::IsPrivilegedChromeWindow"]
-  nsIMessageBroadcaster getGroupMessageManager(DOMString aGroup);
+  [Func="nsGlobalWindowInner::IsPrivilegedChromeWindow"]
+  ChromeMessageBroadcaster getGroupMessageManager(DOMString aGroup);
 
   /**
    * On some operating systems, we must allow the window manager to
@@ -439,12 +446,10 @@ partial interface Window {
    * start dragging the window. This function will fail unless called
    * while the left mouse button is held down, callers must check this.
    *
-   * The optional panel argument should be set when moving a panel.
-   *
    * Throws NS_ERROR_NOT_IMPLEMENTED if the OS doesn't support this.
    */
   [Throws, Func="nsGlobalWindowInner::IsPrivilegedChromeWindow"]
-  void beginWindowMove(Event mouseDownEvent, optional Element? panel = null);
+  void beginWindowMove(Event mouseDownEvent);
 
   /**
    * Calls the given function as soon as a style or layout flush for the

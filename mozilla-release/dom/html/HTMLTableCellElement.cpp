@@ -10,9 +10,6 @@
 #include "mozilla/GenericSpecifiedValuesInlines.h"
 #include "nsMappedAttributes.h"
 #include "nsAttrValueInlines.h"
-#ifdef MOZ_OLD_STYLE
-#include "nsRuleWalker.h"
-#endif
 #include "celldata.h"
 #include "mozilla/dom/HTMLTableCellElementBinding.h"
 
@@ -38,7 +35,7 @@ NS_IMPL_ELEMENT_CLONE(HTMLTableCellElement)
 HTMLTableRowElement*
 HTMLTableCellElement::GetRow() const
 {
-  return HTMLTableRowElement::FromContentOrNull(GetParent());
+  return HTMLTableRowElement::FromNodeOrNull(GetParent());
 }
 
 // protected method
@@ -93,21 +90,6 @@ HTMLTableCellElement::CellIndex() const
   return -1;
 }
 
-#ifdef MOZ_OLD_STYLE
-NS_IMETHODIMP
-HTMLTableCellElement::WalkContentStyleRules(nsRuleWalker* aRuleWalker)
-{
-  nsresult rv = nsGenericHTMLElement::WalkContentStyleRules(aRuleWalker);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  if (nsMappedAttributes* tableInheritedAttributes = GetMappedAttributesInheritedFromTable()) {
-    if (tableInheritedAttributes) {
-      aRuleWalker->Forward(tableInheritedAttributes);
-    }
-  }
-  return NS_OK;
-}
-#endif
 
 nsMappedAttributes*
 HTMLTableCellElement::GetMappedAttributesInheritedFromTable() const
@@ -203,48 +185,44 @@ void
 HTMLTableCellElement::MapAttributesIntoRule(const nsMappedAttributes* aAttributes,
                                             GenericSpecifiedValues* aData)
 {
-  if (aData->ShouldComputeStyleStruct(NS_STYLE_INHERIT_BIT(Position))) {
-    // width: value
-    if (!aData->PropertyIsSet(eCSSProperty_width)) {
-      const nsAttrValue* value = aAttributes->GetAttr(nsGkAtoms::width);
-      if (value && value->Type() == nsAttrValue::eInteger) {
-        if (value->GetIntegerValue() > 0)
-          aData->SetPixelValue(eCSSProperty_width, (float)value->GetIntegerValue());
-        // else 0 implies auto for compatibility.
-      }
-      else if (value && value->Type() == nsAttrValue::ePercent) {
-        if (value->GetPercentValue() > 0.0f)
-          aData->SetPercentValue(eCSSProperty_width, value->GetPercentValue());
-        // else 0 implies auto for compatibility
-      }
+  // width: value
+  if (!aData->PropertyIsSet(eCSSProperty_width)) {
+    const nsAttrValue* value = aAttributes->GetAttr(nsGkAtoms::width);
+    if (value && value->Type() == nsAttrValue::eInteger) {
+      if (value->GetIntegerValue() > 0)
+        aData->SetPixelValue(eCSSProperty_width, (float)value->GetIntegerValue());
+      // else 0 implies auto for compatibility.
     }
-    // height: value
-    if (!aData->PropertyIsSet(eCSSProperty_height)) {
-      const nsAttrValue* value = aAttributes->GetAttr(nsGkAtoms::height);
-      if (value && value->Type() == nsAttrValue::eInteger) {
-        if (value->GetIntegerValue() > 0)
-          aData->SetPixelValue(eCSSProperty_height, (float)value->GetIntegerValue());
-        // else 0 implies auto for compatibility.
-      }
-      else if (value && value->Type() == nsAttrValue::ePercent) {
-        if (value->GetPercentValue() > 0.0f)
-          aData->SetPercentValue(eCSSProperty_height, value->GetPercentValue());
-        // else 0 implies auto for compatibility
-      }
+    else if (value && value->Type() == nsAttrValue::ePercent) {
+      if (value->GetPercentValue() > 0.0f)
+        aData->SetPercentValue(eCSSProperty_width, value->GetPercentValue());
+      // else 0 implies auto for compatibility
     }
   }
-  if (aData->ShouldComputeStyleStruct(NS_STYLE_INHERIT_BIT(Text))) {
-    if (!aData->PropertyIsSet(eCSSProperty_white_space)) {
-      // nowrap: enum
-      if (aAttributes->GetAttr(nsGkAtoms::nowrap)) {
-        // See if our width is not a nonzero integer width.
-        const nsAttrValue* value = aAttributes->GetAttr(nsGkAtoms::width);
-        nsCompatibility mode = aData->Document()->GetCompatibilityMode();
-        if (!value || value->Type() != nsAttrValue::eInteger ||
-            value->GetIntegerValue() == 0 ||
-            eCompatibility_NavQuirks != mode) {
-          aData->SetKeywordValue(eCSSProperty_white_space, StyleWhiteSpace::Nowrap);
-        }
+  // height: value
+  if (!aData->PropertyIsSet(eCSSProperty_height)) {
+    const nsAttrValue* value = aAttributes->GetAttr(nsGkAtoms::height);
+    if (value && value->Type() == nsAttrValue::eInteger) {
+      if (value->GetIntegerValue() > 0)
+        aData->SetPixelValue(eCSSProperty_height, (float)value->GetIntegerValue());
+      // else 0 implies auto for compatibility.
+    }
+    else if (value && value->Type() == nsAttrValue::ePercent) {
+      if (value->GetPercentValue() > 0.0f)
+        aData->SetPercentValue(eCSSProperty_height, value->GetPercentValue());
+      // else 0 implies auto for compatibility
+    }
+  }
+  if (!aData->PropertyIsSet(eCSSProperty_white_space)) {
+    // nowrap: enum
+    if (aAttributes->GetAttr(nsGkAtoms::nowrap)) {
+      // See if our width is not a nonzero integer width.
+      const nsAttrValue* value = aAttributes->GetAttr(nsGkAtoms::width);
+      nsCompatibility mode = aData->Document()->GetCompatibilityMode();
+      if (!value || value->Type() != nsAttrValue::eInteger ||
+          value->GetIntegerValue() == 0 ||
+          eCompatibility_NavQuirks != mode) {
+        aData->SetKeywordValue(eCSSProperty_white_space, StyleWhiteSpace::Nowrap);
       }
     }
   }

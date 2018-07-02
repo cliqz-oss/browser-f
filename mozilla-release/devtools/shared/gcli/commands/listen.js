@@ -22,6 +22,7 @@ XPCOMUtils.defineLazyGetter(this, "debuggerServer", () => {
   // settings).
   let serverLoader = new DevToolsLoader();
   serverLoader.invisibleToDebugger = true;
+  // eslint-disable-next-line no-shadow
   let { DebuggerServer: debuggerServer } = serverLoader.require("devtools/server/main");
   debuggerServer.init();
   debuggerServer.registerAllActors();
@@ -65,7 +66,7 @@ exports.items = [
         description: l10n.lookup("listenProtocolDesc"),
       },
     ],
-    exec: function (args, context) {
+    exec: function(args, context) {
       let listener = debuggerServer.createListener();
       if (!listener) {
         throw new Error(l10n.lookup("listenDisabledOutput"));
@@ -95,7 +96,7 @@ exports.items = [
     name: "unlisten",
     description: l10n.lookup("unlistenDesc"),
     manual: l10n.lookup("unlistenManual"),
-    exec: function (args, context) {
+    exec: function(args, context) {
       debuggerServer.closeAllListeners();
       return l10n.lookup("unlistenOutput");
     }

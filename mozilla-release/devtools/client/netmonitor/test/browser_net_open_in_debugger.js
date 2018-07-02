@@ -7,7 +7,7 @@
  * Test the 'Open in debugger' feature
  */
 
-add_task(async function () {
+add_task(async function() {
   let { tab, monitor, toolbox} = await initNetMonitor(CONTENT_TYPE_WITHOUT_CACHE_URL);
   info("Starting test... ");
 
@@ -17,11 +17,8 @@ add_task(async function () {
   let Actions = windowRequire("devtools/client/netmonitor/src/actions/index");
   store.dispatch(Actions.batchEnable(false));
 
-  let wait = waitForNetworkEvents(monitor, CONTENT_TYPE_WITHOUT_CACHE_REQUESTS);
-  await ContentTask.spawn(tab.linkedBrowser, {}, async function () {
-    content.wrappedJSObject.performRequests();
-  });
-  await wait;
+  // Execute requests.
+  await performRequests(monitor, tab, CONTENT_TYPE_WITHOUT_CACHE_REQUESTS);
 
   wait = waitForDOM(contextMenuDoc, "#request-list-context-open-in-debugger");
   EventUtils.sendMouseEvent({ type: "mousedown" },

@@ -54,9 +54,6 @@
 #include "nsThreadPool.h"
 
 #include "xptinfo.h"
-#include "nsIInterfaceInfoManager.h"
-#include "xptiprivate.h"
-#include "mozilla/XPTInterfaceInfoManager.h"
 
 #include "nsTimerImpl.h"
 #include "TimerThread.h"
@@ -155,13 +152,13 @@ extern nsresult nsStringInputStreamConstructor(nsISupports*, REFNSIID, void**);
 
 #include "gfxPlatform.h"
 
-#if EXPOSE_INTL_API
-#include "unicode/putil.h"
-#endif
-
 using namespace mozilla;
 using base::AtExitManager;
 using mozilla::ipc::BrowserProcessSubThread;
+
+// From toolkit/library/rust/lib.rs
+extern "C" void GkRust_Init();
+extern "C" void GkRust_Shutdown();
 
 namespace {
 
@@ -248,24 +245,6 @@ nsThreadManagerGetSingleton(nsISupports* aOuter,
 }
 
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsThreadPool)
-
-static nsresult
-nsXPTIInterfaceInfoManagerGetSingleton(nsISupports* aOuter,
-                                       const nsIID& aIID,
-                                       void** aInstancePtr)
-{
-  NS_ASSERTION(aInstancePtr, "null outptr");
-  if (NS_WARN_IF(aOuter)) {
-    return NS_ERROR_NO_AGGREGATION;
-  }
-
-  nsCOMPtr<nsIInterfaceInfoManager> iim(XPTInterfaceInfoManager::GetSingleton());
-  if (!iim) {
-    return NS_ERROR_FAILURE;
-  }
-
-  return iim->QueryInterface(aIID, aInstancePtr);
-}
 
 nsComponentManagerImpl* nsComponentManagerImpl::gComponentManager = nullptr;
 bool gXPCOMShuttingDown = false;
@@ -472,7 +451,12 @@ NS_InitXPCOM2(nsIServiceManager** aResult,
 
   NS_InitAtomTable();
 
-  mozilla::LogModule::Init();
+  // We don't have the arguments by hand here.  If logging has already been
+  // initialized by a previous call to LogModule::Init with the arguments
+  // passed, passing (0, nullptr) is alright here.
+  mozilla::LogModule::Init(0, nullptr);
+
+  GkRust_Init();
 
   nsresult rv = NS_OK;
 
@@ -655,17 +639,6 @@ NS_InitXPCOM2(nsIServiceManager** aResult,
                         memmove);
 #endif
 
-#if EXPOSE_INTL_API && defined(MOZ_ICU_DATA_ARCHIVE)
-  nsCOMPtr<nsIFile> greDir;
-  nsDirectoryService::gService->Get(NS_GRE_DIR,
-                                    NS_GET_IID(nsIFile),
-                                    getter_AddRefs(greDir));
-  MOZ_ASSERT(greDir);
-  nsAutoCString nativeGREPath;
-  greDir->GetNativePath(nativeGREPath);
-  u_setDataDirectory(nativeGREPath.get());
-#endif
-
   // Initialize the JS engine.
   const char* jsInitFailureReason = JS_InitWithFailureDiagnostic();
   if (jsInitFailureReason) {
@@ -682,10 +655,6 @@ NS_InitXPCOM2(nsIServiceManager** aResult,
   if (aResult) {
     NS_ADDREF(*aResult = nsComponentManagerImpl::gComponentManager);
   }
-
-  // The iimanager constructor searches and registers XPT files.
-  // (We trigger the singleton's lazy construction here to make that happen.)
-  (void)XPTInterfaceInfoManager::GetSingleton();
 
   // After autoreg, but before we actually instantiate any components,
   // add any services listed in the "xpcom-directory-providers" category
@@ -743,7 +712,13 @@ NS_InitMinimalXPCOM()
   mozilla::TimeStamp::Startup();
   NS_LogInit();
   NS_InitAtomTable();
-  mozilla::LogModule::Init();
+
+  // We don't have the arguments by hand here.  If logging has already been
+  // initialized by a previous call to LogModule::Init with the arguments
+  // passed, passing (0, nullptr) is alright here.
+  mozilla::LogModule::Init(0, nullptr);
+
+  GkRust_Init();
 
   nsresult rv = nsThreadManager::get().Init();
   if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -1008,23 +983,16 @@ ShutdownXPCOM(nsIServiceManager* aServMgr)
   // down, any remaining objects that could be holding NSS resources (should)
   // have been released, so we can safely shut down NSS.
   if (NSS_IsInitialized()) {
-    // It would be nice to enforce that this succeeds, at least on debug builds.
-    // This would alert us to NSS resource leaks. Unfortunately there are some
-    // architectural roadblocks in the way. Some tests (e.g. pkix gtests) need
-    // to be re-worked to release their NSS resources when they're done. In the
-    // meantime, just emit a warning. Chasing down these leaks is tracked in
-    // bug 1230312.
     if (NSS_Shutdown() != SECSuccess) {
-      NS_WARNING("NSS_Shutdown failed - some NSS resources are still in use "
-                 "(see bugs 1417680 and 1230312)");
+      // If you're seeing this crash and/or warning, some NSS resources are
+      // still in use (see bugs 1417680 and 1230312).
+#if defined(DEBUG) && !defined(ANDROID)
+      MOZ_CRASH("NSS_Shutdown failed");
+#else
+      NS_WARNING("NSS_Shutdown failed");
+#endif
     }
   }
-
-  // Release our own singletons
-  // Do this _after_ shutting down the component manager, because the
-  // JS component loader will use XPConnect to call nsIModule::canUnload,
-  // and that will spin up the InterfaceInfoManager again -- bad mojo
-  XPTInterfaceInfoManager::FreeInterfaceInfoManager();
 
   // Finally, release the component manager last because it unloads the
   // libraries:
@@ -1038,6 +1006,8 @@ ShutdownXPCOM(nsIServiceManager* aServMgr)
 
   // Shut down SystemGroup for main thread dispatching.
   SystemGroup::Shutdown();
+
+  GkRust_Shutdown();
 
   NS_ShutdownAtomTable();
 

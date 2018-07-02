@@ -13,8 +13,6 @@
 #include "nsGkAtoms.h"
 #include "nsIDOMNode.h"
 #include "nsIFormControl.h"
-#include "mozilla/StyleSetHandle.h"
-#include "mozilla/StyleSetHandleInlines.h"
 #include "mozilla/dom/HTMLInputElement.h"
 #include "nsIDocument.h"
 
@@ -22,15 +20,15 @@ using mozilla::dom::Element;
 using mozilla::dom::HTMLInputElement;
 using mozilla::dom::CallerType;
 
-nsColorControlFrame::nsColorControlFrame(nsStyleContext* aContext)
-  : nsHTMLButtonControlFrame(aContext, kClassID)
+nsColorControlFrame::nsColorControlFrame(ComputedStyle* aStyle)
+  : nsHTMLButtonControlFrame(aStyle, kClassID)
 {
 }
 
 nsIFrame*
-NS_NewColorControlFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewColorControlFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsColorControlFrame(aContext);
+  return new (aPresShell) nsColorControlFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsColorControlFrame)
@@ -93,7 +91,7 @@ nsColorControlFrame::UpdateColor()
   // Get the color from the "value" property of our content; it will return the
   // default color (through the sanitization algorithm) if the value is empty.
   nsAutoString color;
-  HTMLInputElement* elt = HTMLInputElement::FromContent(mContent);
+  HTMLInputElement* elt = HTMLInputElement::FromNode(mContent);
   elt->GetValue(color, CallerType::System);
 
   if (color.IsEmpty()) {

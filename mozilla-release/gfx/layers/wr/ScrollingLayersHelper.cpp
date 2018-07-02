@@ -124,7 +124,7 @@ ScrollingLayersHelper::BeginItem(nsDisplayItem* aItem,
   // nested ScrollingLayersHelper may rely on things like TopmostScrollId and
   // TopmostClipId, so now we need to push at most two things onto the stack.
 
-  wr::WrScrollId rootId = wr::WrScrollId { 0 };
+  wr::WrScrollId rootId = wr::WrScrollId::RootScrollNode();
   wr::WrScrollId leafmostId = ids.first.valueOr(rootId);
 
   FrameMetrics::ViewID viewId = aItem->GetActiveScrolledRoot()
@@ -301,7 +301,7 @@ ScrollingLayersHelper::RecurseAndDefineClip(nsDisplayItem* aItem,
     MOZ_ASSERT(!ancestorIds.second);
     FrameMetrics::ViewID viewId = aChain->mASR ? aChain->mASR->GetViewId() : FrameMetrics::NULL_SCROLL_ID;
 
-    wr::WrScrollId rootId = wr::WrScrollId { 0 };
+    wr::WrScrollId rootId = wr::WrScrollId::RootScrollNode();
     auto scrollId = mBuilder->GetScrollIdForDefinedScrollLayer(viewId).valueOr(rootId);
     if (mBuilder->TopmostScrollId() == scrollId) {
       if (mBuilder->TopmostIsClip()) {
@@ -349,7 +349,7 @@ ScrollingLayersHelper::RecurseAndDefineClip(nsDisplayItem* aItem,
   // Define the clip
   wr::WrClipId clipId = mBuilder->DefineClip(
       ancestorIds.first, ancestorIds.second,
-      aSc.ToRelativeLayoutRect(clip), &wrRoundedRects);
+      wr::ToRoundedLayoutRect(clip), &wrRoundedRects);
   if (!mBuilder->HasExtraClip()) {
     mCacheStack.back()[aChain] = clipId;
   }
@@ -403,10 +403,8 @@ ScrollingLayersHelper::RecurseAndDefineAsr(nsDisplayItem* aItem,
       aItem, aAsr->mParent, aChain, aAppUnitsPerDevPixel, aSc);
   ids = ancestorIds;
 
-  // Ok to pass nullptr for aLayer here (first arg) because aClip (last arg) is
-  // also nullptr.
   Maybe<ScrollMetadata> metadata = aAsr->mScrollableFrame->ComputeScrollMetadata(
-      nullptr, mManager, aItem->ReferenceFrame(), ContainerLayerParameters(), nullptr);
+      mManager, aItem->ReferenceFrame(), ContainerLayerParameters(), nullptr);
   MOZ_ASSERT(metadata);
   FrameMetrics& metrics = metadata->GetMetrics();
 
@@ -456,8 +454,8 @@ ScrollingLayersHelper::RecurseAndDefineAsr(nsDisplayItem* aItem,
   auto scrollId = mBuilder->DefineScrollLayer(viewId,
       ancestorIds.first,
       ancestorIds.second,
-      aSc.ToRelativeLayoutRect(contentRect),
-      aSc.ToRelativeLayoutRect(clipBounds));
+      wr::ToRoundedLayoutRect(contentRect),
+      wr::ToRoundedLayoutRect(clipBounds));
 
   ids.first = Some(scrollId);
   return ids;

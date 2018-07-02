@@ -29,22 +29,24 @@
 // be careful about our access to Components.interfaces. We also want to avoid
 // naming collisions with anything that might be defined in the scope that imports
 // this script.
+//
+// Even if the real |Components| doesn't exist, we might shim in a simple JS
+// placebo for compat. An easy way to differentiate this from the real thing
+// is whether the property is read-only or not.  The real |Components| property
+// is read-only.
 window.__defineGetter__('_EU_Ci', function() {
-  // Even if the real |Components| doesn't exist, we might shim in a simple JS
-  // placebo for compat. An easy way to differentiate this from the real thing
-  // is whether the property is read-only or not.
   var c = Object.getOwnPropertyDescriptor(window, 'Components');
-  return c.value && !c.writable ? Ci : SpecialPowers.Ci;
+  return c && c.value && !c.writable ? Ci : SpecialPowers.Ci;
 });
 
 window.__defineGetter__('_EU_Cc', function() {
   var c = Object.getOwnPropertyDescriptor(window, 'Components');
-  return c.value && !c.writable ? Cc : SpecialPowers.Cc;
+  return c && c.value && !c.writable ? Cc : SpecialPowers.Cc;
 });
 
 window.__defineGetter__('_EU_Cu', function() {
   var c = Object.getOwnPropertyDescriptor(window, 'Components');
-  return c.value && !c.writable ? Cu : SpecialPowers.Cu;
+  return c && c.value && !c.writable ? Cu : SpecialPowers.Cu;
 });
 
 window.__defineGetter__("_EU_OS", function() {
@@ -106,13 +108,26 @@ function _EU_isAndroid(aWindow = window) {
 }
 
 function _EU_maybeWrap(o) {
+  // We're used in some contexts where there is no SpecialPowers and also in
+  // some where it exists but has no wrap() method.  And this is somewhat
+  // independent of whether window.Components is a thing...
+  var haveWrap = false;
+  try {
+    haveWrap = SpecialPowers.wrap != undefined;
+  } catch (e) {
+    // Just leave it false.
+  }
+  if (!haveWrap) {
+    // Not much we can do here.
+    return o;
+  }
   var c = Object.getOwnPropertyDescriptor(window, 'Components');
-  return c.value && !c.writable ? o : SpecialPowers.wrap(o);
+  return c && c.value && !c.writable ? o : SpecialPowers.wrap(o);
 }
 
 function _EU_maybeUnwrap(o) {
   var c = Object.getOwnPropertyDescriptor(window, 'Components');
-  return c.value && !c.writable ? o : SpecialPowers.unwrap(o);
+  return c && c.value && !c.writable ? o : SpecialPowers.unwrap(o);
 }
 
 /**
@@ -177,6 +192,10 @@ function sendMouseEvent(aEvent, aTarget, aWindow) {
                        ctrlKeyArg, altKeyArg, shiftKeyArg, metaKeyArg,
                        buttonArg, relatedTargetArg);
 
+  // If documentURIObject exists or `window` is a stub object, we're in
+  // a chrome scope, so don't bother trying to go through SpecialPowers.
+  if (!window.document || window.document.documentURIObject)
+    return aTarget.dispatchEvent(event);
   return SpecialPowers.dispatchEvent(aWindow, aTarget, event);
 }
 
@@ -415,15 +434,18 @@ function synthesizeMouseAtPoint(left, top, aEvent, aWindow = window)
     var modifiers = _parseModifiers(aEvent, aWindow);
     var pressure = ("pressure" in aEvent) ? aEvent.pressure : 0;
 
+    // aWindow might be cross-origin from us.
+    var MouseEvent = _EU_maybeWrap(aWindow).MouseEvent;
+
     // Default source to mouse.
     var inputSource = ("inputSource" in aEvent) ? aEvent.inputSource :
-                                                  _EU_Ci.nsIDOMMouseEvent.MOZ_SOURCE_MOUSE;
+                                                  MouseEvent.MOZ_SOURCE_MOUSE;
     // Compute a pointerId if needed.
     var id;
     if ("id" in aEvent) {
       id = aEvent.id;
     } else {
-      var isFromPen = inputSource === _EU_Ci.nsIDOMMouseEvent.MOZ_SOURCE_PEN;
+      var isFromPen = inputSource === MouseEvent.MOZ_SOURCE_PEN;
       id = isFromPen ? utils.DEFAULT_PEN_POINTER_ID :
                        utils.DEFAULT_MOUSE_POINTER_ID;
     }
@@ -1241,6 +1263,14 @@ function _getDOMWindowUtils(aWindow = window)
     aWindow = window;
   }
 
+  // If documentURIObject exists or `window` is a stub object, we're in
+  // a chrome scope, so don't bother trying to go through SpecialPowers.
+  if (!window.document || window.document.documentURIObject) {
+    return aWindow
+        .QueryInterface(_EU_Ci.nsIInterfaceRequestor)
+        .getInterface(_EU_Ci.nsIDOMWindowUtils);
+  }
+
   // we need parent.SpecialPowers for:
   //  layout/base/tests/test_reftests_with_caret.html
   //  chrome: toolkit/content/tests/chrome/test_findbar.xul
@@ -1458,6 +1488,8 @@ function _guessKeyNameFromKeyCode(aKeyCode, aWindow = window)
       return "Meta";
     case KeyboardEvent.DOM_VK_ALTGR:
       return "AltGraph";
+    case KeyboardEvent.DOM_VK_PROCESSKEY:
+      return "Process";
     case KeyboardEvent.DOM_VK_ATTN:
       return "Attn";
     case KeyboardEvent.DOM_VK_CRSEL:
@@ -1770,6 +1802,13 @@ function _createKeyboardEventDictionary(aKey, aKeyEvent, aWindow = window) {
   if (locationIsDefined && aKeyEvent.location === 0) {
     result.flags |= _EU_Ci.nsITextInputProcessor.KEY_KEEP_KEY_LOCATION_STANDARD;
   }
+  if (aKeyEvent.doNotMarkKeydownAsProcessed) {
+    result.flags |=
+      _EU_Ci.nsITextInputProcessor.KEY_DONT_MARK_KEYDOWN_AS_PROCESSED;
+  }
+  if (aKeyEvent.markKeyupAsProcessed) {
+    result.flags |= _EU_Ci.nsITextInputProcessor.KEY_MARK_KEYUP_AS_PROCESSED;
+  }
   result.dictionary = {
     key: keyName,
     code: code,
@@ -1869,22 +1908,47 @@ function _emulateToInactivateModifiers(aTIP, aModifiers, aWindow = window)
 }
 
 /**
- * Synthesize a composition event.
+ * Synthesize a composition event and keydown event and keyup events unless
+ * you prevent to dispatch them explicitly (see aEvent.key's explanation).
+ *
+ * Note that you shouldn't call this with "compositionstart" unless you need to
+ * test compositionstart event which is NOT followed by compositionupdate
+ * event immediately.  Typically, native IME starts composition with
+ * a pair of keydown and keyup event and dispatch compositionstart and
+ * compositionupdate (and non-standard text event) between them.  So, in most
+ * cases, you should call synthesizeCompositionChange() directly.
+ * If you call this with compositionstart, keyup event will be fired
+ * immediately after compositionstart.  In other words, you should use
+ * "compositionstart" only when you need to emulate IME which just starts
+ * composition with compositionstart event but does not send composing text to
+ * us until committing the composition.  This is behavior of some Chinese IMEs.
  *
  * @param aEvent               The composition event information.  This must
  *                             have |type| member.  The value must be
  *                             "compositionstart", "compositionend",
  *                             "compositioncommitasis" or "compositioncommit".
+ *
  *                             And also this may have |data| and |locale| which
  *                             would be used for the value of each property of
  *                             the composition event.  Note that the |data| is
  *                             ignored if the event type is "compositionstart"
  *                             or "compositioncommitasis".
- *                             If |key| is specified, the key event may be
- *                             dispatched.  This can emulates changing
- *                             composition state caused by key operation.
- *                             Its key value should start with "KEY_" if the
- *                             value is non-printable key name defined in D3E.
+ *
+ *                             If |key| is undefined, "keydown" and "keyup"
+ *                             events which are marked as "processed by IME"
+ *                             are dispatched.  If |key| is not null, "keydown"
+ *                             and/or "keyup" events are dispatched (if the
+ *                             |key.type| is specified as "keydown", only
+ *                             "keydown" event is dispatched).  Otherwise,
+ *                             i.e., if |key| is null, neither "keydown" nor
+ *                             "keyup" event is dispatched.
+ *
+ *                             If |key.doNotMarkKeydownAsProcessed| is not true,
+ *                             key value and keyCode value of "keydown" event
+ *                             will be set to "Process" and DOM_VK_PROCESSKEY.
+ *                             If |key.markKeyupAsProcessed| is true,
+ *                             key value and keyCode value of "keyup" event
+ *                             will be set to "Process" and DOM_VK_PROCESSKEY.
  * @param aWindow              Optional (If null, current |window| will be used)
  * @param aCallback            Optional (If non-null, use the callback for
  *                             receiving notifications to IME)
@@ -1898,15 +1962,20 @@ function synthesizeComposition(aEvent, aWindow = window, aCallback)
   var KeyboardEvent = _getKeyboardEvent(aWindow);
   var modifiers = _emulateToActivateModifiers(TIP, aEvent.key, aWindow);
   var ret = false;
-  var keyEventDict =
-    "key" in aEvent ?
-      _createKeyboardEventDictionary(aEvent.key.key, aEvent.key, aWindow) :
-      { dictionary: null, flags: 0 };
-  var keyEvent = 
-    "key" in aEvent ?
-      new KeyboardEvent(aEvent.type === "keydown" ? "keydown" : "",
-                        keyEventDict.dictionary) :
-      null;
+  var keyEventDict = {dictionary: null, flags: 0};
+  var keyEvent = null;
+  if (aEvent.key && typeof aEvent.key.key === "string") {
+    keyEventDict =
+      _createKeyboardEventDictionary(aEvent.key.key, aEvent.key, aWindow);
+    keyEvent = new KeyboardEvent(aEvent.key.type === "keydown" ?
+                                   "keydown" :
+                                   aEvent.key.type === "keyup" ?
+                                     "keyup" : "",
+                                 keyEventDict.dictionary)
+  } else if (aEvent.key === undefined) {
+    keyEventDict = _createKeyboardEventDictionary("KEY_Process", {}, aWindow);
+    keyEvent = new KeyboardEvent("", keyEventDict.dictionary)
+  }
   try {
     switch (aEvent.type) {
       case "compositionstart":
@@ -1925,8 +1994,15 @@ function synthesizeComposition(aEvent, aWindow = window, aCallback)
   }
 }
 /**
- * Synthesize a compositionchange event which causes a DOM text event and
- * compositionupdate event if it's necessary.
+ * Synthesize eCompositionChange event which causes a DOM text event, may
+ * cause compositionupdate event, and causes keydown event and keyup event
+ * unless you prevent to dispatch them explicitly (see aEvent.key's
+ * explanation).
+ *
+ * Note that if you call this when there is no composition, compositionstart
+ * event will be fired automatically.  This is better than you use
+ * synthesizeComposition("compositionstart") in most cases.  See the
+ * explanation of syntehszeComposition().
  *
  * @param aEvent   The compositionchange event's information, this has
  *                 |composition| and |caret| members.  |composition| has
@@ -1964,10 +2040,18 @@ function synthesizeComposition(aEvent, aWindow = window, aCallback)
  *                 caret.  However, current nsEditor doesn't support wide
  *                 caret, therefore, you should always set 0 now.
  *
- *                 If |key| is specified, the key event may be dispatched.
- *                 This can emulates changing composition state caused by key
- *                 operation.  Its key value should start with "KEY_" if the
- *                 value is non-printable key name defined in D3E.
+ *                 If |key| is undefined, "keydown" and "keyup" events which
+ *                 are marked as "processed by IME" are dispatched.  If |key|
+ *                 is not null, "keydown" and/or "keyup" events are dispatched
+ *                 (if the |key.type| is specified as "keydown", only "keydown"
+ *                 event is dispatched).  Otherwise, i.e., if |key| is null,
+ *                 neither "keydown" nor "keyup" event is dispatched.
+ *                 If |key.doNotMarkKeydownAsProcessed| is not true, key value
+ *                 and keyCode value of "keydown" event will be set to
+ *                 "Process" and DOM_VK_PROCESSKEY.
+ *                 If |key.markKeyupAsProcessed| is true key value and keyCode
+ *                 value of "keyup" event will be set to "Process" and
+ *                 DOM_VK_PROCESSKEY.
  *
  * @param aWindow  Optional (If null, current |window| will be used)
  * @param aCallback     Optional (If non-null, use the callback for receiving
@@ -2014,15 +2098,20 @@ function synthesizeCompositionChange(aEvent, aWindow = window, aCallback)
 
   var modifiers = _emulateToActivateModifiers(TIP, aEvent.key, aWindow);
   try {
-    var keyEventDict =
-      "key" in aEvent ?
-        _createKeyboardEventDictionary(aEvent.key.key, aEvent.key, aWindow) :
-        { dictionary: null, flags: 0 };
-    var keyEvent = 
-      "key" in aEvent ?
-        new KeyboardEvent(aEvent.type === "keydown" ? "keydown" : "",
-                          keyEventDict.dictionary) :
-        null;
+    var keyEventDict = {dictionary: null, flags: 0};
+    var keyEvent = null;
+    if (aEvent.key && typeof aEvent.key.key === "string") {
+      keyEventDict =
+        _createKeyboardEventDictionary(aEvent.key.key, aEvent.key, aWindow);
+      keyEvent = new KeyboardEvent(aEvent.key.type === "keydown" ?
+                                     "keydown" :
+                                     aEvent.key.type === "keyup" ?
+                                       "keyup" : "",
+                                   keyEventDict.dictionary)
+    } else if (aEvent.key === undefined) {
+      keyEventDict = _createKeyboardEventDictionary("KEY_Process", {}, aWindow);
+      keyEvent = new KeyboardEvent("", keyEventDict.dictionary)
+    }
     TIP.flushPendingComposition(keyEvent, keyEventDict.flags);
   } finally {
     _emulateToInactivateModifiers(TIP, modifiers, aWindow);
@@ -2275,9 +2364,7 @@ function synthesizeDragStart(element, expectedDragData, aWindow, x, y)
   var trapDrag = function(event) {
     try {
       // We must wrap only in plain mochitests, not chrome
-      var c = Object.getOwnPropertyDescriptor(window, 'Components');
-      var dataTransfer = c.value && !c.writable
-        ? event.dataTransfer : SpecialPowers.wrap(event.dataTransfer);
+      var dataTransfer = _EU_maybeWrap(event.dataTransfer);
       result = null;
       if (!dataTransfer)
         throw "no dataTransfer";

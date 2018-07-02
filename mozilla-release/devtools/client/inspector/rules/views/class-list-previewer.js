@@ -4,7 +4,7 @@
 
 "use strict";
 
-const EventEmitter = require("devtools/shared/old-event-emitter");
+const EventEmitter = require("devtools/shared/event-emitter");
 const {LocalizationHelper} = require("devtools/shared/l10n");
 
 const L10N = new LocalizationHelper("devtools/client/locales/inspector.properties");
@@ -169,7 +169,7 @@ ClassListPreviewerModel.prototype = {
     return mod.apply();
   },
 
-  onMutations(e, mutations) {
+  onMutations(mutations) {
     for (let {type, target, attributeName} of mutations) {
       // Only care if this mutation is for the class attribute.
       if (type !== "attributes" || attributeName !== "class") {
@@ -227,6 +227,8 @@ function ClassListPreviewer(inspector, containerEl) {
   this.inspector.selection.on("new-node-front", this.onNewSelection);
   this.containerEl.addEventListener("input", this.onCheckBoxChanged);
   this.model.on("current-node-class-changed", this.onCurrentNodeClassChanged);
+
+  this.onNewSelection();
 }
 
 ClassListPreviewer.prototype = {

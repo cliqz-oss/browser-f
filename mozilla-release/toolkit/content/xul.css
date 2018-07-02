@@ -106,11 +106,7 @@ button {
   -moz-binding: url("chrome://global/content/bindings/button.xml#button");
 }
 
-button[type="repeat"] {
-  -moz-binding: url("chrome://global/content/bindings/button.xml#button-repeat");
-}
-
-button[type="menu"], button[type="panel"] {
+button[type="menu"] {
   -moz-binding: url("chrome://global/content/bindings/button.xml#menu");
 }
 
@@ -134,20 +130,15 @@ toolbarbutton.badged-button {
   display: none;
 }
 
-toolbarbutton[type="menu"],
-toolbarbutton[type="panel"] {
+toolbarbutton[type="menu"] {
   -moz-binding: url("chrome://global/content/bindings/toolbarbutton.xml#menu");
 }
 
-toolbarbutton.badged-button[type="menu"],
-toolbarbutton.badged-button[type="panel"] {
+toolbarbutton.badged-button[type="menu"] {
   -moz-binding: url("chrome://global/content/bindings/toolbarbutton.xml#toolbarbutton-badged-menu");
 }
 
-toolbarbutton[type="menu-button"] {
-  -moz-binding: url("chrome://global/content/bindings/toolbarbutton.xml#menu-button");
-}
-
+toolbarbutton:not([type="menu"]) > .toolbarbutton-menu-dropmarker,
 toolbar[mode="icons"] .toolbarbutton-text,
 toolbar[mode="icons"] .toolbarbutton-multiline-text,
 toolbar[mode="text"] .toolbarbutton-icon,
@@ -277,7 +268,6 @@ menulist {
 /******* toolbar *******/
 
 toolbox {
-  -moz-appearance: toolbox;
   -moz-box-orient: vertical;
 }
 
@@ -323,12 +313,6 @@ toolbarpaletteitem {
 toolbarpaletteitem[place="palette"] {
   -moz-box-orient: vertical;
   -moz-binding: url("chrome://global/content/bindings/toolbar.xml#toolbarpaletteitem-palette");
-}
-
-/********* menubar ***********/
-
-menubar {
-  -moz-binding: url("chrome://global/content/bindings/toolbar.xml#menubar");
 }
 
 /********* menu ***********/
@@ -839,19 +823,17 @@ menulist > menupopup > menuitem {
   -moz-binding: url("chrome://global/content/bindings/menu.xml#menuitem-iconic-noaccel");
 }
 
+html|*.menulist-editable-input {
+  -moz-appearance: none !important;
+  background: transparent ! important;
+  -moz-box-flex: 1;
+}
+
 dropmarker {
   -moz-binding: url("chrome://global/content/bindings/general.xml#dropmarker");
 }
 
 /********** splitter **********/
-
-splitter {
-  -moz-binding: url("chrome://global/content/bindings/splitter.xml#splitter");
-}
-
-grippy {
-  -moz-binding: url("chrome://global/content/bindings/splitter.xml#grippy");
-}
 
 .tree-splitter {
   width: 0px;
@@ -980,12 +962,6 @@ findbar {
   -moz-binding: url("chrome://global/content/bindings/findbar.xml#findbar-textbox");
 }
 
-
-/*********** filefield ************/
-filefield {
-  -moz-binding: url("chrome://global/content/bindings/filefield.xml#filefield");
-}
-
 /*********** tabmodalprompt ************/
 tabmodalprompt {
   -moz-binding: url("chrome://global/content/tabprompts.xml#tabmodalprompt");
@@ -1036,6 +1012,7 @@ tabmodalprompt {
   [flex="100"] { -moz-box-flex: 100; }
   [flex="400"] { -moz-box-flex: 400; }
   [flex="1000"] { -moz-box-flex: 1000; }
+  [flex="10000"] { -moz-box-flex: 10000; }
 
   [ordinal="1"] { -moz-box-ordinal-group: 1; }
   [ordinal="2"] { -moz-box-ordinal-group: 2; }

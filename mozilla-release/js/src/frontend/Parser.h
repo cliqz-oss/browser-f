@@ -173,7 +173,6 @@
 #include "ds/Nestable.h"
 #include "frontend/BytecodeCompiler.h"
 #include "frontend/FullParseHandler.h"
-#include "frontend/LanguageExtensions.h"
 #include "frontend/NameAnalysisTypes.h"
 #include "frontend/NameCollections.h"
 #include "frontend/ParseContext.h"
@@ -199,7 +198,7 @@ public:
     template<typename ParseHandler, typename CharT>
     SourceParseContext(GeneralParser<ParseHandler, CharT>* prs, SharedContext* sc,
                        Directives* newDirectives)
-      : ParseContext(prs->context, prs->pc, sc, prs->anyChars, prs->usedNames, newDirectives,
+      : ParseContext(prs->context, prs->pc, sc, prs->tokenStream, prs->usedNames, newDirectives,
                      mozilla::IsSame<ParseHandler, FullParseHandler>::value)
     { }
 };
@@ -234,9 +233,7 @@ enum class PropertyType {
     Shorthand,
     CoverInitializedName,
     Getter,
-    GetterNoExpressionClosure,
     Setter,
-    SetterNoExpressionClosure,
     Method,
     GeneratorMethod,
     AsyncMethod,
@@ -336,13 +333,8 @@ class ParserBase
 
     bool isValidStrictBinding(PropertyName* name);
 
-    void addTelemetry(DeprecatedLanguageExtension e);
-
     bool hasValidSimpleStrictParameterNames();
 
-    bool allowExpressionClosures() const {
-        return options().expressionClosuresOption;
-    }
     /*
      * Create a new function object given a name (which is optional if this is
      * a function expression).
@@ -401,6 +393,8 @@ class ParserBase
     bool leaveInnerFunction(ParseContext* outerpc);
 
     JSAtom* prefixAccessorName(PropertyType propType, HandleAtom propAtom);
+
+    MOZ_MUST_USE bool setSourceMapInfo();
 };
 
 inline
@@ -544,9 +538,6 @@ class PerHandlerParser
     inline void clearAbortedSyntaxParse();
 
   public:
-    void prepareNodeForMutation(Node node) { handler.prepareNodeForMutation(node); }
-    void freeTree(Node node) { handler.freeTree(node); }
-
     bool isValidSimpleAssignmentTarget(Node node,
                                        FunctionCallBehavior behavior = ForbidAssignmentToFunctionCalls);
 
@@ -620,8 +611,6 @@ inline void
 PerHandlerParser<FullParseHandler>::clearAbortedSyntaxParse()
 {
 }
-
-enum class ExpressionClosure { Allowed, Forbidden };
 
 template<class Parser>
 class ParserAnyCharsAccess
@@ -705,7 +694,6 @@ class GeneralParser
     using Base::isValidSimpleAssignmentTarget;
     using Base::pc;
     using Base::usedNames;
-    using Base::allowExpressionClosures;
 
   private:
     using Base::checkAndMarkSuperScope;
@@ -917,8 +905,6 @@ class GeneralParser
     /* Report the given warning at the given offset. */
     MOZ_MUST_USE bool warningAt(uint32_t offset, unsigned errorNumber, ...);
 
-    bool warnOnceAboutExprClosure();
-
     /*
      * If extra warnings are enabled, report the given warning at the current
      * offset.
@@ -982,8 +968,8 @@ class GeneralParser
     Node functionStmt(uint32_t toStringStart,
                       YieldHandling yieldHandling, DefaultHandling defaultHandling,
                       FunctionAsyncKind asyncKind = FunctionAsyncKind::SyncFunction);
-    Node functionExpr(uint32_t toStringStart, ExpressionClosure expressionClosureHandling,
-                      InvokedPrediction invoked, FunctionAsyncKind asyncKind);
+    Node functionExpr(uint32_t toStringStart, InvokedPrediction invoked,
+                      FunctionAsyncKind asyncKind);
 
     Node statement(YieldHandling yieldHandling);
     bool maybeParseDirective(Node list, Node pn, bool* cont);
@@ -1102,24 +1088,20 @@ class GeneralParser
     Node assignExprWithoutYieldOrAwait(YieldHandling yieldHandling);
     Node yieldExpression(InHandling inHandling);
     Node condExpr(InHandling inHandling, YieldHandling yieldHandling,
-                  TripledotHandling tripledotHandling, ExpressionClosure expressionClosureHandling,
-                  PossibleError* possibleError,
+                  TripledotHandling tripledotHandling, PossibleError* possibleError,
                   InvokedPrediction invoked = PredictUninvoked);
     Node orExpr(InHandling inHandling, YieldHandling yieldHandling,
-                TripledotHandling tripledotHandling, ExpressionClosure expressionClosureHandling,
-                PossibleError* possibleError,
+                TripledotHandling tripledotHandling, PossibleError* possibleError,
                 InvokedPrediction invoked = PredictUninvoked);
     Node unaryExpr(YieldHandling yieldHandling, TripledotHandling tripledotHandling,
-                   ExpressionClosure expressionClosureHandling,
                    PossibleError* possibleError = nullptr,
                    InvokedPrediction invoked = PredictUninvoked);
-    Node memberExpr(YieldHandling yieldHandling, TripledotHandling tripledotHandling,
-                    ExpressionClosure expressionClosureHandling, TokenKind tt,
+    Node memberExpr(YieldHandling yieldHandling, TripledotHandling tripledotHandling, TokenKind tt,
                     bool allowCallSyntax = true, PossibleError* possibleError = nullptr,
                     InvokedPrediction invoked = PredictUninvoked);
     Node primaryExpr(YieldHandling yieldHandling, TripledotHandling tripledotHandling,
-                     ExpressionClosure expressionClosureHandling, TokenKind tt,
-                     PossibleError* possibleError, InvokedPrediction invoked = PredictUninvoked);
+                     TokenKind tt, PossibleError* possibleError,
+                     InvokedPrediction invoked = PredictUninvoked);
     Node exprInParens(InHandling inHandling, YieldHandling yieldHandling,
                       TripledotHandling tripledotHandling, PossibleError* possibleError = nullptr);
 
@@ -1414,7 +1396,6 @@ class Parser<FullParseHandler, CharT> final
     using Base::pos;
     using Base::ss;
     using Base::tokenStream;
-    using Base::allowExpressionClosures;
 
   private:
     using Base::alloc;
@@ -1607,16 +1588,20 @@ template <typename Scope>
 extern typename Scope::Data*
 NewEmptyBindingData(JSContext* cx, LifoAlloc& alloc, uint32_t numBindings);
 
-Maybe<GlobalScope::Data*>
+mozilla::Maybe<GlobalScope::Data*>
 NewGlobalScopeData(JSContext* context, ParseContext::Scope& scope, LifoAlloc& alloc, ParseContext* pc);
-Maybe<EvalScope::Data*>
+mozilla::Maybe<EvalScope::Data*>
 NewEvalScopeData(JSContext* context, ParseContext::Scope& scope, LifoAlloc& alloc, ParseContext* pc);
-Maybe<FunctionScope::Data*>
+mozilla::Maybe<FunctionScope::Data*>
 NewFunctionScopeData(JSContext* context, ParseContext::Scope& scope, bool hasParameterExprs, LifoAlloc& alloc, ParseContext* pc);
-Maybe<VarScope::Data*>
+mozilla::Maybe<VarScope::Data*>
 NewVarScopeData(JSContext* context, ParseContext::Scope& scope, LifoAlloc& alloc, ParseContext* pc);
-Maybe<LexicalScope::Data*>
+mozilla::Maybe<LexicalScope::Data*>
 NewLexicalScopeData(JSContext* context, ParseContext::Scope& scope, LifoAlloc& alloc, ParseContext* pc);
+
+JSFunction*
+AllocNewFunction(JSContext* cx, HandleAtom atom, FunctionSyntaxKind kind, GeneratorKind generatorKind, FunctionAsyncKind asyncKind,
+                 HandleObject proto, bool isSelfHosting = false, bool inFunctionBox = false);
 
 } /* namespace frontend */
 } /* namespace js */

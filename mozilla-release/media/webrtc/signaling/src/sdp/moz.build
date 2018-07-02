@@ -19,6 +19,11 @@ else:
         'sipcc/sdp_services_unix.c',
     ]
 
+if CONFIG['FUZZING']:
+    if CONFIG['LIBFUZZER']:
+        # Add trace-pc coverage and trace-cmp for LibFuzzer
+        CFLAGS += ['-fsanitize-coverage=trace-pc-guard', '-fsanitize-coverage=trace-cmp']
+        CXXFLAGS += ['-fsanitize-coverage=trace-pc-guard', '-fsanitize-coverage=trace-cmp']
 
 LOCAL_INCLUDES += [
     '/media/mtransport',
@@ -37,8 +42,15 @@ UNIFIED_SOURCES += [
     'SipccSdpParser.cpp',
 ]
 
-# Multiple definitions of "logTag" mean we can't use unified build here.
 SOURCES += [
+    # Building these as part of the unified build leads to multiply defined
+    # symbols on windows.
+    'RsdparsaSdp.cpp',
+    'RsdparsaSdpAttributeList.cpp',
+    'RsdparsaSdpGlue.cpp',
+    'RsdparsaSdpMediaSection.cpp',
+    'RsdparsaSdpParser.cpp',
+    # Multiple definitions of "logTag" mean we can't use unified build here.
     'sipcc/cpr_string.c',
     'sipcc/sdp_access.c',
     'sipcc/sdp_attr.c',

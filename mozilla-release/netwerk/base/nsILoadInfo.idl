@@ -13,6 +13,7 @@ interface nsINode;
 interface nsIPrincipal;
 interface nsIRedirectHistoryEntry;
 interface nsIURI;
+native LoadContextRef(already_AddRefed<nsISupports>);
 %{C++
 #include "nsTArray.h"
 #include "mozilla/BasePrincipal.h"
@@ -43,6 +44,7 @@ native OriginAttributes(mozilla::OriginAttributes);
 [ref] native const_ServiceWorkerDescriptorRef(const mozilla::dom::ServiceWorkerDescriptor);
 [ref] native const_MaybeServiceWorkerDescriptorRef(const mozilla::Maybe<mozilla::dom::ServiceWorkerDescriptor>);
 [ptr] native PerformanceStoragePtr(mozilla::dom::PerformanceStorage);
+      native LoadTainting(mozilla::LoadTainting);
 
 typedef unsigned long nsSecurityFlags;
 
@@ -73,6 +75,16 @@ interface nsILoadInfo : nsISupports
    * return the correct result principal. If none or more than one of these
    * flags are set AsyncOpen2 will fail.
    */
+
+   /**
+    * Warning: Never use this flag when creating a new channel!
+    * Only use this flag if you have to create a temporary LoadInfo
+    * for performing an explicit nsIContentPolicy check, like e.g.
+    * when loading something from the cache that needs an explicit
+    * nsIContentPolicy check. In all other cases pick one of the
+    * security flags underneath.
+    */
+  const unsigned long SEC_ONLY_FOR_EXPLICIT_CONTENTSEC_CHECK = 0;
 
   /*
    * Enforce the same origin policy where data: loads inherit the principal.
@@ -361,6 +373,21 @@ interface nsILoadInfo : nsISupports
   nsISupports binaryContextForTopLevelLoad();
 
   /**
+   * For all loads except loads of TYPE_DOCUMENT, the loadingContext
+   * simply returns the loadingNode. For loads of TYPE_DOCUMENT this
+   * will return the context available for top-level loads which
+   * do not have a loadingNode.
+   */
+  [binaryname(LoadingContextXPCOM)]
+  readonly attribute nsISupports loadingContext;
+  
+  /**
+   * A C++ friendly version of the loadingContext.
+   */
+  [noscript, notxpcom, nostdcall, binaryname(GetLoadingContext)]
+  LoadContextRef binaryGetLoadingContext();
+
+  /**
    * The securityFlags of that channel.
    */
   readonly attribute nsSecurityFlags securityFlags;
@@ -515,6 +542,14 @@ interface nsILoadInfo : nsISupports
    * This is very similar in implementation to upgradeInsecureRequests but browser set.
    */
   [infallible] readonly attribute boolean browserUpgradeInsecureRequests;
+
+  /**
+   * Returns true if the the page is https and the content is upgradable from http
+   * requires 'security.mixed_content.upgrade_display_content' pref to be false.
+   * See browserUpgradeInsecureRequests for more details, this only happens
+   * when *not* upgrading purely for telemetry.
+   */
+  [infallible] readonly attribute boolean browserWouldUpgradeInsecureRequests;
   /**
    * If true, the content of the channel is queued up and checked
    * if it matches a content signature. Note, setting this flag
@@ -540,6 +575,11 @@ interface nsILoadInfo : nsISupports
    * If true, insecure redirects to a data: URI are allowed.
    */
   [infallible] attribute boolean allowInsecureRedirectToDataURI;
+
+  /**
+   * If true, the content policy security check is excluded from web requests.
+   */
+  [infallible] attribute boolean skipContentPolicyCheckForWebRequest;
 
   /**
    * If true, this is the load of a frame's original src attribute
@@ -964,4 +1004,14 @@ interface nsILoadInfo : nsISupports
    */
   [noscript, nostdcall, notxpcom]
   PerformanceStoragePtr GetPerformanceStorage();
+
+  /* The service worker and fetch specifications require returning the
+   * exact tainting level of the Response passed to FetchEvent.respondWith().
+   * This method allows us to override the tainting level in that case.
+   *
+   * NOTE: This should not be used outside of service worker code! Use
+   *       nsILoadInfo::MaybeIncreaseTainting() instead.
+   */
+  [noscript, nostdcall, notxpcom]
+  void SynthesizeServiceWorkerTainting(in LoadTainting aTainting);
 };

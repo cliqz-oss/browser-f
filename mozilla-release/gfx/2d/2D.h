@@ -1454,6 +1454,18 @@ public:
   }
 
   /**
+   * Mark the end of an Item in a DrawTargetRecording. These markers
+   * are used for merging recordings together.
+   *
+   * This should only be called on the 'root' DrawTargetRecording.
+   * Calling it on a child DrawTargetRecordings will cause confusion.
+   *
+   * Note: this is a bit of a hack. It might be better to just recreate
+   * the DrawTargetRecording.
+   */
+  virtual void FlushItem(const IntRect &aBounds) {}
+
+  /**
    * Ensures that no snapshot is still pointing to this DrawTarget's surface data.
    *
    * This can be useful if the DrawTarget is wrapped around data that it does not
@@ -1504,7 +1516,8 @@ class DrawEventRecorder : public RefCounted<DrawEventRecorder>
 {
 public:
   MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(DrawEventRecorder)
-  virtual void Finish() = 0;
+  // returns true if there were any items in the recording
+  virtual bool Finish() = 0;
   virtual ~DrawEventRecorder() { }
 };
 
@@ -1540,6 +1553,7 @@ public:
   static void ShutDown();
 
   static bool HasSSE2();
+  static bool HasSSE4();
 
   /**
    * Returns false if any of the following are true:

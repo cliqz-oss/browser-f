@@ -54,6 +54,7 @@
 #include "nsContentTypeParser.h"
 #include "nsINetworkPredictor.h"
 #include "mozilla/ConsoleReportCollector.h"
+#include "mozilla/LoadInfo.h"
 
 #include "mozilla/AsyncEventDispatcher.h"
 #include "mozilla/Attributes.h"
@@ -320,14 +321,17 @@ ScriptLoader::CheckContentPolicy(nsIDocument* aDocument,
                                           ? nsIContentPolicy::TYPE_INTERNAL_SCRIPT_PRELOAD
                                           : nsIContentPolicy::TYPE_INTERNAL_SCRIPT;
 
+  nsCOMPtr<nsINode> requestingNode = do_QueryInterface(aContext);
+  nsCOMPtr<nsILoadInfo> secCheckLoadInfo =
+    new net::LoadInfo(aDocument->NodePrincipal(), // loading principal
+                      aDocument->NodePrincipal(), // triggering principal
+                      requestingNode,
+                      nsILoadInfo::SEC_ONLY_FOR_EXPLICIT_CONTENTSEC_CHECK,
+                      contentPolicyType);
+
   int16_t shouldLoad = nsIContentPolicy::ACCEPT;
-  nsresult rv = NS_CheckContentLoadPolicy(contentPolicyType,
-                                          aURI,
-                                          aDocument->NodePrincipal(), // loading principal
-                                          aDocument->NodePrincipal(), // triggering principal
-                                          aContext,
+  nsresult rv = NS_CheckContentLoadPolicy(aURI, secCheckLoadInfo,
                                           NS_LossyConvertUTF16toASCII(aType),
-                                          nullptr,    //extra
                                           &shouldLoad,
                                           nsContentUtils::GetContentPolicy());
   if (NS_FAILED(rv) || NS_CP_REJECTED(shouldLoad)) {
@@ -1796,7 +1800,8 @@ ScriptLoader::AttemptAsyncScriptCompile(ScriptLoadRequest* aRequest)
       return NS_ERROR_FAILURE;
     }
   } else {
-    if (!JS::CanDecodeOffThread(cx, options, aRequest->mScriptBytecode.length())) {
+    size_t length = aRequest->mScriptBytecode.length() - aRequest->mBytecodeOffset;
+    if (!JS::CanDecodeOffThread(cx, options, length)) {
       return NS_ERROR_FAILURE;
     }
   }
@@ -2484,6 +2489,7 @@ ScriptLoader::EncodeRequestBytecode(JSContext* aCx, ScriptLoadRequest* aRequest)
   // case, we just ignore the current one.
   nsCOMPtr<nsIOutputStream> output;
   rv = aRequest->mCacheInfo->OpenAlternativeOutputStream(nsContentUtils::JSBytecodeMimeType(),
+                                                         aRequest->mScriptBytecode.length(),
                                                          getter_AddRefs(output));
   if (NS_FAILED(rv)) {
     LOG(("ScriptLoadRequest (%p): Cannot open bytecode cache (rv = %X, output = %p)",
@@ -3049,6 +3055,22 @@ ScriptLoader::NumberOfProcessors()
   return mNumberOfProcessors;
 }
 
+static bool
+IsInternalURIScheme(nsIURI* uri)
+{
+  bool isWebExt;
+  if (NS_SUCCEEDED(uri->SchemeIs("moz-extension", &isWebExt)) && isWebExt) {
+    return true;
+  }
+
+  bool isResource;
+  if (NS_SUCCEEDED(uri->SchemeIs("resource", &isResource)) && isResource) {
+    return true;
+  }
+
+  return false;
+}
+
 nsresult
 ScriptLoader::PrepareLoadedRequest(ScriptLoadRequest* aRequest,
                                    nsIIncrementalStreamLoader* aLoader,
@@ -3137,10 +3159,9 @@ ScriptLoader::PrepareLoadedRequest(ScriptLoadRequest* aRequest,
     rv = channel->GetOriginalURI(getter_AddRefs(uri));
     NS_ENSURE_SUCCESS(rv, rv);
 
-    // Fixup moz-extension URIs, because the channel URI points to file:,
-    // which won't be allowed to load.
-    bool isWebExt = false;
-    if (uri && NS_SUCCEEDED(uri->SchemeIs("moz-extension", &isWebExt)) && isWebExt) {
+    // Fixup moz-extension: and resource: URIs, because the channel URI will
+    // point to file:, which won't be allowed to load.
+    if (uri && IsInternalURIScheme(uri)) {
       request->mBaseURL = uri;
     } else {
       channel->GetURI(getter_AddRefs(request->mBaseURL));

@@ -14,6 +14,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 
 from collections import OrderedDict
 
@@ -62,8 +63,8 @@ not enough available memory to perform the build. It's also possible some
 other system activity during the build is to blame.
 
 If you feel this message is not appropriate for your machine configuration,
-please file a Core :: Build Config bug at
-https://bugzilla.mozilla.org/enter_bug.cgi?product=Core&component=Build%20Config
+please file a Firefox Build System :: General bug at
+https://bugzilla.mozilla.org/enter_bug.cgi?product=Firefox%20Build%20System&component=General
 and tell us about your machine and build configuration so we can adjust the
 warning heuristic.
 ===================
@@ -823,6 +824,8 @@ class RunProgram(MachCommandBase):
         help='Run the program with the crash reporter enabled.')
     @CommandArgument('--setpref', action='append', default=[], group=prog_group,
         help='Set the specified pref before starting the program. Can be set multiple times. Prefs can also be set in ~/.mozbuild/machrc in the [runprefs] section - see `./mach settings` for more information.')
+    @CommandArgument('--temp-profile', action='store_true', group=prog_group,
+        help='Run the program using a new temporary profile created inside the objdir.')
 
     @CommandArgumentGroup('debugging')
     @CommandArgument('--debug', action='store_true', group='debugging',
@@ -846,7 +849,7 @@ class RunProgram(MachCommandBase):
     @CommandArgument('--show-dump-stats', action='store_true', group='DMD',
         help='Show stats when doing dumps.')
     def run(self, params, remote, background, noprofile, disable_e10s,
-        enable_crash_reporter, setpref, debug, debugger,
+        enable_crash_reporter, setpref, temp_profile, debug, debugger,
         debugger_args, dmd, mode, stacks, show_dump_stats):
 
         if conditions.is_android(self):
@@ -895,7 +898,15 @@ class RunProgram(MachCommandBase):
                 for pref in prefs:
                     prefs[pref] = Preferences.cast(prefs[pref])
 
-                path = os.path.join(self.topobjdir, 'tmp', 'scratch_user')
+                tmpdir = os.path.join(self.topobjdir, 'tmp')
+                if not os.path.exists(tmpdir):
+                    os.makedirs(tmpdir)
+
+                if (temp_profile):
+                    path = tempfile.mkdtemp(dir=tmpdir, prefix='profile-')
+                else:
+                    path = os.path.join(tmpdir, 'profile-default')
+
                 profile = Profile(path, preferences=prefs)
                 args.append('-profile')
                 args.append(profile.profile)
@@ -1172,16 +1183,13 @@ class PackageFrontend(MachCommandBase):
         state_dir = self._mach_context.state_dir
         cache_dir = os.path.join(state_dir, 'package-frontend')
 
-        here = os.path.abspath(os.path.dirname(__file__))
-        build_obj = MozbuildObject.from_environment(cwd=here)
-
         hg = None
-        if conditions.is_hg(build_obj):
-            hg = build_obj.substs['HG']
+        if conditions.is_hg(self):
+            hg = self.substs['HG']
 
         git = None
-        if conditions.is_git(build_obj):
-            git = build_obj.substs['GIT']
+        if conditions.is_git(self):
+            git = self.substs['GIT']
 
         from mozbuild.artifacts import Artifacts
         artifacts = Artifacts(tree, self.substs, self.defines, job,
@@ -1257,12 +1265,11 @@ class PackageFrontend(MachCommandBase):
         import requests
         import shutil
 
-        from taskgraph.generator import load_graph_config, Kind
+        from taskgraph.config import load_graph_config
+        from taskgraph.generator import Kind
         from taskgraph.util.taskcluster import (
             get_artifact_url,
-            list_artifacts,
         )
-        import yaml
 
         self._set_log_level(verbose)
         # Normally, we'd use self.log_manager.enable_unstructured(),
@@ -1617,7 +1624,8 @@ class StaticAnalysis(MachCommandBase):
                           'the diff mode.')
     @CommandArgument('--checks', '-c', default='-*', metavar='checks',
                      help='Static analysis checks to enable.  By default, this enables only '
-                     'custom Mozilla checks, but can be any clang-tidy checks syntax.')
+                     'checks that are published here: https://mzl.la/2DRHeTh, but can be any '
+                     'clang-tidy checks syntax.')
     @CommandArgument('--jobs', '-j', default='0', metavar='jobs', type=int,
                      help='Number of concurrent jobs to run. Default is the number of CPUs.')
     @CommandArgument('--strip', '-p', default='1', metavar='NUM',
@@ -1731,7 +1739,7 @@ class StaticAnalysis(MachCommandBase):
         rc = self._get_clang_tools(verbose=verbose)
         if rc != 0:
             return rc
-        args = [self._clang_tidy_path, '-list-checks', '-checks=-*,mozilla-*']
+        args = [self._clang_tidy_path, '-list-checks', '-checks=%s' % self._get_checks()]
         return self._run_command_in_objdir(args=args, pass_thru=True)
 
     @Command('clang-format',  category='misc', description='Run clang-format on current changes')

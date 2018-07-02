@@ -44,7 +44,6 @@ const Class js::TypedObjectModuleObject::class_ = {
 
 static const JSFunctionSpec TypedObjectMethods[] = {
     JS_SELF_HOSTED_FN("objectType", "TypeOfTypedObject", 1, 0),
-    JS_SELF_HOSTED_FN("storage", "StorageOfTypedObject", 1, 0),
     JS_FS_END
 };
 
@@ -1310,9 +1309,8 @@ GlobalObject::initTypedObjectModule(JSContext* cx, Handle<GlobalObject*> global)
 }
 
 JSObject*
-js::InitTypedObjectModuleObject(JSContext* cx, HandleObject obj)
+js::InitTypedObjectModuleObject(JSContext* cx, Handle<GlobalObject*> global)
 {
-    Handle<GlobalObject*> global = obj.as<GlobalObject>();
     return GlobalObject::getOrCreateTypedObjectModule(cx, global);
 }
 
@@ -1434,7 +1432,7 @@ OutlineTypedObject::setOwnerAndData(JSObject* owner, uint8_t* data)
     // Trigger a post barrier when attaching an object outside the nursery to
     // one that is inside it.
     if (owner && !IsInsideNursery(this) && IsInsideNursery(owner))
-        zone()->group()->storeBuffer().putWholeCell(this);
+        owner->storeBuffer()->putWholeCell(this);
 }
 
 /*static*/ OutlineTypedObject*
@@ -1634,7 +1632,7 @@ OutlineTypedObject::obj_trace(JSTracer* trc, JSObject* object)
         typedObj.setData(newData);
 
         if (trc->isTenuringTracer()) {
-            Nursery& nursery = typedObj.zoneFromAnyThread()->group()->nursery();
+            Nursery& nursery = trc->runtime()->gc.nursery();
             nursery.maybeSetForwardingPointer(trc, oldData, newData, /* direct = */ false);
         }
     }
@@ -2144,7 +2142,7 @@ InlineTypedObject::obj_moved(JSObject* dst, JSObject* src)
         // but they will not set any direct forwarding pointers.
         uint8_t* oldData = reinterpret_cast<uint8_t*>(src) + offsetOfDataStart();
         uint8_t* newData = dst->as<InlineTypedObject>().inlineTypedMem();
-        auto& nursery = dst->zone()->group()->nursery();
+        auto& nursery = dst->runtimeFromMainThread()->gc.nursery();
         bool direct = descr.size() >= sizeof(uintptr_t);
         nursery.setForwardingPointerWhileTenuring(oldData, newData, direct);
     }
@@ -2184,7 +2182,7 @@ InlineTransparentTypedObject::getOrCreateBuffer(JSContext* cx)
     // (the first view is held strongly by the buffer) and is used by the
     // buffer marking code to detect whether its data pointer needs to be
     // relocated.
-    JS_ALWAYS_TRUE(buffer->addView(cx, this));
+    MOZ_ALWAYS_TRUE(buffer->addView(cx, this));
 
     buffer->setForInlineTypedObject();
     buffer->setHasTypedObjectViews();
@@ -2195,7 +2193,7 @@ InlineTransparentTypedObject::getOrCreateBuffer(JSContext* cx)
     if (IsInsideNursery(this)) {
         // Make sure the buffer is traced by the next generational collection,
         // so that its data pointer is updated after this typed object moves.
-        zone()->group()->storeBuffer().putWholeCell(buffer);
+        storeBuffer()->putWholeCell(buffer);
     }
 
     return buffer;
@@ -2283,27 +2281,6 @@ LengthForType(TypeDescr& descr)
     MOZ_CRASH("Invalid kind");
 }
 
-static bool
-CheckOffset(uint32_t offset, uint32_t size, uint32_t alignment, uint32_t bufferLength)
-{
-    // Offset (plus size) must be fully contained within the buffer.
-    if (offset > bufferLength)
-        return false;
-    if (offset + size < offset)
-        return false;
-    if (offset + size > bufferLength)
-        return false;
-
-    // Offset must be aligned.
-    if ((offset % alignment) != 0)
-        return false;
-
-    return true;
-}
-
-template<typename T, typename U, typename V, typename W>
-inline bool CheckOffset(T, U, V, W) = delete;
-
 /*static*/ bool
 TypedObject::construct(JSContext* cx, unsigned int argc, Value* vp)
 {
@@ -2312,11 +2289,9 @@ TypedObject::construct(JSContext* cx, unsigned int argc, Value* vp)
     MOZ_ASSERT(args.callee().is<TypeDescr>());
     Rooted<TypeDescr*> callee(cx, &args.callee().as<TypeDescr>());
 
-    // Typed object constructors are overloaded in three ways, in order of
-    // precedence:
+    // Typed object constructors are overloaded in two ways:
     //
     //   new TypeObj()
-    //   new TypeObj(buffer, [offset])
     //   new TypeObj(data)
 
     // Zero argument constructor:
@@ -2325,50 +2300,6 @@ TypedObject::construct(JSContext* cx, unsigned int argc, Value* vp)
         Rooted<TypedObject*> obj(cx, createZeroed(cx, callee, length));
         if (!obj)
             return false;
-        args.rval().setObject(*obj);
-        return true;
-    }
-
-    // Buffer constructor.
-    if (args[0].isObject() && args[0].toObject().is<ArrayBufferObject>()) {
-        Rooted<ArrayBufferObject*> buffer(cx);
-        buffer = &args[0].toObject().as<ArrayBufferObject>();
-
-        if (callee->opaque() || buffer->isDetached()) {
-            JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_TYPEDOBJECT_BAD_ARGS);
-            return false;
-        }
-
-        uint32_t offset;
-        if (args.length() >= 2 && !args[1].isUndefined()) {
-            if (!args[1].isInt32() || args[1].toInt32() < 0) {
-                JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_TYPEDOBJECT_BAD_ARGS);
-                return false;
-            }
-
-            offset = args[1].toInt32();
-        } else {
-            offset = 0;
-        }
-
-        if (args.length() >= 3 && !args[2].isUndefined()) {
-            JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_TYPEDOBJECT_BAD_ARGS);
-            return false;
-        }
-
-        if (!CheckOffset(offset, callee->size(), callee->alignment(),
-                         buffer->byteLength()))
-        {
-            JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_TYPEDOBJECT_BAD_ARGS);
-            return false;
-        }
-
-        Rooted<OutlineTypedObject*> obj(cx);
-        obj = OutlineTypedObject::createUnattached(cx, callee, LengthForType(*callee));
-        if (!obj)
-            return false;
-
-        obj->attach(cx, *buffer, offset);
         args.rval().setObject(*obj);
         return true;
     }

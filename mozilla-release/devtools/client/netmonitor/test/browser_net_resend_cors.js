@@ -8,7 +8,7 @@
  * a preflight OPTIONS request (bug 1270096 and friends)
  */
 
-add_task(async function () {
+add_task(async function() {
   let { tab, monitor } = await initNetMonitor(CORS_URL);
   info("Starting test... ");
 
@@ -25,7 +25,7 @@ add_task(async function () {
 
   info("Waiting for OPTIONS, then POST");
   let wait = waitForNetworkEvents(monitor, 2);
-  await ContentTask.spawn(tab.linkedBrowser, requestUrl, async function (url) {
+  await ContentTask.spawn(tab.linkedBrowser, requestUrl, async function(url) {
     content.wrappedJSObject.performRequests(url, "triggering/preflight", "post-data");
   });
   await wait;
@@ -93,7 +93,6 @@ add_task(async function () {
 
       is(item.requestPostData.postData.text, "post-data",
         "The POST request has the right POST data");
-      // eslint-disable-next-line mozilla/no-cpows-in-tests
       is(item.responseContent.content.text, "Access-Control-Allow-Origin: *",
         "The POST response has the right content");
     }

@@ -44,7 +44,7 @@ async function doTests(private, container) {
 
     let waitFor;
     if (test.newWindow || alwaysNewWindow) {
-      waitFor = BrowserTestUtils.waitForNewWindow(TARGET_URL);
+      waitFor = BrowserTestUtils.waitForNewWindow({url: TARGET_URL});
       // Confirm that this window has private browsing set if we're doing a private browsing test
     } else {
       waitFor = BrowserTestUtils.waitForNewTab(window.gBrowser, TARGET_URL, true);
@@ -77,8 +77,8 @@ async function doTests(private, container) {
       }
     });
 
-    await BrowserTestUtils.removeTab(tab);
-    await BrowserTestUtils.removeTab(originalTab);
+    BrowserTestUtils.removeTab(tab);
+    BrowserTestUtils.removeTab(originalTab);
   }
 
   window.close();

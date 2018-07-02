@@ -129,7 +129,7 @@ ZoomConstraintsClient::Init(nsIPresShell* aPresShell, nsIDocument* aDocument)
 }
 
 NS_IMETHODIMP
-ZoomConstraintsClient::HandleEvent(nsIDOMEvent* event)
+ZoomConstraintsClient::HandleEvent(dom::Event* event)
 {
   nsAutoString type;
   event->GetType(type);
@@ -244,7 +244,7 @@ ZoomConstraintsClient::RefreshZoomConstraints()
     rcdrsf->SetZoomableByAPZ(zoomConstraints.mAllowZoom);
   }
 
-  ScrollableLayerGuid newGuid(0, presShellId, viewId);
+  ScrollableLayerGuid newGuid(LayersId{0}, presShellId, viewId);
   if (mGuid && mGuid.value() != newGuid) {
     ZCC_LOG("Clearing old constraints in %p for { %u, %" PRIu64 " }\n",
       this, mGuid->mPresShellId, mGuid->mScrollId);

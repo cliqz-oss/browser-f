@@ -3,6 +3,7 @@
 import {actionCreators as ac, actionTypes as at} from "common/Actions.jsm";
 import {FakePrefs, GlobalOverrider} from "test/unit/utils";
 import {insertPinned, TOP_SITES_DEFAULT_ROWS, TOP_SITES_MAX_SITES_PER_ROW} from "common/Reducers.jsm";
+import {getDefaultOptions} from "lib/ActivityStreamStorage.jsm";
 import injector from "inject!lib/TopSitesFeed.jsm";
 import {Screenshots} from "lib/Screenshots.jsm";
 
@@ -60,7 +61,7 @@ describe("Top Sites Feed", () => {
     };
     fakeScreenshot = {
       getScreenshotForURL: sandbox.spy(() => Promise.resolve(FAKE_SCREENSHOT)),
-      maybeCacheScreenshot: Screenshots.maybeCacheScreenshot,
+      maybeCacheScreenshot: sandbox.spy(Screenshots.maybeCacheScreenshot),
       _shouldGetScreenshots: sinon.stub().returns(true)
     };
     filterAdultStub = sinon.stub().returns([]);
@@ -80,16 +81,25 @@ describe("Top Sites Feed", () => {
       "lib/FilterAdult.jsm": {filterAdult: filterAdultStub},
       "lib/Screenshots.jsm": {Screenshots: fakeScreenshot},
       "lib/TippyTopProvider.jsm": {TippyTopProvider: FakeTippyTopProvider},
-      "lib/ShortURL.jsm": {shortURL: shortURLStub}
+      "lib/ShortURL.jsm": {shortURL: shortURLStub},
+      "lib/ActivityStreamStorage.jsm": {ActivityStreamStorage: function Fake() {}, getDefaultOptions}
     }));
     feed = new TopSitesFeed();
+    const storage = {
+      init: sandbox.stub().resolves(),
+      get: sandbox.stub().resolves(),
+      set: sandbox.stub().resolves()
+    };
+    // Setup for tests that don't call `init` but require feed.storage
+    feed._storage = storage;
     feed.store = {
       dispatch: sinon.spy(),
       getState() { return this.state; },
       state: {
         Prefs: {values: {filterAdult: false, topSitesRows: 2}},
         TopSites: {rows: Array(12).fill("site")}
-      }
+      },
+      dbStorage: {getDbTable: sandbox.stub().returns(storage)}
     };
     feed.dedupe.group = (...sites) => sites;
     links = FAKE_LINKS;
@@ -138,14 +148,14 @@ describe("Top Sites Feed", () => {
   });
   describe("#filterForThumbnailExpiration", () => {
     it("should pass rows.urls to the callback provided", () => {
-      const rows = [{url: "foo.com"}, {"url": "bar.com"}];
+      const rows = [{url: "foo.com"}, {"url": "bar.com", "customScreenshotURL": "custom"}];
       feed.store.state.TopSites = {rows};
       const stub = sinon.stub();
 
       feed.filterForThumbnailExpiration(stub);
 
       assert.calledOnce(stub);
-      assert.calledWithExactly(stub, rows.map(r => r.url));
+      assert.calledWithExactly(stub, ["foo.com", "bar.com", "custom"]);
     });
   });
   describe("#getLinksWithDefaults", () => {
@@ -154,15 +164,20 @@ describe("Top Sites Feed", () => {
     });
 
     describe("general", () => {
-      beforeEach(() => {
-        sandbox.stub(fakeScreenshot, "maybeCacheScreenshot");
-      });
       it("should get the links from NewTabUtils", async () => {
         const result = await feed.getLinksWithDefaults();
-        const reference = links.map(site => Object.assign({}, site, {hostname: shortURLStub(site)}));
+        const reference = links.map(site => Object.assign({}, site, {
+          hostname: shortURLStub(site),
+          typedBonus: true
+        }));
 
         assert.deepEqual(result, reference);
         assert.calledOnce(global.NewTabUtils.activityStreamLinks.getTopSites);
+      });
+      it("should indicate the links get typed bonus", async () => {
+        const result = await feed.getLinksWithDefaults();
+
+        assert.propertyVal(result[0], "typedBonus", true);
       });
       it("should not filter out adult sites when pref is false", async () => {
         await feed.getLinksWithDefaults();
@@ -186,6 +201,7 @@ describe("Top Sites Feed", () => {
         const topsite = {
           frecency: FAKE_FRECENCY,
           hostname: shortURLStub({url}),
+          typedBonus: true,
           url
         };
         const blockedDefaultSite = {url: "https://foo.com"};
@@ -215,7 +231,11 @@ describe("Top Sites Feed", () => {
         links = [{frecency: FAKE_FRECENCY, url: "foo.com"}];
 
         const result = await feed.getLinksWithDefaults();
-        const reference = [...links, ...DEFAULT_TOP_SITES].map(s => Object.assign({}, s, {hostname: shortURLStub(s)}));
+        const reference = [...links, ...DEFAULT_TOP_SITES].map(s =>
+          Object.assign({}, s, {
+            hostname: shortURLStub(s),
+            typedBonus: true
+          }));
 
         assert.deepEqual(result, reference);
       });
@@ -226,7 +246,11 @@ describe("Top Sites Feed", () => {
           links.push({frecency: FAKE_FRECENCY, url: `foo${i}.com`});
         }
         const result = await feed.getLinksWithDefaults();
-        const reference = [...links, DEFAULT_TOP_SITES[0]].map(s => Object.assign({}, s, {hostname: shortURLStub(s)}));
+        const reference = [...links, DEFAULT_TOP_SITES[0]].map(s =>
+          Object.assign({}, s, {
+            hostname: shortURLStub(s),
+            typedBonus: true
+          }));
 
         assert.lengthOf(result, numVisible);
         assert.deepEqual(result, reference);
@@ -293,6 +317,38 @@ describe("Top Sites Feed", () => {
 
         const internal = Object.keys(result[0]).filter(key => key.startsWith("__"));
         assert.equal(internal.join(""), "");
+      });
+      it("should copy the screenshot of the frecent site if pinned site doesn't have customScreenshotURL", async () => {
+        links = [{url: "https://foo.com/", screenshot: "screenshot"}];
+        fakeNewTabUtils.pinnedLinks.links = [{url: "https://foo.com/"}];
+
+        const result = await feed.getLinksWithDefaults();
+
+        assert.equal(result[0].screenshot, links[0].screenshot);
+      });
+      it("should not copy the frecent screenshot if customScreenshotURL is set", async () => {
+        links = [{url: "https://foo.com/", screenshot: "screenshot"}];
+        fakeNewTabUtils.pinnedLinks.links = [{url: "https://foo.com/", customScreenshotURL: "custom"}];
+
+        const result = await feed.getLinksWithDefaults();
+
+        assert.isUndefined(result[0].screenshot);
+      });
+      it("should keep the same screenshot if no frecent site is found", async () => {
+        links = [];
+        fakeNewTabUtils.pinnedLinks.links = [{url: "https://foo.com/", screenshot: "custom"}];
+
+        const result = await feed.getLinksWithDefaults();
+
+        assert.equal(result[0].screenshot, "custom");
+      });
+      it("should not overwrite pinned site screenshot", async () => {
+        links = [{url: "https://foo.com/", screenshot: "foo"}];
+        fakeNewTabUtils.pinnedLinks.links = [{url: "https://foo.com/", screenshot: "bar"}];
+
+        const result = await feed.getLinksWithDefaults();
+
+        assert.equal(result[0].screenshot, "bar");
       });
       describe("concurrency", () => {
         let resolvers;
@@ -395,15 +451,51 @@ describe("Top Sites Feed", () => {
         assert.calledWith(feed._fetchIcon, link);
       });
     });
+    it("should call _fetchScreenshot when customScreenshotURL is set", async () => {
+      links = [];
+      fakeNewTabUtils.pinnedLinks.links = [{url: "foo", customScreenshotURL: "custom"}];
+      sinon.stub(feed, "_fetchScreenshot");
+
+      await feed.getLinksWithDefaults();
+
+      assert.calledWith(feed._fetchScreenshot, sinon.match.object, "custom");
+    });
+  });
+  describe("#init", () => {
+    it("should call refresh (broadcast:true)", async () => {
+      sandbox.stub(feed, "refresh");
+
+      await feed.init();
+
+      assert.calledOnce(feed.refresh);
+      assert.calledWithExactly(feed.refresh, {broadcast: true});
+    });
+    it("should initialise the storage", async () => {
+      await feed.init();
+
+      assert.calledOnce(feed.store.dbStorage.getDbTable);
+      assert.calledWithExactly(feed.store.dbStorage.getDbTable, "sectionPrefs");
+    });
   });
   describe("#refresh", () => {
     beforeEach(() => {
       sandbox.stub(feed, "_fetchIcon");
     });
-    it("should initialise _tippyTopProvider if it's not already initialised", async () => {
+    it("should wait for tippytop to initialize", async () => {
       feed._tippyTopProvider.initialized = false;
-      await feed.refresh({broadcast: true});
-      assert.ok(feed._tippyTopProvider.initialized);
+      sinon.stub(feed._tippyTopProvider, "init").resolves();
+
+      await feed.refresh();
+
+      assert.calledOnce(feed._tippyTopProvider.init);
+    });
+    it("should not init the tippyTopProvider if already initialized", async () => {
+      feed._tippyTopProvider.initialized = true;
+      sinon.stub(feed._tippyTopProvider, "init").resolves();
+
+      await feed.refresh();
+
+      assert.notCalled(feed._tippyTopProvider.init);
     });
     it("should broadcast TOP_SITES_UPDATED", async () => {
       sinon.stub(feed, "getLinksWithDefaults").returns(Promise.resolve([]));
@@ -413,16 +505,19 @@ describe("Top Sites Feed", () => {
       assert.calledOnce(feed.store.dispatch);
       assert.calledWithExactly(feed.store.dispatch, ac.BroadcastToContent({
         type: at.TOP_SITES_UPDATED,
-        data: []
+        data: {links: [], pref: {collapsed: false}}
       }));
     });
     it("should dispatch an action with the links returned", async () => {
       await feed.refresh({broadcast: true});
-      const reference = links.map(site => Object.assign({}, site, {hostname: shortURLStub(site)}));
+      const reference = links.map(site => Object.assign({}, site, {
+        hostname: shortURLStub(site),
+        typedBonus: true
+      }));
 
       assert.calledOnce(feed.store.dispatch);
       assert.propertyVal(feed.store.dispatch.firstCall.args[0], "type", at.TOP_SITES_UPDATED);
-      assert.deepEqual(feed.store.dispatch.firstCall.args[0].data, reference);
+      assert.deepEqual(feed.store.dispatch.firstCall.args[0].data.links, reference);
     });
     it("should handle empty slots in the resulting top sites array", async () => {
       links = [FAKE_LINKS[0]];
@@ -437,8 +532,66 @@ describe("Top Sites Feed", () => {
       assert.calledOnce(feed.store.dispatch);
       assert.calledWithExactly(feed.store.dispatch, ac.AlsoToPreloaded({
         type: at.TOP_SITES_UPDATED,
-        data: []
+        data: {links: [], pref: {collapsed: false}}
       }));
+    });
+    it("should not init storage if it is already initialized", async () => {
+      feed._storage.initialized = true;
+
+      await feed.refresh({broadcast: false});
+
+      assert.notCalled(feed._storage.init);
+    });
+    it("should catch indexedDB errors", async () => {
+      feed._storage.get.throws(new Error());
+      globals.sandbox.spy(global.Cu, "reportError");
+
+      try {
+        await feed.refresh({broadcast: false});
+      } catch (e) {
+        assert.fails();
+      }
+
+      assert.calledOnce(Cu.reportError);
+    });
+  });
+  describe("#updateSectionPrefs", () => {
+    it("should call updateSectionPrefs on UPDATE_SECTION_PREFS", () => {
+      sandbox.stub(feed, "updateSectionPrefs");
+
+      feed.onAction({type: at.UPDATE_SECTION_PREFS, data: {id: "topsites"}});
+
+      assert.calledOnce(feed.updateSectionPrefs);
+    });
+    it("should dispatch TOP_SITES_PREFS_UPDATED", async () => {
+      await feed.updateSectionPrefs({collapsed: true});
+
+      assert.calledOnce(feed.store.dispatch);
+      assert.calledWithExactly(feed.store.dispatch, ac.BroadcastToContent({
+        type: at.TOP_SITES_PREFS_UPDATED,
+        data: {pref: {collapsed: true}}
+      }));
+    });
+  });
+  describe("#getScreenshotPreview", () => {
+    it("should dispatch preview if request is succesful", async () => {
+      await feed.getScreenshotPreview("custom", 1234);
+
+      assert.calledOnce(feed.store.dispatch);
+      assert.calledWithExactly(feed.store.dispatch, ac.OnlyToOneContent({
+        data: {preview: FAKE_SCREENSHOT, url: "custom"},
+        type: at.PREVIEW_RESPONSE
+      }, 1234));
+    });
+    it("should return empty string if request fails", async () => {
+      fakeScreenshot.getScreenshotForURL = sandbox.stub().returns(Promise.resolve(null));
+      await feed.getScreenshotPreview("custom", 1234);
+
+      assert.calledOnce(feed.store.dispatch);
+      assert.calledWithExactly(feed.store.dispatch, ac.OnlyToOneContent({
+        data: {preview: "", url: "custom"},
+        type: at.PREVIEW_RESPONSE
+      }, 1234));
     });
   });
   describe("#_fetchIcon", () => {
@@ -510,7 +663,33 @@ describe("Top Sites Feed", () => {
       assert.notProperty(link, "tippyTopIcon");
     });
   });
+  describe("#_fetchScreenshot", () => {
+    it("should call maybeCacheScreenshot", async () => {
+      const updateLink = sinon.stub();
+      const link = {customScreenshotURL: "custom", __sharedCache: {updateLink}};
+      await feed._fetchScreenshot(link, "custom");
+
+      assert.calledOnce(fakeScreenshot.maybeCacheScreenshot);
+      assert.calledWithExactly(fakeScreenshot.maybeCacheScreenshot, link, link.customScreenshotURL,
+        "screenshot", sinon.match.func);
+    });
+    it("should not call maybeCacheScreenshot if screenshot is set", async () => {
+      const updateLink = sinon.stub();
+      const link = {customScreenshotURL: "custom", __sharedCache: {updateLink}, screenshot: true};
+      await feed._fetchScreenshot(link, "custom");
+
+      assert.notCalled(fakeScreenshot.maybeCacheScreenshot);
+    });
+  });
   describe("#onAction", () => {
+    it("should call getScreenshotPreview on PREVIEW_REQUEST", () => {
+      sandbox.stub(feed, "getScreenshotPreview");
+
+      feed.onAction({type: at.PREVIEW_REQUEST, data: {url: "foo"}, meta: {fromTarget: 1234}});
+
+      assert.calledOnce(feed.getScreenshotPreview);
+      assert.calledWithExactly(feed.getScreenshotPreview, "foo", 1234);
+    });
     it("should refresh on SYSTEM_TICK", async () => {
       sandbox.stub(feed, "refresh");
 
@@ -528,19 +707,35 @@ describe("Top Sites Feed", () => {
       assert.calledOnce(fakeNewTabUtils.pinnedLinks.pin);
       assert.calledWith(fakeNewTabUtils.pinnedLinks.pin, pinAction.data.site, pinAction.data.index);
     });
-    it("should trigger refresh on TOP_SITES_PIN", () => {
-      sinon.stub(feed, "refresh");
+    it("should call pin on TOP_SITES_PIN", () => {
+      sinon.stub(feed, "pin");
       const pinExistingAction = {type: at.TOP_SITES_PIN, data: {site: FAKE_LINKS[4], index: 4}};
 
       feed.onAction(pinExistingAction);
 
+      assert.calledOnce(feed.pin);
+    });
+    it("should trigger refresh on TOP_SITES_PIN", async () => {
+      sinon.stub(feed, "refresh");
+      const pinExistingAction = {type: at.TOP_SITES_PIN, data: {site: FAKE_LINKS[4], index: 4}};
+
+      await feed.pin(pinExistingAction);
+
       assert.calledOnce(feed.refresh);
     });
-    it("should trigger refresh on TOP_SITES_INSERT", () => {
-      sinon.stub(feed, "refresh");
+    it("should call insert on TOP_SITES_INSERT", async () => {
+      sinon.stub(feed, "insert");
       const addAction = {type: at.TOP_SITES_INSERT, data: {site: {url: "foo.com"}}};
 
       feed.onAction(addAction);
+
+      assert.calledOnce(feed.insert);
+    });
+    it("should trigger refresh on TOP_SITES_INSERT", async () => {
+      sinon.stub(feed, "refresh");
+      const addAction = {type: at.TOP_SITES_INSERT, data: {site: {url: "foo.com"}}};
+
+      await feed.insert(addAction);
 
       assert.calledOnce(feed.refresh);
     });
@@ -568,10 +763,10 @@ describe("Top Sites Feed", () => {
       assert.calledOnce(feed.store.dispatch);
       assert.propertyVal(feed.store.dispatch.firstCall.args[0], "type", at.TOP_SITES_UPDATED);
     });
-    it("should call refresh on INIT action", async () => {
-      sinon.stub(feed, "refresh");
-      await feed.onAction({type: at.INIT});
-      assert.calledOnce(feed.refresh);
+    it("should call init on INIT action", async () => {
+      sinon.stub(feed, "init");
+      feed.onAction({type: at.INIT});
+      assert.calledOnce(feed.init);
     });
     it("should call refresh on MIGRATION_COMPLETED action", async () => {
       sinon.stub(feed, "refresh");
@@ -587,11 +782,11 @@ describe("Top Sites Feed", () => {
       assert.calledOnce(feed.refresh);
       assert.calledWithExactly(feed.refresh, {broadcast: true});
     });
-    it("should call refresh on PLACES_LINKS_DELETED action", async () => {
+    it("should call refresh on PLACES_LINKS_CHANGED action", async () => {
       sinon.stub(feed, "refresh");
-      await feed.onAction({type: at.PLACES_LINKS_DELETED});
+      await feed.onAction({type: at.PLACES_LINKS_CHANGED});
       assert.calledOnce(feed.refresh);
-      assert.calledWithExactly(feed.refresh, {broadcast: true});
+      assert.calledWithExactly(feed.refresh, {broadcast: false});
     });
     it("should call pin with correct args on TOP_SITES_INSERT without an index specified", () => {
       const addAction = {
@@ -675,11 +870,35 @@ describe("Top Sites Feed", () => {
     });
   });
   describe("#pin", () => {
-    it("should pin site in specified slot empty pinned list", () => {
-      const site = {url: "foo.bar", label: "foo"};
-      feed.pin({data: {index: 2, site}});
+    it("should pin site in specified slot empty pinned list", async () => {
+      const site = {url: "foo.bar", label: "foo", customScreenshotURL: "screenshot"};
+      await feed.pin({data: {index: 2, site}});
       assert.calledOnce(fakeNewTabUtils.pinnedLinks.pin);
       assert.calledWith(fakeNewTabUtils.pinnedLinks.pin, site, 2);
+    });
+    it("should lookup the link object to update the custom screenshot", async () => {
+      const site = {url: "foo.bar", label: "foo", customScreenshotURL: "screenshot"};
+      sandbox.spy(feed.pinnedCache, "request");
+
+      await feed.pin({data: {index: 2, site}});
+
+      assert.calledOnce(feed.pinnedCache.request);
+    });
+    it("should lookup the link object to update the custom screenshot", async () => {
+      const site = {url: "foo.bar", label: "foo", customScreenshotURL: null};
+      sandbox.spy(feed.pinnedCache, "request");
+
+      await feed.pin({data: {index: 2, site}});
+
+      assert.calledOnce(feed.pinnedCache.request);
+    });
+    it("should not do a link object lookup if custom screenshot field is not set", async () => {
+      const site = {url: "foo.bar", label: "foo"};
+      sandbox.spy(feed.pinnedCache, "request");
+
+      await feed.pin({data: {index: 2, site}});
+
+      assert.notCalled(feed.pinnedCache.request);
     });
     it("should pin site in specified slot of pinned list that is free", () => {
       fakeNewTabUtils.pinnedLinks.links = [null, {url: "example.com"}];
@@ -731,6 +950,34 @@ describe("Top Sites Feed", () => {
       feed.pin(action);
 
       assert.notCalled(feed.insert);
+    });
+  });
+  describe("clearLinkCustomScreenshot", () => {
+    it("should remove cached screenshot if custom url changes", async () => {
+      const stub = sandbox.stub();
+      sandbox.stub(feed.pinnedCache, "request").returns(Promise.resolve([{
+        url: "foo",
+        customScreenshotURL: "old_screenshot",
+        __sharedCache: {updateLink: stub}
+      }]));
+
+      await feed._clearLinkCustomScreenshot({url: "foo", customScreenshotURL: "new_screenshot"});
+
+      assert.calledOnce(stub);
+      assert.calledWithExactly(stub, "screenshot", undefined);
+    });
+    it("should remove cached screenshot if custom url is removed", async () => {
+      const stub = sandbox.stub();
+      sandbox.stub(feed.pinnedCache, "request").returns(Promise.resolve([{
+        url: "foo",
+        customScreenshotURL: "old_screenshot",
+        __sharedCache: {updateLink: stub}
+      }]));
+
+      await feed._clearLinkCustomScreenshot({url: "foo", customScreenshotURL: "new_screenshot"});
+
+      assert.calledOnce(stub);
+      assert.calledWithExactly(stub, "screenshot", undefined);
     });
   });
   describe("#drop", () => {
@@ -809,8 +1056,8 @@ describe("Top Sites Feed", () => {
       await forDispatch({type: at.PLACES_LINK_BLOCKED});
 
       assert.calledTwice(feed.store.dispatch);
-      assert.equal(feed.store.dispatch.firstCall.args[0].data[0].url, url);
-      assert.equal(feed.store.dispatch.secondCall.args[0].data[0].url, FAKE_LINKS[0].url);
+      assert.equal(feed.store.dispatch.firstCall.args[0].data.links[0].url, url);
+      assert.equal(feed.store.dispatch.secondCall.args[0].data.links[0].url, FAKE_LINKS[0].url);
     });
   });
 });

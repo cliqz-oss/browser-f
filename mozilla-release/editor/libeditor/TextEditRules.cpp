@@ -30,7 +30,6 @@
 #include "nsGkAtoms.h"
 #include "nsIContent.h"
 #include "nsIDocumentEncoder.h"
-#include "nsIDOMDocument.h"
 #include "nsNameSpaceManager.h"
 #include "nsINode.h"
 #include "nsIPlaintextEditor.h"
@@ -239,7 +238,7 @@ TextEditRules::AfterEdit(EditAction aAction,
 
     NS_ENSURE_STATE(mTextEditor);
     nsresult rv =
-      mTextEditor->HandleInlineSpellCheck(aAction, selection,
+      mTextEditor->HandleInlineSpellCheck(aAction, *selection,
                                           mCachedSelectionNode,
                                           mCachedSelectionOffset,
                                           nullptr, 0, nullptr, 0);
@@ -388,8 +387,13 @@ TextEditRules::WillInsert(Selection& aSelection, bool* aCancel)
 
   // check for the magic content node and delete it if it exists
   if (mBogusNode) {
-    NS_ENSURE_TRUE_VOID(mTextEditor);
-    mTextEditor->DeleteNode(mBogusNode);
+    if (NS_WARN_IF(!mTextEditor)) {
+      return; // XXX Shouldn't we release mBogusNode now?
+    }
+    RefPtr<TextEditor> textEditor(mTextEditor);
+    DebugOnly<nsresult> rv = textEditor->DeleteNodeWithTransaction(*mBogusNode);
+    NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
+      "Failed to remove the bogus node");
     mBogusNode = nullptr;
   }
 }
@@ -434,7 +438,8 @@ TextEditRules::WillInsertBreak(Selection* aSelection,
     // if the selection isn't collapsed, delete it.
     if (!aSelection->IsCollapsed()) {
       NS_ENSURE_STATE(mTextEditor);
-      rv = mTextEditor->DeleteSelection(nsIEditor::eNone, nsIEditor::eStrip);
+      rv = mTextEditor->DeleteSelectionAsAction(nsIEditor::eNone,
+                                                nsIEditor::eStrip);
       NS_ENSURE_SUCCESS(rv, rv);
     }
 
@@ -463,81 +468,85 @@ TextEditRules::CollapseSelectionToTrailingBRIfNeeded(Selection* aSelection)
     return NS_OK;
   }
 
-  NS_ENSURE_STATE(mTextEditor);
+  if (NS_WARN_IF(!mTextEditor)) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+  RefPtr<TextEditor> textEditor(mTextEditor);
 
   // If there is no selection ranges, we should set to the end of the editor.
   // This is usually performed in TextEditRules::Init(), however, if the
   // editor is reframed, this may be called by AfterEdit().
   if (!aSelection->RangeCount()) {
-    mTextEditor->CollapseSelectionToEnd(aSelection);
-  }
-
-  // if we are at the end of the textarea, we need to set the
-  // selection to stick to the mozBR at the end of the textarea.
-  int32_t selOffset;
-  nsCOMPtr<nsINode> selNode;
-  nsresult rv =
-    EditorBase::GetStartNodeAndOffset(aSelection,
-                                      getter_AddRefs(selNode), &selOffset);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  if (!EditorBase::IsTextNode(selNode)) {
-    return NS_OK; // Nothing to do if we're not at a text node.
-  }
-
-  // nothing to do if we're not at the end of the text node
-  if (selOffset != static_cast<int32_t>(selNode->Length())) {
-    return NS_OK;
-  }
-
-  NS_ENSURE_STATE(mTextEditor);
-  nsINode* root = mTextEditor->GetRoot();
-  if (NS_WARN_IF(!root)) {
-    return NS_ERROR_NULL_POINTER;
-  }
-  nsINode* parentNode = selNode->GetParentNode();
-  if (parentNode != root) {
-    return NS_OK;
-  }
-
-  nsINode* nextNode = selNode->GetNextSibling();
-  if (nextNode && TextEditUtils::IsMozBR(nextNode)) {
-    EditorRawDOMPoint afterSelNode(selNode);
-    if (NS_WARN_IF(!afterSelNode.AdvanceOffset())) {
+    textEditor->CollapseSelectionToEnd(aSelection);
+    if (!mTextEditor) {
+      // The editor has been destroyed.
       return NS_ERROR_FAILURE;
     }
-    rv = aSelection->Collapse(afterSelNode);
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return rv;
-    }
+  }
+
+  // If we are at the end of the <textarea> element, we need to set the
+  // selection to stick to the moz-<br> at the end of the <textarea>.
+  EditorRawDOMPoint selectionStartPoint(EditorBase::GetStartPoint(aSelection));
+  if (NS_WARN_IF(!selectionStartPoint.IsSet())) {
+    return NS_ERROR_FAILURE;
+  }
+
+  // Nothing to do if we're not at the end of the text node.
+  if (!selectionStartPoint.IsInTextNode() ||
+      !selectionStartPoint.IsEndOfContainer()) {
+    return NS_OK;
+  }
+
+  Element* rootElement = textEditor->GetRoot();
+  if (NS_WARN_IF(!rootElement)) {
+    return NS_ERROR_NULL_POINTER;
+  }
+  nsINode* parentNode = selectionStartPoint.GetContainer()->GetParentNode();
+  if (parentNode != rootElement) {
+    return NS_OK;
+  }
+
+  nsINode* nextNode = selectionStartPoint.GetContainer()->GetNextSibling();
+  if (!nextNode || !TextEditUtils::IsMozBR(nextNode)) {
+    return NS_OK;
+  }
+
+  EditorRawDOMPoint afterStartContainer(selectionStartPoint.GetContainer());
+  if (NS_WARN_IF(!afterStartContainer.AdvanceOffset())) {
+    return NS_ERROR_FAILURE;
+  }
+  ErrorResult error;
+  aSelection->Collapse(afterStartContainer, error);
+  if (NS_WARN_IF(error.Failed())) {
+    return error.StealNSResult();
   }
   return NS_OK;
 }
 
 static inline already_AddRefed<nsINode>
-GetTextNode(Selection* selection)
+GetTextNode(Selection* aSelection)
 {
-  int32_t selOffset;
-  nsCOMPtr<nsINode> selNode;
-  nsresult rv =
-    EditorBase::GetStartNodeAndOffset(selection,
-                                      getter_AddRefs(selNode), &selOffset);
-  NS_ENSURE_SUCCESS(rv, nullptr);
-  if (!EditorBase::IsTextNode(selNode)) {
-    // This should be the root node, walk the tree looking for text nodes
-    RefPtr<NodeIterator> iter =
-      new NodeIterator(selNode, NodeFilterBinding::SHOW_TEXT, nullptr);
-    while (!EditorBase::IsTextNode(selNode)) {
-      selNode = iter->NextNode(IgnoreErrors());
-      if (!selNode) {
-        return nullptr;
-      }
+  EditorRawDOMPoint selectionStartPoint(EditorBase::GetStartPoint(aSelection));
+  if (NS_WARN_IF(!selectionStartPoint.IsSet())) {
+    return nullptr;
+  }
+  if (selectionStartPoint.IsInTextNode()) {
+    nsCOMPtr<nsINode> node = selectionStartPoint.GetContainer();
+    return node.forget();
+  }
+  // This should be the root node, walk the tree looking for text nodes.
+  nsCOMPtr<nsINode> node = selectionStartPoint.GetContainer();
+  RefPtr<NodeIterator> iter =
+    new NodeIterator(node, NodeFilterBinding::SHOW_TEXT, nullptr);
+  while (!EditorBase::IsTextNode(node)) {
+    node = iter->NextNode(IgnoreErrors());
+    if (!node) {
+      return nullptr;
     }
   }
-  return selNode.forget();
+  return node.forget();
 }
+
 #ifdef DEBUG
 #define ASSERT_PASSWORD_LENGTHS_EQUAL()                                \
   if (IsPasswordEditor() && mTextEditor->GetRoot()) {                  \
@@ -677,7 +686,8 @@ TextEditRules::WillInsertText(EditAction aAction,
   // if the selection isn't collapsed, delete it.
   if (!aSelection->IsCollapsed()) {
     NS_ENSURE_STATE(mTextEditor);
-    rv = mTextEditor->DeleteSelection(nsIEditor::eNone, nsIEditor::eStrip);
+    rv = mTextEditor->DeleteSelectionAsAction(nsIEditor::eNone,
+                                              nsIEditor::eStrip);
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
@@ -768,7 +778,8 @@ TextEditRules::WillInsertText(EditAction aAction,
       betterInsertionPoint.Set(betterInsertionPoint.GetContainer(),
                                IMESelectionOffset);
     }
-    rv = mTextEditor->InsertTextImpl(*doc, *outString, betterInsertionPoint);
+    rv = mTextEditor->InsertTextWithTransaction(*doc, *outString,
+                                                betterInsertionPoint);
     NS_ENSURE_SUCCESS(rv, rv);
   } else {
     // aAction == EditAction::insertText
@@ -778,9 +789,12 @@ TextEditRules::WillInsertText(EditAction aAction,
     AutoTransactionsConserveSelection dontChangeMySelection(mTextEditor);
 
     EditorRawDOMPoint pointAfterStringInserted;
-    rv = mTextEditor->InsertTextImpl(*doc, *outString, atStartOfSelection,
-                                     &pointAfterStringInserted);
-    NS_ENSURE_SUCCESS(rv, rv);
+    rv = mTextEditor->InsertTextWithTransaction(*doc, *outString,
+                                                atStartOfSelection,
+                                                &pointAfterStringInserted);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
 
     if (pointAfterStringInserted.IsSet()) {
       // Make the caret attach to the inserted text, unless this text ends with a LF,
@@ -879,7 +893,8 @@ TextEditRules::WillSetText(Selection& aSelection,
       return NS_OK;
     }
     nsresult rv =
-      textEditor->InsertNode(*newNode, EditorRawDOMPoint(rootElement, 0));
+      textEditor->InsertNodeWithTransaction(*newNode,
+                                            EditorRawDOMPoint(rootElement, 0));
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return rv;
     }
@@ -1032,22 +1047,22 @@ TextEditRules::WillDeleteSelection(Selection* aSelection,
       mPasswordText.Cut(start, end-start);
     }
   } else {
-    nsCOMPtr<nsINode> startNode;
-    int32_t startOffset;
-    nsresult rv =
-      EditorBase::GetStartNodeAndOffset(aSelection, getter_AddRefs(startNode),
-                                        &startOffset);
-    NS_ENSURE_SUCCESS(rv, rv);
-    NS_ENSURE_TRUE(startNode, NS_ERROR_FAILURE);
+    EditorRawDOMPoint selectionStartPoint(
+                        EditorBase::GetStartPoint(aSelection));
+    if (NS_WARN_IF(!selectionStartPoint.IsSet())) {
+      return NS_ERROR_FAILURE;
+    }
 
     if (!aSelection->IsCollapsed()) {
       return NS_OK;
     }
 
     // Test for distance between caret and text that will be deleted
-    rv = CheckBidiLevelForDeletion(aSelection, startNode, startOffset,
-                                   aCollapsedAction, aCancel);
-    NS_ENSURE_SUCCESS(rv, rv);
+    nsresult rv = CheckBidiLevelForDeletion(aSelection, selectionStartPoint,
+                                            aCollapsedAction, aCancel);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
     if (*aCancel) {
       return NS_OK;
     }
@@ -1059,7 +1074,8 @@ TextEditRules::WillDeleteSelection(Selection* aSelection,
 
   NS_ENSURE_STATE(mTextEditor);
   nsresult rv =
-    mTextEditor->DeleteSelectionImpl(aCollapsedAction, nsIEditor::eStrip);
+    mTextEditor->DeleteSelectionWithTransaction(aCollapsedAction,
+                                                nsIEditor::eStrip);
   NS_ENSURE_SUCCESS(rv, rv);
 
   *aHandled = true;
@@ -1072,29 +1088,27 @@ TextEditRules::DidDeleteSelection(Selection* aSelection,
                                   nsIEditor::EDirection aCollapsedAction,
                                   nsresult aResult)
 {
-  nsCOMPtr<nsINode> startNode;
-  int32_t startOffset;
-  nsresult rv =
-    EditorBase::GetStartNodeAndOffset(aSelection,
-                                      getter_AddRefs(startNode), &startOffset);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-  if (NS_WARN_IF(!startNode)) {
+  EditorRawDOMPoint selectionStartPoint(EditorBase::GetStartPoint(aSelection));
+  if (NS_WARN_IF(!selectionStartPoint.IsSet())) {
     return NS_ERROR_FAILURE;
   }
 
-  // delete empty text nodes at selection
-  if (EditorBase::IsTextNode(startNode)) {
-    // are we in an empty text node?
-    if (!startNode->Length()) {
-      NS_ENSURE_STATE(mTextEditor);
-      rv = mTextEditor->DeleteNode(startNode);
-      if (NS_WARN_IF(NS_FAILED(rv))) {
-        return rv;
-      }
+  // Delete empty text nodes at selection.
+  if (selectionStartPoint.IsInTextNode() &&
+      !selectionStartPoint.GetContainer()->Length()) {
+    if (NS_WARN_IF(!mTextEditor)) {
+      return NS_ERROR_NOT_AVAILABLE;
     }
+    RefPtr<TextEditor> textEditor(mTextEditor);
+    nsresult rv =
+      textEditor->DeleteNodeWithTransaction(
+                    *selectionStartPoint.GetContainer());
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
+    // Be aware, mTextEditor may be nullptr here.
   }
+
   if (mDidExplicitlySetInterline) {
     return NS_OK;
   }
@@ -1300,11 +1314,7 @@ TextEditRules::WillOutputText(Selection* aSelection,
   }
 
   // Otherwise, the text is the value.
-  nsresult rv = text->GetData(*aOutString);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    // Fall back to the expensive path if it fails.
-    return NS_OK;
-  }
+  text->GetData(*aOutString);
 
   *aHandled = true;
   return NS_OK;
@@ -1463,7 +1473,8 @@ TextEditRules::CreateBogusNodeIfNeeded(Selection* aSelection)
 
   // Put the node in the document.
   nsresult rv =
-    mTextEditor->InsertNode(*mBogusNode, EditorRawDOMPoint(body, 0));
+    mTextEditor->InsertNodeWithTransaction(*mBogusNode,
+                                           EditorRawDOMPoint(body, 0));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -1625,7 +1636,8 @@ TextEditRules::HideLastPWInput()
   nsCOMPtr<nsINode> selNode = GetTextNode(selection);
   NS_ENSURE_TRUE(selNode, NS_OK);
 
-  selNode->GetAsText()->ReplaceData(mLastStart, mLastLength, hiddenText);
+  selNode->GetAsText()->ReplaceData(mLastStart, mLastLength, hiddenText,
+                                    IgnoreErrors());
   // XXXbz Selection::Collapse/Extend take int32_t, but there are tons of
   // callsites... Converting all that is a battle for another day.
   selection->Collapse(selNode, start);
@@ -1664,7 +1676,13 @@ TextEditRules::CreateBRInternal(const EditorRawDOMPoint& aPointToInsert,
   }
   RefPtr<TextEditor> textEditor = mTextEditor;
 
-  RefPtr<Element> brElement = textEditor->CreateBR(aPointToInsert);
+  RefPtr<Selection> selection = textEditor->GetSelection();
+  if (NS_WARN_IF(!selection)) {
+    return nullptr;
+  }
+
+  RefPtr<Element> brElement =
+    textEditor->InsertBrElementWithTransaction(*selection, aPointToInsert);
   if (NS_WARN_IF(!brElement)) {
     return nullptr;
   }
@@ -1672,8 +1690,9 @@ TextEditRules::CreateBRInternal(const EditorRawDOMPoint& aPointToInsert,
   // give it special moz attr
   if (aCreateMozBR) {
     // XXX Why do we need to set this attribute with transaction?
-    nsresult rv = textEditor->SetAttribute(brElement, nsGkAtoms::type,
-                                           NS_LITERAL_STRING("_moz"));
+    nsresult rv =
+      textEditor->SetAttributeWithTransaction(*brElement, *nsGkAtoms::type,
+                                              NS_LITERAL_STRING("_moz"));
     if (NS_WARN_IF(NS_FAILED(rv))) {
       // XXX Don't we need to remove the new <br> element from the DOM tree
       //     in this case?

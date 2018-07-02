@@ -45,23 +45,69 @@ HistoryEngine.prototype = {
 
   syncPriority: 7,
 
-  async _processIncoming(newitems) {
-    // We want to notify history observers that a batch operation is underway
-    // so they don't do lots of work for each incoming record.
-    let observers = PlacesUtils.history.getObservers();
-    function notifyHistoryObservers(notification) {
-      for (let observer of observers) {
-        try {
-          observer[notification]();
-        } catch (ex) { }
-      }
+  _migratedSyncMetadata: false,
+  async _migrateSyncMetadata() {
+    if (this._migratedSyncMetadata) {
+      return;
     }
-    notifyHistoryObservers("onBeginUpdateBatch");
-    try {
-      await SyncEngine.prototype._processIncoming.call(this, newitems);
-    } finally {
-      notifyHistoryObservers("onEndUpdateBatch");
+    // Migrate the history sync ID and last sync time from prefs, to avoid
+    // triggering a full sync on upgrade. This can be removed in bug 1443021.
+    let existingSyncID = await super.getSyncID();
+    if (existingSyncID) {
+      this._log.debug("Migrating existing sync ID ${existingSyncID} from prefs",
+                      { existingSyncID });
+      await PlacesSyncUtils.history.ensureCurrentSyncId(existingSyncID);
     }
+    let existingLastSync = await super.getLastSync();
+    if (existingLastSync) {
+      this._log.debug("Migrating existing last sync time ${existingLastSync} " +
+                      "from prefs", { existingLastSync });
+      await PlacesSyncUtils.history.setLastSync(existingLastSync);
+    }
+    this._migratedSyncMetadata = true;
+  },
+
+  async getSyncID() {
+    return PlacesSyncUtils.history.getSyncId();
+  },
+
+  async ensureCurrentSyncID(newSyncID) {
+    this._log.debug("Checking if server sync ID ${newSyncID} matches existing",
+                    { newSyncID });
+    await PlacesSyncUtils.history.ensureCurrentSyncId(newSyncID);
+    await super.ensureCurrentSyncID(newSyncID); // Remove in bug 1443021.
+    return newSyncID;
+  },
+
+  async resetSyncID() {
+    // First, delete the collection on the server. It's fine if we're
+    // interrupted here: on the next sync, we'll detect that our old sync ID is
+    // now stale, and start over as a first sync.
+    await this._deleteServerCollection();
+    // Then, reset our local sync ID.
+    return this.resetLocalSyncID();
+  },
+
+  async resetLocalSyncID() {
+    let newSyncID = await PlacesSyncUtils.history.resetSyncId();
+    this._log.debug("Assigned new sync ID ${newSyncID}", { newSyncID });
+    await super.ensureCurrentSyncID(newSyncID); // Remove in bug 1443021.
+    return newSyncID;
+  },
+
+  async getLastSync() {
+    let lastSync = await PlacesSyncUtils.history.getLastSync();
+    return lastSync;
+  },
+
+  async setLastSync(lastSync) {
+    await PlacesSyncUtils.history.setLastSync(lastSync);
+    await super.setLastSync(lastSync); // Remove in bug 1443021.
+  },
+
+  async _syncStartup() {
+    await this._migrateSyncMetadata();
+    await super._syncStartup();
   },
 
   shouldSyncURL(url) {
@@ -79,47 +125,22 @@ HistoryEngine.prototype = {
     await this._tracker.removeChangedID(...guidsToRemove);
     return changedIDs;
   },
+
+  async _resetClient() {
+    await super._resetClient();
+    await PlacesSyncUtils.history.reset();
+  },
 };
 
 function HistoryStore(name, engine) {
   Store.call(this, name, engine);
-
-  // Explicitly nullify our references to our cached services so we don't leak
-  Svc.Obs.add("places-shutdown", function() {
-    for (let query in this._stmts) {
-      let stmt = this._stmts[query];
-      stmt.finalize();
-    }
-    this._stmts = {};
-  }, this);
 }
+
 HistoryStore.prototype = {
   __proto__: Store.prototype,
 
-  __asyncHistory: null,
-
   // We try and only update this many visits at one time.
   MAX_VISITS_PER_INSERT: 500,
-
-  get _asyncHistory() {
-    if (!this.__asyncHistory) {
-      this.__asyncHistory = Cc["@mozilla.org/browser/history;1"]
-                              .getService(Ci.mozIAsyncHistory);
-    }
-    return this.__asyncHistory;
-  },
-
-  _stmts: {},
-  _getStmt(query) {
-    if (query in this._stmts) {
-      return this._stmts[query];
-    }
-
-    this._log.trace("Creating SQL statement: " + query);
-    let db = PlacesUtils.history.QueryInterface(Ci.nsPIPlacesDatabase)
-                        .DBConnection;
-    return this._stmts[query] = db.createAsyncStatement(query);
-  },
 
   // Some helper functions to handle GUIDs
   async setGUID(uri, guid) {
@@ -184,55 +205,81 @@ HistoryStore.prototype = {
   },
 
   async applyIncomingBatch(records) {
+    // Convert incoming records to mozIPlaceInfo objects which are applied as
+    // either history additions or removals.
     let failed = [];
-
-    // Convert incoming records to mozIPlaceInfo objects. Some records can be
-    // ignored or handled directly, so we're rewriting the array in-place.
-    let i, k;
-    let maybeYield = Async.jankYielder();
-    for (i = 0, k = 0; i < records.length; i++) {
-      await maybeYield();
-      let record = records[k] = records[i];
-      let shouldApply;
-
-      try {
-        if (record.deleted) {
-          await this.remove(record);
-
-          // No further processing needed. Remove it from the list.
-          shouldApply = false;
-        } else {
-          shouldApply = await this._recordToPlaceInfo(record);
+    let toAdd = [];
+    let toRemove = [];
+    for await (let record of Async.yieldingIterator(records)) {
+      if (record.deleted) {
+        toRemove.push(record);
+      } else {
+        try {
+          if (await this._recordToPlaceInfo(record)) {
+            toAdd.push(record);
+          }
+        } catch (ex) {
+          if (Async.isShutdownException(ex)) {
+            throw ex;
+          }
+          this._log.error("Failed to create a place info", ex);
+          this._log.trace("The record that failed", record);
+          failed.push(record.id);
         }
-      } catch (ex) {
-        if (Async.isShutdownException(ex)) {
-          throw ex;
-        }
-        failed.push(record.id);
-        shouldApply = false;
-      }
-
-      if (shouldApply) {
-        k += 1;
       }
     }
-    records.length = k; // truncate array
-
-    if (records.length) {
-      for (let chunk of this._generateChunks(records)) {
-        // Per bug 1415560, we ignore any exceptions returned by insertMany
-        // as they are likely to be spurious. We do supply an onError handler
-        // and log the exceptions seen there as they are likely to be
-        // informative, but we still never abort the sync based on them.
-        try {
-          await PlacesUtils.history.insertMany(chunk, null, failedVisit => {
-            this._log.info("Failed to insert a history record", failedVisit.guid);
-            this._log.trace("The record that failed", failedVisit);
-            failed.push(failedVisit.guid);
-          });
-        } catch (ex) {
-          this._log.info("Failed to insert history records", ex);
+    if (toAdd.length || toRemove.length) {
+      // We want to notify history observers that a batch operation is underway
+      // so they don't do lots of work for each incoming record.
+      let observers = PlacesUtils.history.getObservers();
+      function notifyHistoryObservers(notification) {
+        for (let observer of observers) {
+          try {
+            observer[notification]();
+          } catch (ex) {
+            // don't log an error - it's not our code that failed and we don't
+            // want an error log written just for this.
+            this._log.info("history observer failed", ex);
+          }
         }
+      }
+      notifyHistoryObservers("onBeginUpdateBatch");
+      try {
+        if (toRemove.length) {
+          // PlacesUtils.history.remove takes an array of visits to remove,
+          // but the error semantics are tricky - a single "bad" entry will cause
+          // an exception before anything is removed. So we do remove them one at
+          // a time.
+          for await (let record of Async.yieldingIterator(toRemove)) {
+            try {
+              await this.remove(record);
+            } catch (ex) {
+              if (Async.isShutdownException(ex)) {
+                throw ex;
+              }
+              this._log.error("Failed to delete a place info", ex);
+              this._log.trace("The record that failed", record);
+              failed.push(record.id);
+            }
+          }
+        }
+        for (let chunk of this._generateChunks(toAdd)) {
+          // Per bug 1415560, we ignore any exceptions returned by insertMany
+          // as they are likely to be spurious. We do supply an onError handler
+          // and log the exceptions seen there as they are likely to be
+          // informative, but we still never abort the sync based on them.
+          try {
+            await PlacesUtils.history.insertMany(chunk, null, failedVisit => {
+              this._log.info("Failed to insert a history record", failedVisit.guid);
+              this._log.trace("The record that failed", failedVisit);
+              failed.push(failedVisit.guid);
+            });
+          } catch (ex) {
+            this._log.info("Failed to insert history records", ex);
+          }
+        }
+      } finally {
+        notifyHistoryObservers("onEndUpdateBatch");
       }
     }
 
@@ -376,7 +423,7 @@ HistoryStore.prototype = {
     record.visits.length = k; // truncate array
 
     // No update if there aren't any visits to apply.
-    // mozIAsyncHistory::updatePlaces() wants at least one visit.
+    // History wants at least one visit.
     // In any case, the only thing we could change would be the title
     // and that shouldn't change without a visit.
     if (!record.visits.length) {
@@ -423,7 +470,7 @@ HistoryStore.prototype = {
   },
 
   async wipe() {
-    return PlacesUtils.history.clear();
+    return PlacesSyncUtils.history.wipe();
   }
 };
 
@@ -443,7 +490,7 @@ HistoryTracker.prototype = {
     PlacesUtils.history.removeObserver(this);
   },
 
-  QueryInterface: XPCOMUtils.generateQI([
+  QueryInterface: ChromeUtils.generateQI([
     Ci.nsINavHistoryObserver,
     Ci.nsISupportsWeakReference
   ]),

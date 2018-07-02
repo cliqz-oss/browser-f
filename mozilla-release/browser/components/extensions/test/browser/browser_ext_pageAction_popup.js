@@ -2,6 +2,13 @@
 /* vim: set sts=2 sw=2 et tw=80: */
 "use strict";
 
+const {GlobalManager} = ChromeUtils.import("resource://gre/modules/Extension.jsm", null);
+
+function assertViewCount(extension, count) {
+  let ext = GlobalManager.extensionMap.get(extension.id);
+  is(ext.views.size, count, "Should have the expected number of extension views");
+}
+
 add_task(async function testPageActionPopup() {
   let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "http://example.com/");
 
@@ -178,6 +185,8 @@ add_task(async function testPageActionPopup() {
       panel.hidePopup();
     }
 
+    assertViewCount(extension, 1);
+
     if (panel) {
       panel = document.getElementById(panelId);
       is(panel, null, "panel successfully removed from document after hiding");
@@ -198,7 +207,7 @@ add_task(async function testPageActionPopup() {
   let panel = document.getElementById(panelId);
   is(panel, null, "pageAction panel removed from document");
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 });
 
 

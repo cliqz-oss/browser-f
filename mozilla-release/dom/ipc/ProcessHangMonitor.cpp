@@ -24,9 +24,10 @@
 #include "mozilla/WeakPtr.h"
 
 #include "nsExceptionHandler.h"
-#include "nsIFrameLoader.h"
+#include "nsFrameLoader.h"
 #include "nsIHangReport.h"
 #include "nsITabParent.h"
+#include "nsQueryObject.h"
 #include "nsPluginHost.h"
 #include "nsThreadUtils.h"
 
@@ -95,7 +96,13 @@ class HangMonitorChild
 
   void ClearHang();
   void ClearHangAsync();
-  void ClearForcePaint();
+  void ClearForcePaint(uint64_t aLayerObserverEpoch);
+
+  // MaybeStartForcePaint will notify the background hang monitor of activity
+  // if this is the first time calling it since ClearForcePaint. It should be
+  // callable from any thread, but you must be holding mMonitor if using it off
+  // the main thread, since it could race with ClearForcePaint.
+  void MaybeStartForcePaint();
 
   mozilla::ipc::IPCResult RecvTerminateScript(const bool& aTerminateGlobal) override;
   mozilla::ipc::IPCResult RecvBeginStartingDebugger() override;
@@ -141,6 +148,10 @@ class HangMonitorChild
 
   // This field is only accessed on the hang thread.
   bool mIPCOpen;
+
+  // Allows us to ensure we NotifyActivity only once, allowing
+  // either thread to do so.
+  Atomic<bool> mBHRMonitorActive;
 };
 
 Atomic<HangMonitorChild*> HangMonitorChild::sInstance;
@@ -159,21 +170,7 @@ public:
                        ContentParent* aContentParent)
     : mActor(aActor), mContentParent(aContentParent) {}
 
-  NS_IMETHOD GetHangType(uint32_t* aHangType) override;
-  NS_IMETHOD GetScriptBrowser(nsIDOMElement** aBrowser) override;
-  NS_IMETHOD GetScriptFileName(nsACString& aFileName) override;
-  NS_IMETHOD GetAddonId(nsAString& aAddonId) override;
-
-  NS_IMETHOD GetPluginName(nsACString& aPluginName) override;
-
-  NS_IMETHOD TerminateScript() override;
-  NS_IMETHOD TerminateGlobal() override;
-  NS_IMETHOD BeginStartingDebugger() override;
-  NS_IMETHOD EndStartingDebugger() override;
-  NS_IMETHOD TerminatePlugin() override;
-  NS_IMETHOD UserCanceled() override;
-
-  NS_IMETHOD IsReportForBrowser(nsIFrameLoader* aFrameLoader, bool* aResult) override;
+  NS_DECL_NSIHANGREPORT
 
   // Called when a content process shuts down.
   void Clear() {
@@ -422,10 +419,9 @@ HangMonitorChild::RecvForcePaint(const TabId& aTabId, const uint64_t& aLayerObse
 {
   MOZ_RELEASE_ASSERT(IsOnThread());
 
-  mForcePaintMonitor->NotifyActivity();
-
   {
     MonitorAutoLock lock(mMonitor);
+    MaybeStartForcePaint();
     mForcePaint = true;
     mForcePaintTab = aTabId;
     mForcePaintEpoch = aLayerObserverEpoch;
@@ -437,12 +433,24 @@ HangMonitorChild::RecvForcePaint(const TabId& aTabId, const uint64_t& aLayerObse
 }
 
 void
-HangMonitorChild::ClearForcePaint()
+HangMonitorChild::MaybeStartForcePaint()
 {
+  // See Bug 1449662. The body of this function other than assertions
+  // has been temporarily removed to diagnose a tab switch spinner
+  // problem.
+  if (!NS_IsMainThread()) {
+    mMonitor.AssertCurrentThreadOwns();
+  }
+}
+
+void
+HangMonitorChild::ClearForcePaint(uint64_t aLayerObserverEpoch)
+{
+  // See Bug 1449662. The body of this function other than assertions
+  // has been temporarily removed to diagnose a tab switch spinner
+  // problem.
   MOZ_RELEASE_ASSERT(NS_IsMainThread());
   MOZ_RELEASE_ASSERT(XRE_IsContentProcess());
-
-  mForcePaintMonitor->NotifyWait();
 }
 
 void
@@ -926,7 +934,7 @@ HangMonitoredProcess::GetHangType(uint32_t* aHangType)
 }
 
 NS_IMETHODIMP
-HangMonitoredProcess::GetScriptBrowser(nsIDOMElement** aBrowser)
+HangMonitoredProcess::GetScriptBrowser(Element** aBrowser)
 {
   MOZ_RELEASE_ASSERT(NS_IsMainThread());
   if (mHangData.type() != HangData::TSlowScriptData) {
@@ -943,7 +951,7 @@ HangMonitoredProcess::GetScriptBrowser(nsIDOMElement** aBrowser)
   for (size_t i = 0; i < tabs.Length(); i++) {
     TabParent* tp = TabParent::GetFrom(tabs[i]);
     if (tp->GetTabId() == tabId) {
-      nsCOMPtr<nsIDOMElement> node = do_QueryInterface(tp->GetOwnerElement());
+      RefPtr<Element> node = tp->GetOwnerElement();
       node.forget(aBrowser);
       return NS_OK;
     }
@@ -1102,7 +1110,7 @@ HangMonitoredProcess::TerminatePlugin()
 }
 
 NS_IMETHODIMP
-HangMonitoredProcess::IsReportForBrowser(nsIFrameLoader* aFrameLoader, bool* aResult)
+HangMonitoredProcess::IsReportForBrowser(nsFrameLoader* aFrameLoader, bool* aResult)
 {
   MOZ_RELEASE_ASSERT(NS_IsMainThread());
 
@@ -1110,6 +1118,8 @@ HangMonitoredProcess::IsReportForBrowser(nsIFrameLoader* aFrameLoader, bool* aRe
     *aResult = false;
     return NS_OK;
   }
+
+  NS_ENSURE_STATE(aFrameLoader);
 
   TabParent* tp = TabParent::GetFrom(aFrameLoader);
   if (!tp) {
@@ -1357,12 +1367,23 @@ ProcessHangMonitor::ForcePaint(PProcessHangMonitorParent* aParent,
 }
 
 /* static */ void
-ProcessHangMonitor::ClearForcePaint()
+ProcessHangMonitor::ClearForcePaint(uint64_t aLayerObserverEpoch)
 {
   MOZ_RELEASE_ASSERT(NS_IsMainThread());
   MOZ_RELEASE_ASSERT(XRE_IsContentProcess());
 
   if (HangMonitorChild* child = HangMonitorChild::Get()) {
-    child->ClearForcePaint();
+    child->ClearForcePaint(aLayerObserverEpoch);
+  }
+}
+
+/* static */ void
+ProcessHangMonitor::MaybeStartForcePaint()
+{
+  MOZ_RELEASE_ASSERT(NS_IsMainThread());
+  MOZ_RELEASE_ASSERT(XRE_IsContentProcess());
+
+  if (HangMonitorChild* child = HangMonitorChild::Get()) {
+    child->MaybeStartForcePaint();
   }
 }

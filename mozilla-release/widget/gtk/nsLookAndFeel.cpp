@@ -18,6 +18,7 @@
 
 #include <fontconfig/fontconfig.h>
 #include "gfxPlatformGtk.h"
+#include "mozilla/FontPropertyTypes.h"
 #include "ScreenHelperGTK.h"
 
 #include "gtkdrawing.h"
@@ -32,6 +33,7 @@
 #include "WidgetStyleCache.h"
 #include "prenv.h"
 
+using namespace mozilla;
 using mozilla::LookAndFeel;
 
 #define GDK_COLOR_TO_NS_RGB(c) \
@@ -182,7 +184,7 @@ GetBorderColors(GtkStyleContext* aContext,
         // GTK has an initial value of zero for border-widths, and so themes
         // need to explicitly set border-widths to make borders visible.
         GtkBorder border;
-        gtk_style_context_get_border(aContext, GTK_STATE_FLAG_NORMAL, &border);
+        gtk_style_context_get_border(aContext, state, &border);
         visible = border.top != 0 || border.right != 0 ||
             border.bottom != 0 || border.left != 0;
     }
@@ -708,7 +710,7 @@ GetSystemFontInfo(GtkStyleContext *aStyle,
                   nsString *aFontName,
                   gfxFontStyle *aFontStyle)
 {
-    aFontStyle->style       = NS_FONT_STYLE_NORMAL;
+    aFontStyle->style = FontSlantStyle::Normal();
 
     // As in
     // https://git.gnome.org/browse/gtk+/tree/gtk/gtkwidget.c?h=3.22.19#n10333
@@ -722,10 +724,10 @@ GetSystemFontInfo(GtkStyleContext *aStyle,
     NS_ConvertUTF8toUTF16 family(pango_font_description_get_family(desc));
     *aFontName = quote + family + quote;
 
-    aFontStyle->weight = pango_font_description_get_weight(desc);
+    aFontStyle->weight = FontWeight(pango_font_description_get_weight(desc));
 
     // FIXME: Set aFontStyle->stretch correctly!
-    aFontStyle->stretch = NS_FONT_STRETCH_NORMAL;
+    aFontStyle->stretch = FontStretch::Normal();
 
     float size = float(pango_font_description_get_size(desc)) / PANGO_SCALE;
 
@@ -1081,9 +1083,8 @@ nsLookAndFeel::EnsureInit()
     gtk_widget_destroy(window);
     g_object_unref(labelWidget);
 
-    // Require GTK 3.10 for GtkHeaderBar support and compatible window manager.
-    mCSDAvailable = (gtk_check_version(3, 10, 0) == nullptr &&
-        nsWindow::GetCSDSupportLevel() != nsWindow::CSD_SUPPORT_NONE);
+    mCSDAvailable =
+        nsWindow::GetSystemCSDSupportLevel() != nsWindow::CSD_SUPPORT_NONE;
 
     mCSDCloseButton = false;
     mCSDMinimizeButton = false;

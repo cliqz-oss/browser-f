@@ -5,7 +5,8 @@ const TEST_ENGINE_BASENAME = "searchSuggestionEngine.xml";
 add_task(async function prepare() {
   let suggestionsEnabled = Services.prefs.getBoolPref(SUGGEST_URLBAR_PREF);
   Services.prefs.setBoolPref(SUGGEST_URLBAR_PREF, true);
-  let engine = await promiseNewSearchEngine(TEST_ENGINE_BASENAME);
+  let engine = await SearchTestUtils.promiseNewSearchEngine(
+    getRootDirectory(gTestPath) + TEST_ENGINE_BASENAME);
   let oldCurrentEngine = Services.search.currentEngine;
   Services.search.currentEngine = engine;
   registerCleanupFunction(async function() {
@@ -37,7 +38,7 @@ add_task(async function clickSuggestion() {
                                                    false, uri.spec);
   item.click();
   await loadPromise;
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 });
 
 async function testPressEnterOnSuggestion(expectedUrl = null, keyModifiers = {}) {
@@ -61,7 +62,7 @@ async function testPressEnterOnSuggestion(expectedUrl = null, keyModifiers = {})
   EventUtils.synthesizeKey("KEY_Enter", keyModifiers);
 
   await promiseLoad;
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 }
 
 add_task(async function plainEnterOnSuggestion() {

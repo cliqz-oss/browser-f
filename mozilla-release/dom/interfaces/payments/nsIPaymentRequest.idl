@@ -62,7 +62,7 @@ interface nsIPaymentDetails : nsISupports
   readonly attribute nsIArray modifiers;
   readonly attribute AString error;
 
-  void update(in nsIPaymentDetails aDetails);
+  void update(in nsIPaymentDetails aDetails, in boolean aRequestShipping);
 };
 
 [scriptable, builtinclass, uuid(d53f9f20-138e-47cc-9fd5-db16a3f6d301)]
@@ -81,9 +81,13 @@ interface nsIPaymentRequest : nsISupports
   readonly attribute uint64_t tabId;
   readonly attribute nsIPrincipal topLevelPrincipal;
   readonly attribute AString requestId;
+  readonly attribute AString completeStatus;
   readonly attribute nsIArray paymentMethods;
   readonly attribute nsIPaymentDetails paymentDetails;
   readonly attribute nsIPaymentOptions paymentOptions;
+  readonly attribute AString shippingOption;
 
-  void updatePaymentDetails(in nsIPaymentDetails aDetails);
+  [noscript] void setCompleteStatus(in AString aCompleteStatus);
+  void updatePaymentDetails(in nsIPaymentDetails aDetails,
+                            in AString aShippingOption);
 };

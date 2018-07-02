@@ -5,9 +5,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const { Cc, Ci, Cu, Cr } = require("chrome");
 const promise = require("promise");
-const EventEmitter = require("devtools/shared/old-event-emitter");
+const EventEmitter = require("devtools/shared/event-emitter");
 const { WebGLFront } = require("devtools/shared/fronts/webgl");
 const DevToolsUtils = require("devtools/shared/DevToolsUtils");
 
@@ -28,7 +27,7 @@ ShaderEditorPanel.prototype = {
    * @return object
    *         A promise that is resolved when the Shader Editor completes opening.
    */
-  open: function () {
+  open: function() {
     let targetPromise;
 
     // Local debugging needs to make the target remote.
@@ -61,16 +60,16 @@ ShaderEditorPanel.prototype = {
     return this._toolbox.target;
   },
 
-  destroy: function () {
+  destroy: function() {
     // Make sure this panel is not already destroyed.
     if (this._destroyer) {
       return this._destroyer;
     }
 
-    return this._destroyer = this.panelWin.shutdownShaderEditor().then(() => {
+    return (this._destroyer = this.panelWin.shutdownShaderEditor().then(() => {
       // Destroy front to ensure packet handler is removed from client
       this.panelWin.gFront.destroy();
       this.emit("destroyed");
-    });
+    }));
   }
 };

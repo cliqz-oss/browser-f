@@ -274,7 +274,7 @@ CleanupIPCStream(IPCStream& aValue, bool aConsumedByIPC, bool aDelayedStart)
       fdSetActor->ForgetFileDescriptors(fds);
 
       if (!aConsumedByIPC) {
-        Unused << fdSetActor->Send__delete__(fdSetActor);
+        Unused << FileDescriptorSetChild::Send__delete__(fdSetActor);
       }
 
     } else if (streamWithFds.optionalFds().type() ==
@@ -292,7 +292,7 @@ CleanupIPCStream(IPCStream& aValue, bool aConsumedByIPC, bool aDelayedStart)
       fdSetActor->ForgetFileDescriptors(fds);
 
       if (!aConsumedByIPC) {
-        Unused << fdSetActor->Send__delete__(fdSetActor);
+        Unused << FileDescriptorSetParent::Send__delete__(fdSetActor);
       }
     }
 
@@ -400,7 +400,7 @@ DeserializeIPCStream(const IPCStream& aValue)
     fdSetActor->ForgetFileDescriptors(fds);
     MOZ_ASSERT(!fds.IsEmpty());
 
-    if (!fdSetActor->Send__delete__(fdSetActor)) {
+    if (!FileDescriptorSetParent::Send__delete__(fdSetActor)) {
       // child process is gone, warn and allow actor to clean up normally
       NS_WARNING("Failed to delete fd set actor.");
     }
@@ -414,7 +414,7 @@ DeserializeIPCStream(const IPCStream& aValue)
     fdSetActor->ForgetFileDescriptors(fds);
     MOZ_ASSERT(!fds.IsEmpty());
 
-    Unused << fdSetActor->Send__delete__(fdSetActor);
+    Unused << FileDescriptorSetChild::Send__delete__(fdSetActor);
   }
 
   return InputStreamHelper::DeserializeInputStream(streamWithFds.stream(), fds);
@@ -626,9 +626,9 @@ AutoIPCStream::TakeOptionalValue()
 }
 
 void
-IPDLParamTraits<nsCOMPtr<nsIInputStream>>::Write(IPC::Message* aMsg,
-                                                 IProtocol* aActor,
-                                                 const nsCOMPtr<nsIInputStream>& aParam)
+IPDLParamTraits<nsIInputStream>::Write(IPC::Message* aMsg,
+                                       IProtocol* aActor,
+                                       nsIInputStream* aParam)
 {
   mozilla::ipc::AutoIPCStream autoStream;
   bool ok = false;
@@ -677,8 +677,8 @@ IPDLParamTraits<nsCOMPtr<nsIInputStream>>::Write(IPC::Message* aMsg,
 }
 
 bool
-IPDLParamTraits<nsCOMPtr<nsIInputStream>>::Read(const IPC::Message* aMsg, PickleIterator* aIter,
-                                                IProtocol* aActor, nsCOMPtr<nsIInputStream>* aResult)
+IPDLParamTraits<nsIInputStream>::Read(const IPC::Message* aMsg, PickleIterator* aIter,
+                                      IProtocol* aActor, RefPtr<nsIInputStream>* aResult)
 {
   mozilla::ipc::OptionalIPCStream ipcStream;
   if (!ReadIPDLParam(aMsg, aIter, aActor, &ipcStream)) {

@@ -17,8 +17,6 @@ ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 ChromeUtils.defineModuleGetter(this, "ExtensionUtils",
                                "resource://gre/modules/ExtensionUtils.jsm");
-ChromeUtils.defineModuleGetter(this, "WebRequestCommon",
-                               "resource://gre/modules/WebRequestCommon.jsm");
 ChromeUtils.defineModuleGetter(this, "WebRequestUpload",
                                "resource://gre/modules/WebRequestUpload.jsm");
 
@@ -227,7 +225,7 @@ var ContentPolicyManager = {
   },
 
   receiveMessage(msg) {
-    let browser = msg.target instanceof Ci.nsIDOMXULElement ? msg.target : null;
+    let browser = ChromeUtils.getClassName(msg.target) == "XULElement" ? msg.target : null;
 
     let requestId = `fakeRequest-${++nextFakeRequestId}`;
     for (let id of msg.data.ids) {
@@ -323,8 +321,8 @@ var ChannelEventSink = {
   _classID: Components.ID("115062f8-92f1-11e5-8b7f-080027b0f7ec"),
   _contractID: "@mozilla.org/webrequest/channel-event-sink;1",
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIChannelEventSink,
-                                         Ci.nsIFactory]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIChannelEventSink,
+                                          Ci.nsIFactory]),
 
   init() {
     Components.manager.QueryInterface(Ci.nsIComponentRegistrar)
@@ -368,19 +366,6 @@ class AuthRequestor {
     this.notificationCallbacks = channel.notificationCallbacks;
     this.loadGroupCallbacks = channel.loadGroup && channel.loadGroup.notificationCallbacks;
     this.httpObserver = httpObserver;
-  }
-
-  QueryInterface(iid) {
-    if (iid.equals(Ci.nsISupports) ||
-        iid.equals(Ci.nsIInterfaceRequestor) ||
-        iid.equals(Ci.nsIAuthPromptProvider) ||
-        iid.equals(Ci.nsIAuthPrompt2)) {
-      return this;
-    }
-    try {
-      return this.notificationCallbacks.QueryInterface(iid);
-    } catch (e) {}
-    throw Cr.NS_ERROR_NO_INTERFACE;
   }
 
   getInterface(iid) {
@@ -475,7 +460,7 @@ class AuthRequestor {
         } catch (e) {
           Cu.reportError(`webRequest onAuthAvailable failure ${e}`);
         }
-        // At least one addon has responded, so we wont forward to the regular
+        // At least one addon has responded, so we won't forward to the regular
         // prompt handlers.
         wrapper.authPromptForward = null;
         wrapper.authPromptCallback = null;
@@ -485,7 +470,7 @@ class AuthRequestor {
     this.httpObserver.runChannelListener(wrapper, "authRequired", data);
 
     return {
-      QueryInterface: XPCOMUtils.generateQI([Ci.nsICancelable]),
+      QueryInterface: ChromeUtils.generateQI([Ci.nsICancelable]),
       cancel() {
         try {
           callback.onAuthCancelled(context, false);
@@ -499,6 +484,12 @@ class AuthRequestor {
   }
 }
 
+AuthRequestor.prototype.QueryInterface = ChromeUtils.generateQI(
+  ["nsIInterfaceRequestor",
+   "nsIAuthPromptProvider",
+   "nsIAuthPrompt2"]);
+
+
 HttpObserverManager = {
   openingInitialized: false,
   modifyInitialized: false,
@@ -506,6 +497,7 @@ HttpObserverManager = {
   redirectInitialized: false,
   activityInitialized: false,
   needTracing: false,
+  hasRedirects: false,
 
   listeners: {
     opening: new Map(),
@@ -586,7 +578,11 @@ HttpObserverManager = {
       Services.obs.removeObserver(this, "http-on-examine-merged-response");
     }
 
-    let needRedirect = this.listeners.onRedirect.size || haveBlocking;
+    // If we have any listeners, we need the channelsink so the channelwrapper is
+    // updated properly. Otherwise events for channels that are redirected will not
+    // happen correctly.  If we have no listeners, shut it down.
+    this.hasRedirects = this.listeners.onRedirect.size > 0;
+    let needRedirect = this.hasRedirects || needExamine || needOpening || needModify;
     if (needRedirect && !this.redirectInitialized) {
       this.redirectInitialized = true;
       ChannelEventSink.register();
@@ -751,7 +747,9 @@ HttpObserverManager = {
         let data = Object.create(commonData);
 
         if (registerFilter && opts.blocking && opts.extension) {
-          channel.registerTraceableChannel(opts.extension, opts.tabParent);
+          data.registerTraceableChannel = (extension, tabParent) => {
+            channel.registerTraceableChannel(extension, tabParent);
+          };
         }
 
         if (opts.requestHeaders) {
@@ -760,8 +758,10 @@ HttpObserverManager = {
         }
 
         if (opts.responseHeaders) {
-          responseHeaders = responseHeaders || new ResponseHeaderChanger(channel);
-          data.responseHeaders = responseHeaders.toArray();
+          try {
+            responseHeaders = responseHeaders || new ResponseHeaderChanger(channel);
+            data.responseHeaders = responseHeaders.toArray();
+          } catch (e) { /* headers may not be available on some redirects */ }
         }
 
         if (opts.requestBody && channel.canModify) {
@@ -917,7 +917,9 @@ HttpObserverManager = {
 
     // We want originalURI, this will provide a moz-ext rather than jar or file
     // uri on redirects.
-    this.runChannelListener(channel, "onRedirect", {redirectUrl: newChannel.originalURI.spec});
+    if (this.hasRedirects) {
+      this.runChannelListener(channel, "onRedirect", {redirectUrl: newChannel.originalURI.spec});
+    }
     channel.channel = newChannel;
   },
 };

@@ -95,7 +95,7 @@ GetFlattenedTreeParentNode(const nsINode* aNode)
   }
 
   if (parentAsContent->IsInShadowTree()) {
-    if (auto* slot = mozilla::dom::HTMLSlotElement::FromContent(parentAsContent)) {
+    if (auto* slot = mozilla::dom::HTMLSlotElement::FromNode(parentAsContent)) {
       // If the assigned nodes list is empty, we're fallback content which is
       // active, otherwise we are not part of the flat tree.
       return slot->AssignedNodes().IsEmpty()
@@ -162,6 +162,46 @@ inline bool
 nsINode::NodeOrAncestorHasDirAuto() const
 {
   return AncestorHasDirAuto() || (IsElement() && AsElement()->HasDirAuto());
+}
+
+inline bool
+nsIContent::IsActiveChildrenElement() const
+{
+  if (!mNodeInfo->Equals(nsGkAtoms::children, kNameSpaceID_XBL)) {
+    return false;
+  }
+
+  nsIContent* bindingParent = GetBindingParent();
+  if (!bindingParent) {
+    return false;
+  }
+
+  // We reuse the binding parent machinery for Shadow DOM too, so prevent that
+  // from getting us confused in this case.
+  return !bindingParent->GetShadowRoot();
+}
+
+inline bool
+nsIContent::IsInAnonymousSubtree() const
+{
+  NS_ASSERTION(!IsInNativeAnonymousSubtree() || GetBindingParent() ||
+               (!IsInUncomposedDoc() &&
+                static_cast<nsIContent*>(SubtreeRoot())->IsInNativeAnonymousSubtree()),
+               "Must have binding parent when in native anonymous subtree which is in document.\n"
+               "Native anonymous subtree which is not in document must have native anonymous root.");
+
+  if (IsInNativeAnonymousSubtree()) {
+    return true;
+  }
+
+  nsIContent* bindingParent = GetBindingParent();
+  if (!bindingParent) {
+    return false;
+  }
+
+  // We reuse the binding parent machinery for Shadow DOM too, so prevent that
+  // from getting us confused in this case.
+  return !bindingParent->GetShadowRoot();
 }
 
 #endif // nsIContentInlines_h

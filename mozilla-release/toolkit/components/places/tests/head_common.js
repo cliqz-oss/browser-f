@@ -3,10 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// It is expected that the test files importing this file define Cu etc.
-/* global Cu, Ci, Cc, Cr */
-
-const CURRENT_SCHEMA_VERSION = 43;
+const CURRENT_SCHEMA_VERSION = 47;
 const FIRST_UPGRADABLE_SCHEMA_VERSION = 30;
 
 const NS_APP_USER_PROFILE_50_DIR = "ProfD";
@@ -50,6 +47,8 @@ XPCOMUtils.defineLazyGetter(this, "SMALLPNG_DATA_URI", function() {
          "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAA" +
          "AAAA6fptVAAAACklEQVQI12NgAAAAAgAB4iG8MwAAAABJRU5ErkJggg==");
 });
+const SMALLPNG_DATA_LEN = 67;
+
 XPCOMUtils.defineLazyGetter(this, "SMALLSVG_DATA_URI", function() {
   return NetUtil.newURI(
          "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy5" +
@@ -242,8 +241,11 @@ function clearDB() {
  * @param aName
  *        The name of the table or view to output.
  */
-function dump_table(aName) {
-  let stmt = DBConn().createStatement("SELECT * FROM " + aName);
+function dump_table(aName, dbConn) {
+  if (!dbConn) {
+    dbConn = DBConn();
+  }
+  let stmt = dbConn.createStatement("SELECT * FROM " + aName);
 
   print("\n*** Printing data from " + aName);
   let count = 0;
@@ -602,12 +604,8 @@ function waitForConnectionClosed(aCallback) {
  * @param [optional] aStack
  *        The stack frame used to report the error.
  */
-function do_check_valid_places_guid(aGuid,
-                                    aStack) {
-  if (!aStack) {
-    aStack = Components.stack.caller;
-  }
-  Assert.ok(/^[a-zA-Z0-9\-_]{12}$/.test(aGuid), aStack);
+function do_check_valid_places_guid(aGuid) {
+  Assert.ok(/^[a-zA-Z0-9\-_]{12}$/.test(aGuid), "Should be a valid GUID");
 }
 
 /**
@@ -619,21 +617,17 @@ function do_check_valid_places_guid(aGuid,
  *        The stack frame used to report the error.
  * @return the associated the guid.
  */
-function do_get_guid_for_uri(aURI,
-                             aStack) {
-  if (!aStack) {
-    aStack = Components.stack.caller;
-  }
+function do_get_guid_for_uri(aURI) {
   let stmt = DBConn().createStatement(
     `SELECT guid
      FROM moz_places
      WHERE url_hash = hash(:url) AND url = :url`
   );
   stmt.params.url = aURI.spec;
-  Assert.ok(stmt.executeStep(), aStack);
+  Assert.ok(stmt.executeStep(), "GUID for URI statement should succeed");
   let guid = stmt.row.guid;
   stmt.finalize();
-  do_check_valid_places_guid(guid, aStack);
+  do_check_valid_places_guid(guid);
   return guid;
 }
 
@@ -647,11 +641,10 @@ function do_get_guid_for_uri(aURI,
  */
 function do_check_guid_for_uri(aURI,
                                aGUID) {
-  let caller = Components.stack.caller;
-  let guid = do_get_guid_for_uri(aURI, caller);
+  let guid = do_get_guid_for_uri(aURI);
   if (aGUID) {
-    do_check_valid_places_guid(aGUID, caller);
-    Assert.equal(guid, aGUID, caller);
+    do_check_valid_places_guid(aGUID);
+    Assert.equal(guid, aGUID, "Should have a guid in moz_places for the URI");
   }
 }
 
@@ -664,21 +657,17 @@ function do_check_guid_for_uri(aURI,
  *        The stack frame used to report the error.
  * @return the associated the guid.
  */
-function do_get_guid_for_bookmark(aId,
-                                  aStack) {
-  if (!aStack) {
-    aStack = Components.stack.caller;
-  }
+function do_get_guid_for_bookmark(aId) {
   let stmt = DBConn().createStatement(
     `SELECT guid
      FROM moz_bookmarks
      WHERE id = :item_id`
   );
   stmt.params.item_id = aId;
-  Assert.ok(stmt.executeStep(), aStack);
+  Assert.ok(stmt.executeStep(), "Should succeed executing the SQL statement");
   let guid = stmt.row.guid;
   stmt.finalize();
-  do_check_valid_places_guid(guid, aStack);
+  do_check_valid_places_guid(guid);
   return guid;
 }
 
@@ -692,11 +681,10 @@ function do_get_guid_for_bookmark(aId,
  */
 function do_check_guid_for_bookmark(aId,
                                     aGUID) {
-  let caller = Components.stack.caller;
-  let guid = do_get_guid_for_bookmark(aId, caller);
+  let guid = do_get_guid_for_bookmark(aId);
   if (aGUID) {
-    do_check_valid_places_guid(aGUID, caller);
-    Assert.equal(guid, aGUID, caller);
+    do_check_valid_places_guid(aGUID);
+    Assert.equal(guid, aGUID, "Should have the correct GUID for the bookmark");
   }
 }
 
@@ -736,7 +724,7 @@ NavBookmarkObserver.prototype = {
   onItemChanged() {},
   onItemVisited() {},
   onItemMoved() {},
-  QueryInterface: XPCOMUtils.generateQI([
+  QueryInterface: ChromeUtils.generateQI([
     Ci.nsINavBookmarkObserver,
   ])
 };
@@ -756,7 +744,7 @@ NavHistoryObserver.prototype = {
   onClearHistory() {},
   onPageChanged() {},
   onDeleteVisits() {},
-  QueryInterface: XPCOMUtils.generateQI([
+  QueryInterface: ChromeUtils.generateQI([
     Ci.nsINavHistoryObserver,
   ])
 };
@@ -785,7 +773,7 @@ NavHistoryResultObserver.prototype = {
   nodeTitleChanged() {},
   nodeURIChanged() {},
   sortingChanged() {},
-  QueryInterface: XPCOMUtils.generateQI([
+  QueryInterface: ChromeUtils.generateQI([
     Ci.nsINavHistoryResultObserver,
   ])
 };
@@ -927,3 +915,27 @@ function mapItemIdToInternalRootName(aItemId) {
   }
   return null;
 }
+
+const DB_FILENAME = "places.sqlite";
+
+/**
+ * Sets the database to use for the given test.  This should be the very first
+ * thing in the test, otherwise this database will not be used!
+ *
+ * @param aFileName
+ *        The filename of the database to use.  This database must exist in
+ *        toolkit/components/places/tests/migration!
+ * @return {Promise}
+ */
+var setupPlacesDatabase = async function(aFileName, aDestFileName = DB_FILENAME) {
+  let currentDir = await OS.File.getCurrentDirectory();
+
+  let src = OS.Path.join(currentDir, aFileName);
+  Assert.ok((await OS.File.exists(src)), "Database file found");
+
+  // Ensure that our database doesn't already exist.
+  let dest = OS.Path.join(OS.Constants.Path.profileDir, aDestFileName);
+  Assert.ok(!(await OS.File.exists(dest)), "Database file should not exist yet");
+
+  await OS.File.copy(src, dest);
+};

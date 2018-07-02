@@ -7,7 +7,6 @@
 #include "mozilla/AnimationCollection.h"
 
 #include "mozilla/RestyleManager.h"
-#include "mozilla/RestyleManagerInlines.h"
 #include "nsAnimationManager.h" // For dom::CSSAnimation
 #include "nsPresContext.h"
 #include "nsTransitionManager.h" // For dom::CSSTransition
@@ -116,15 +115,6 @@ AnimationCollection<AnimationType>::GetOrCreateAnimationCollection(
   return collection;
 }
 
-#ifdef MOZ_OLD_STYLE
-template <class AnimationType>
-void
-AnimationCollection<AnimationType>::UpdateCheckGeneration(
-  nsPresContext* aPresContext)
-{
-  mCheckGeneration = aPresContext->RestyleManager()->GetAnimationGeneration();
-}
-#endif
 
 template<class AnimationType>
 /*static*/ nsAtom*

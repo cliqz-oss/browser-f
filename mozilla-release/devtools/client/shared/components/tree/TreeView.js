@@ -6,7 +6,7 @@
 "use strict";
 
 // Make this available to both AMD and CJS environments
-define(function (require, exports, module) {
+define(function(require, exports, module) {
   const { cloneElement, Component, createFactory } =
     require("devtools/client/shared/vendor/react");
   const { findDOMNode } = require("devtools/client/shared/vendor/react-dom");
@@ -269,6 +269,12 @@ define(function (require, exports, module) {
         case "ArrowLeft":
           if (row && row.props.member.open) {
             this.toggle(this.state.selected);
+          } else {
+            let parentRow = this.rows.slice(0, index).reverse().find(
+              r => r.props.member.level < row.props.member.level);
+            if (parentRow) {
+              this.selectRow(parentRow);
+            }
           }
           break;
         case "ArrowDown":

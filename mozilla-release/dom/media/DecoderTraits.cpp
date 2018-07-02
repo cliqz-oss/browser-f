@@ -38,7 +38,6 @@
 #include "FlacDemuxer.h"
 
 #include "nsPluginHost.h"
-#include "MediaPrefs.h"
 
 namespace mozilla
 {
@@ -323,13 +322,6 @@ bool DecoderTraits::IsSupportedInVideoDocument(const nsACString& aType)
     HLSDecoder::IsSupportedType(*type) ||
 #endif
     false;
-}
-
-/* static */
-bool
-DecoderTraits::CrossOriginRedirectsProhibited(const MediaContainerType& aType)
-{
-  return WaveDecoder::IsSupportedType(aType);
 }
 
 } // namespace mozilla

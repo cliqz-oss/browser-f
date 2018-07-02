@@ -23,7 +23,7 @@ async function testLinkOpensTab({ win, tab, elementId, expectedUrl }) {
   });
   let newTab = await newTabPromise;
   ok(true, `Clicking ${elementId} opened ${expectedUrl} in a new tab.`);
-  await BrowserTestUtils.removeTab(newTab);
+  BrowserTestUtils.removeTab(newTab);
 }
 
 /**
@@ -88,7 +88,7 @@ add_task(async function test_toggleTrackingProtection() {
       Services.prefs.getBranch("privacy.trackingprotection.pbmode.");
   let waitForPrefChanged = () => new Promise(resolve => {
     let prefObserver = {
-      QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver]),
+      QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver]),
       observe() {
         prefBranch.removeObserver("enabled", prefObserver);
         resolve();

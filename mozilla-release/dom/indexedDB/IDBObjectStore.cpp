@@ -73,7 +73,7 @@ struct IDBObjectStore::StructuredCloneWriteInfo
   uint64_t mOffsetToKeyProp;
 
   explicit StructuredCloneWriteInfo(IDBDatabase* aDatabase)
-    : mCloneBuffer(JS::StructuredCloneScope::SameProcessSameThread, nullptr,
+    : mCloneBuffer(JS::StructuredCloneScope::DifferentProcessForIndexedDB, nullptr,
                    nullptr)
     , mDatabase(aDatabase)
     , mOffsetToKeyProp(0)
@@ -465,7 +465,7 @@ private:
       reinterpret_cast<uint8_t*>(compiled.BeginWriting()), compiledSize);
 
     MOZ_ALWAYS_SUCCEEDS(NS_NewCStringInputStream(getter_AddRefs(mStream),
-                                                 compiled));
+                                                 Move(compiled)));
 
     mModule = nullptr;
 
@@ -700,7 +700,8 @@ GetAddInfoCallback(JSContext* aCx, void* aClosure)
     nullptr /* reportError */,
     nullptr /* readTransfer */,
     nullptr /* writeTransfer */,
-    nullptr /* freeTransfer */
+    nullptr /* freeTransfer */,
+    nullptr /* canTransfer */
   };
 
   MOZ_ASSERT(aCx);
@@ -1323,13 +1324,14 @@ IDBObjectStore::DeserializeValue(JSContext* aCx,
     nullptr,
     nullptr,
     nullptr,
+    nullptr,
     nullptr
   };
 
   // FIXME: Consider to use StructuredCloneHolder here and in other
   //        deserializing methods.
   if (!JS_ReadStructuredClone(aCx, aCloneReadInfo.mData, JS_STRUCTURED_CLONE_VERSION,
-                              JS::StructuredCloneScope::SameProcessSameThread,
+                              JS::StructuredCloneScope::DifferentProcessForIndexedDB,
                               aValue, &callbacks, &aCloneReadInfo)) {
     return false;
   }
@@ -1377,7 +1379,7 @@ private:
       MOZ_ASSERT(xpc, "This should never be null!");
 
       // Let's use a null principal.
-      nsCOMPtr<nsIPrincipal> principal = NullPrincipal::Create();
+      nsCOMPtr<nsIPrincipal> principal = NullPrincipal::CreateWithoutOriginAttributes();
 
       JS::Rooted<JSObject*> sandbox(aCx);
       nsresult rv = xpc->CreateSandbox(aCx, principal, sandbox.address());
@@ -1496,12 +1498,13 @@ private:
       nullptr,
       nullptr,
       nullptr,
+      nullptr,
       nullptr
     };
 
     if (!JS_ReadStructuredClone(aCx, mCloneReadInfo.mData,
                                 JS_STRUCTURED_CLONE_VERSION,
-                                JS::StructuredCloneScope::SameProcessSameThread,
+                                JS::StructuredCloneScope::DifferentProcessForIndexedDB,
                                 aValue, &callbacks, &mCloneReadInfo)) {
       return NS_ERROR_DOM_DATA_CLONE_ERR;
     }
@@ -1609,12 +1612,13 @@ private:
       nullptr,
       nullptr,
       nullptr,
+      nullptr,
       nullptr
     };
 
     if (!JS_ReadStructuredClone(aCx, mCloneReadInfo.mData,
                                 JS_STRUCTURED_CLONE_VERSION,
-                                JS::StructuredCloneScope::SameProcessSameThread,
+                                JS::StructuredCloneScope::DifferentProcessForIndexedDB,
                                 aValue, &callbacks, &mCloneReadInfo)) {
       return NS_ERROR_DOM_DATA_CLONE_ERR;
     }

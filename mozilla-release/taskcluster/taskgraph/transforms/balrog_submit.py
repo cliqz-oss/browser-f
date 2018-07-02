@@ -53,6 +53,7 @@ def validate(config, jobs):
         validate_schema(
             balrog_description_schema, job,
             "In balrog ({!r} kind) task for {!r}:".format(config.kind, label))
+
         yield job
 
 

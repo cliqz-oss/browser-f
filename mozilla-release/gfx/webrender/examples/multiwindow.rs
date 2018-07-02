@@ -37,7 +37,7 @@ impl RenderNotifier for Notifier {
         let _ = self.events_proxy.wakeup();
     }
 
-    fn new_document_ready(&self, _: DocumentId, _scrolled: bool, _composite_needed: bool) {
+    fn new_frame_ready(&self, _: DocumentId, _scrolled: bool, _composite_needed: bool) {
         self.wake_up();
     }
 }
@@ -86,7 +86,6 @@ impl Window {
         let device_pixel_ratio = window.hidpi_factor();
 
         let opts = webrender::RendererOptions {
-            debug: true,
             device_pixel_ratio,
             clear_color: Some(clear_color),
             ..webrender::RendererOptions::default()
@@ -181,12 +180,14 @@ impl Window {
         let info = LayoutPrimitiveInfo::new(bounds);
         builder.push_stacking_context(
             &info,
+            None,
             ScrollPolicy::Scrollable,
             None,
             TransformStyle::Flat,
             None,
             MixBlendMode::Normal,
             Vec::new(),
+            GlyphRasterSpace::Screen,
         );
 
         let info = LayoutPrimitiveInfo::new(LayoutRect::new(

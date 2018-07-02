@@ -21,7 +21,12 @@ class nsIPrincipal;
 class nsIURI;
 struct gfxFontFeature;
 struct gfxAlternateValue;
+struct nsCSSKTableEntry;
 struct nsCSSValueList;
+
+namespace mozilla {
+class FontSlantStyle;
+}
 
 // Style utility functions
 class nsStyleUtil {
@@ -58,6 +63,9 @@ public:
     AppendEscapedCSSFontFamilyList(aFontlist->mNames, aResult);
   }
 
+  static void
+  AppendFontSlantStyle(const mozilla::FontSlantStyle&, nsAString& aResult);
+
 private:
   static void
   AppendEscapedCSSFontFamilyList(const nsTArray<mozilla::FontFamilyName>& aNames,
@@ -65,7 +73,7 @@ private:
 
 public:
   // Append a bitmask-valued property's value(s) (space-separated) to aResult.
-  static void AppendBitmaskCSSValue(nsCSSPropertyID aProperty,
+  static void AppendBitmaskCSSValue(const nsCSSKTableEntry aTable[],
                                     int32_t aMaskedValue,
                                     int32_t aFirstMask,
                                     int32_t aLastMask,

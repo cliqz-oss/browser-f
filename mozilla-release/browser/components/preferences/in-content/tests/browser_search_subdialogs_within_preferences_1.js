@@ -11,9 +11,20 @@ add_task(async function() {
  * Test for searching for the "Set Home Page" subdialog.
  */
 add_task(async function() {
-  await openPreferencesViaOpenPreferencesAPI("paneGeneral", {leaveOpen: true});
+  await openPreferencesViaOpenPreferencesAPI("paneHome", {leaveOpen: true});
+
+  // Set custom URL so bookmark button will be shown on the page (otherwise it is hidden)
+  await SpecialPowers.pushPrefEnv({"set": [
+    ["browser.startup.homepage", "about:robots"],
+    ["browser.startup.page", 1]
+  ]});
+
+  // Wait for Activity Stream to add its panels
+  await BrowserTestUtils.waitForCondition(() => ContentTask.spawn(gBrowser.selectedTab.linkedBrowser, {},
+    async () => content.document.getElementById("homeContentsGroup")));
+
   await evaluateSearchResults("Set Home Page", "homepageGroup");
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
 });
 
 /**
@@ -22,5 +33,5 @@ add_task(async function() {
 add_task(async function() {
   await openPreferencesViaOpenPreferencesAPI("paneGeneral", {leaveOpen: true});
   await evaluateSearchResults("Choose languages", "languagesGroup");
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
 });

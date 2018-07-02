@@ -315,36 +315,6 @@ panelview:not([mainview]) .toolbarbutton-text,
   padding: 4px 0;
 }
 
-/* START notification popups for extension controlled content */
-#extension-notification-panel > .panel-arrowcontainer > .panel-arrowcontent {
-  padding: 0;
-}
-
-#extension-new-tab-notification > .popup-notification-body-container > .popup-notification-body {
-  width: 30em;
-}
-
-#extension-new-tab-notification > .popup-notification-body-container > .popup-notification-body > hbox > vbox > .popup-notification-description {
-  font-size: 1.3em;
-  font-weight: lighter;
-}
-
-#extension-new-tab-notification-description {
-  margin-bottom: 0;
-}
-
-#extension-new-tab-notification-description > .extension-controlled-icon {
-  height: 16px;
-  width: 16px;
-  vertical-align: bottom;
-}
-
-#extension-new-tab-notification > .popup-notification-body-container > .popup-notification-body > .popup-notification-warning,
-#extension-new-tab-notification > .popup-notification-body-container > .popup-notification-icon {
-  display: none;
-}
-/* END notification popups for extension controlled content */
-
 #appMenu-popup > .panel-arrowcontainer > .panel-arrowcontent,
 panel[photon] > .panel-arrowcontainer > .panel-arrowcontent {
   padding: 0;
@@ -554,7 +524,7 @@ toolbarbutton[constrain-size="true"][cui-areatype="menu-panel"] > .toolbarbutton
 #appMenu-fxa-icon[syncstatus="active"] > .toolbarbutton-icon,
 #PanelUI-remotetabs-syncnow[syncstatus="active"] > .toolbarbutton-icon {
   animation: syncRotate 0.8s linear infinite;
-  fill: #0a84ff;
+  fill: var(--toolbarbutton-icon-fill-attention);
 }
 
 #appMenu-fxa-status {
@@ -639,7 +609,7 @@ toolbarbutton[constrain-size="true"][cui-areatype="menu-panel"] > .toolbarbutton
   text-align: center;
   text-shadow: none;
   max-width: 15em;
-  color: GrayText;
+  color: var(--panel-disabled-color);
 }
 
 /* The boxes with "instructions" get extra top and bottom padding for space
@@ -681,7 +651,7 @@ toolbarbutton[constrain-size="true"][cui-areatype="menu-panel"] > .toolbarbutton
 }
 
 .PanelUI-remotetabs-notabsforclient-label {
-  color: GrayText;
+  color: var(--panel-disabled-color);
   /* This margin is to line this label up with the labels in toolbarbuttons. */
   margin-left: 28px;
 }
@@ -737,7 +707,7 @@ toolbarbutton[constrain-size="true"][cui-areatype="menu-panel"] > .toolbarbutton
 }
 
 #PanelUI-remotetabs-tabslist > label[itemtype="client"] {
-  color: GrayText;
+  color: var(--panel-disabled-color);
 }
 
 /* Collapse the non-active vboxes in the remotetabs deck to use only the
@@ -765,6 +735,19 @@ toolbarbutton[constrain-size="true"][cui-areatype="menu-panel"] > .toolbarbutton
   background-color: hsl(96,65%,75%);
 }
 
+:root[lwt-popup-brighttext] .panel-banner-item:not([disabled]) {
+  background-color: rgba(48,230,11,.1);
+  color: #F9F9FA;
+}
+
+:root[lwt-popup-brighttext] .panel-banner-item:not([disabled]):hover {
+  background-color: rgba(48,230,11,.15);
+}
+
+:root[lwt-popup-brighttext] .panel-banner-item:not([disabled]):active {
+  background-color: rgba(48,230,11,.2);
+}
+
 #customization-palette .toolbarbutton-multiline-text,
 #customization-palette .toolbarbutton-text {
   display: none;
@@ -788,6 +771,23 @@ panelview .toolbarbutton-1,
 .subviewbutton > .toolbarbutton-text {
   padding: 0;
   padding-inline-start: 24px; /* This is 16px for the icon + 8px for the padding as defined below. */
+}
+
+.subviewbutton > .menu-right {
+  -moz-appearance: none;
+  list-style-image: url(chrome://browser/skin/customizableui/menu-arrow.svg);
+  -moz-context-properties: fill, fill-opacity;
+  fill: currentColor;
+  /* Reset the rect we inherit from the button */
+  -moz-image-region: auto;
+}
+
+.subviewbutton[disabled="true"] > .menu-right {
+  fill-opacity: 0.6;
+}
+
+.subviewbutton > .menu-right:-moz-locale-dir(rtl) {
+  transform: scaleX(-1);
 }
 
 .subviewbutton > .menu-right,
@@ -863,7 +863,7 @@ panelview .toolbarbutton-1,
 .subviewbutton[shortcut]::after {
   content: attr(shortcut);
   float: right;
-  color: GrayText;
+  color: var(--panel-disabled-color);
 }
 
 .PanelUI-subView .subviewbutton-nav::after {
@@ -917,6 +917,7 @@ panelview .toolbarbutton-1,
   list-style-image: url(chrome://browser/skin/check.svg);
   -moz-context-properties: fill;
   fill: currentColor;
+  color: inherit;
 }
 
 #appMenu-popup .toolbaritem-combined-buttons {
@@ -993,7 +994,7 @@ panelmultiview .toolbaritem-combined-buttons > spacer.after-label {
 }
 
 .subview-subheader {
-  color: GrayText;
+  color: var(--panel-disabled-color);
 }
 
 .subview-subheader,
@@ -1015,7 +1016,7 @@ menuitem.subviewbutton@menuStateHover@,
   background-color: var(--arrowpanel-dimmed);
 }
 
-panelview .toolbarbutton-1:-moz-any(@buttonStateActive@,[checked=true]),
+panelview .toolbarbutton-1@buttonStateActive@,
 toolbarbutton.subviewbutton@buttonStateActive@,
 menu.subviewbutton@menuStateActive@,
 menuitem.subviewbutton@menuStateActive@,
@@ -1132,7 +1133,7 @@ menuitem.panel-subview-footer@menuStateActive@,
   -moz-box-pack: end;
   margin-inline-start: 10px;
   margin-inline-end: auto;
-  color: GrayText;
+  color: var(--panel-disabled-color);
 }
 
 #PanelUI-remotetabs-tabslist > toolbarbutton[itemtype="tab"],
@@ -1156,9 +1157,7 @@ menuitem.panel-subview-footer@menuStateActive@,
 
 toolbarpaletteitem[place="palette"] > .toolbarbutton-1 > .toolbarbutton-menu-dropmarker,
 #bookmarks-menu-button[cui-areatype="menu-panel"] > .toolbarbutton-menu-dropmarker,
-#bookmarks-menu-button[overflowedItem] > .toolbarbutton-menu-dropmarker,
-toolbarpaletteitem[place="palette"] > .toolbarbutton-1 > .toolbarbutton-menubutton-dropmarker,
-#bookmarks-menu-button[cui-areatype="menu-panel"] > .toolbarbutton-menubutton-dropmarker {
+#bookmarks-menu-button[overflowedItem] > .toolbarbutton-menu-dropmarker {
   display: none;
 }
 
@@ -1297,10 +1296,6 @@ toolbarpaletteitem[place="menu-panel"] > .subviewbutton-nav::after {
   margin-inline-end: 0;
 }
 
-menuitem[checked="true"].subviewbutton > .menu-iconic-left {
-  visibility: hidden;
-}
-
 #PanelUI-panicView > .panel-subview-body,
 #PanelUI-panicView {
   overflow: visible;
@@ -1380,7 +1375,7 @@ menuitem[checked="true"].subviewbutton > .menu-iconic-left {
 }
 
 #PanelUI-panic-actionlist-main-label {
-  color: GrayText;
+  color: var(--panel-disabled-color);
   font-size: 0.9em;
 }
 
@@ -1546,7 +1541,7 @@ menuitem[checked="true"].subviewbutton > .menu-iconic-left {
 }
 
 .subviewbutton.download > .toolbarbutton-text > .status-text {
-  color: GrayText;
+  color: var(--panel-disabled-color);
   font-size: .9em;
 }
 

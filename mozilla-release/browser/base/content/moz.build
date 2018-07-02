@@ -40,7 +40,7 @@ with Files("test/pageinfo/**"):
 with Files("test/performance/**"):
     BUG_COMPONENT = ("Firefox", "General")
 
-with Files("test/performance/browser_appmenu_reflows.js"):
+with Files("test/performance/browser_appmenu.js"):
     BUG_COMPONENT = ("Firefox", "Menus")
 
 with Files("test/permissions/**"):
@@ -70,6 +70,9 @@ with Files("test/sidebar/**"):
 
 with Files("test/static/**"):
     BUG_COMPONENT = ("Firefox", "General")
+
+with Files("test/statuspanel/**"):
+    BUG_COMPONENT = ("Firefox", "Tabbed Browser")
 
 with Files("test/sync/**"):
     BUG_COMPONENT = ("Firefox", "Sync")
@@ -143,13 +146,10 @@ with Files("browser-tabPreviews.xml"):
 with Files("contentSearch*"):
     BUG_COMPONENT = ("Firefox", "Search")
 
-with Files("*.svg"):
-    BUG_COMPONENT = ("Firefox", "Theme")
-
 with Files("hiddenWindow.xul"):
     BUG_COMPONENT = ("Firefox", "Device Permissions")
 
-with Files("macBrowserOverlay.xul"):
+with Files("macWindow.inc.xul"):
     BUG_COMPONENT = ("Firefox", "Shell Integration")
 
 with Files("tabbrowser*"):

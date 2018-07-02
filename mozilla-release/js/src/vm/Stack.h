@@ -28,6 +28,7 @@
 #include "vm/JSScript.h"
 #include "vm/SavedFrame.h"
 #include "wasm/WasmFrameIter.h"
+#include "wasm/WasmSignalHandlers.h"
 #include "wasm/WasmTypes.h"
 
 namespace JS {
@@ -108,25 +109,9 @@ namespace jit {
     class RematerializedFrame;
 } // namespace jit
 
-/*
- * Pointer to either a ScriptFrameIter::Data, an InterpreterFrame, or a Baseline
- * JIT frame.
- *
- * The Debugger may cache ScriptFrameIter::Data as a bookmark to reconstruct a
- * ScriptFrameIter without doing a full stack walk.
- *
- * There is no way to directly create such an AbstractFramePtr. To do so, the
- * user must call ScriptFrameIter::copyDataAsAbstractFramePtr().
- *
- * ScriptFrameIter::abstractFramePtr() will never return an AbstractFramePtr
- * that is in fact a ScriptFrameIter::Data.
- *
- * To recover a ScriptFrameIter settled at the location pointed to by an
- * AbstractFramePtr, use the THIS_FRAME_ITER macro in Debugger.cpp. As an
- * aside, no asScriptFrameIterData() is provided because C++ is stupid and
- * cannot forward declare inner classes.
+/**
+ * Pointer to a live JS or WASM stack frame.
  */
-
 class AbstractFramePtr
 {
     friend class FrameIter;
@@ -134,7 +119,6 @@ class AbstractFramePtr
     uintptr_t ptr_;
 
     enum {
-        Tag_ScriptFrameIterData = 0x0,
         Tag_InterpreterFrame = 0x1,
         Tag_BaselineFrame = 0x2,
         Tag_RematerializedFrame = 0x3,
@@ -178,9 +162,6 @@ class AbstractFramePtr
         return frame;
     }
 
-    bool isScriptFrameIterData() const {
-        return !!ptr_ && (ptr_ & TagMask) == Tag_ScriptFrameIterData;
-    }
     bool isInterpreterFrame() const {
         return (ptr_ & TagMask) == Tag_InterpreterFrame;
     }
@@ -284,7 +265,6 @@ class AbstractFramePtr
     inline HandleValue returnValue() const;
     inline void setReturnValue(const Value& rval) const;
 
-    friend void GDBTestInitAbstractFramePtr(AbstractFramePtr&, void*);
     friend void GDBTestInitAbstractFramePtr(AbstractFramePtr&, InterpreterFrame*);
     friend void GDBTestInitAbstractFramePtr(AbstractFramePtr&, jit::BaselineFrame*);
     friend void GDBTestInitAbstractFramePtr(AbstractFramePtr&, jit::RematerializedFrame*);
@@ -797,6 +777,9 @@ class InterpreterFrame
     void setHasCachedSavedFrame() {
         flags_ |= HAS_CACHED_SAVED_FRAME;
     }
+    void clearHasCachedSavedFrame() {
+        flags_ &= ~HAS_CACHED_SAVED_FRAME;
+    }
 
   public:
     void trace(JSTracer* trc, Value* sp, jsbytecode* pc);
@@ -933,24 +916,7 @@ class InterpreterStack
     }
 };
 
-// CooperatingContext is a wrapper for a JSContext that is participating in
-// cooperative scheduling and may be different from the current thread. It is
-// in place to make it clearer when we might be operating on another thread,
-// and harder to accidentally pass in another thread's context to an API that
-// expects the current thread's context.
-class CooperatingContext
-{
-    JSContext* cx;
-
-  public:
-    explicit CooperatingContext(JSContext* cx) : cx(cx) {}
-    JSContext* context() const { return cx; }
-
-    // For &cx. The address should not be taken for other CooperatingContexts.
-    friend class ZoneGroup;
-};
-
-void TraceInterpreterActivations(JSContext* cx, const CooperatingContext& target, JSTracer* trc);
+void TraceInterpreterActivations(JSContext* cx, JSTracer* trc);
 
 /*****************************************************************************/
 
@@ -1232,7 +1198,7 @@ struct DefaultHasher<AbstractFramePtr> {
 //   recently. When we find a cache hit, we check the entry's SavedFrame's
 //   compartment against the current compartment; if they do not match, we flush
 //   the entire cache. This means that it is not always true that, if a frame's
-//   bit it set, it must have an entry in the cache. But we can still assert
+//   bit is set, it must have an entry in the cache. But we can still assert
 //   that, if a frame's bit is set and the cache is not completely empty, the
 //   frame will have an entry. When the cache is flushed, it will be repopulated
 //   immediately with the new capture's frames.
@@ -1285,6 +1251,7 @@ class LiveSavedFrameCache
 
         struct HasCachedMatcher;
         struct SetHasCachedMatcher;
+        struct ClearHasCachedMatcher;
 
       public:
         // If iter's frame is of a type that can be cached, construct a FramePtr
@@ -1296,6 +1263,7 @@ class LiveSavedFrameCache
 
         inline bool hasCachedSavedFrame() const;
         inline void setHasCachedSavedFrame();
+        inline void clearHasCachedSavedFrame();
 
         // Return true if this FramePtr refers to an interpreter frame.
         inline bool isInterpreterFrame() const { return ptr.is<InterpreterFrame*>(); }
@@ -1626,11 +1594,6 @@ class ActivationIterator
   public:
     explicit ActivationIterator(JSContext* cx);
 
-    // ActivationIterator can be used to iterate over a different thread's
-    // activations, for use by the GC, invalidation, and other operations that
-    // don't have a user-visible effect on the target thread's JS behavior.
-    ActivationIterator(JSContext* cx, const CooperatingContext& target);
-
     ActivationIterator& operator++();
 
     Activation* operator->() const {
@@ -1698,6 +1661,10 @@ class JitActivation : public Activation
     mozilla::Atomic<void*, mozilla::Relaxed> lastProfilingCallSite_;
     static_assert(sizeof(mozilla::Atomic<void*, mozilla::Relaxed>) == sizeof(void*),
                   "Atomic should have same memory format as underlying type.");
+
+    // When wasm traps, the signal handler records some data for unwinding
+    // purposes. Wasm code can't trap reentrantly.
+    mozilla::Maybe<wasm::TrapData> wasmTrapData_;
 
     void clearRematerializedFrames();
 
@@ -1847,22 +1814,10 @@ class JitActivation : public Activation
         return offsetof(JitActivation, encodedWasmExitReason_);
     }
 
-    // Interrupts are started from the interrupt signal handler (or the ARM
-    // simulator) and cleared by WasmHandleExecutionInterrupt or WasmHandleThrow
-    // when the interrupt is handled.
-
-    // Returns true iff we've entered interrupted state.
-    bool startWasmInterrupt(const wasm::RegisterState& state);
-    void finishWasmInterrupt();
-    bool isWasmInterrupted() const;
-    void* wasmInterruptUnwindPC() const;
-    void* wasmInterruptResumePC() const;
-
     void startWasmTrap(wasm::Trap trap, uint32_t bytecodeOffset, const wasm::RegisterState& state);
     void finishWasmTrap();
-    bool isWasmTrapping() const;
-    void* wasmTrapPC() const;
-    uint32_t wasmTrapBytecodeOffset() const;
+    bool isWasmTrapping() const { return !!wasmTrapData_; }
+    const wasm::TrapData& wasmTrapData() { return *wasmTrapData_; }
 };
 
 // A filtering of the ActivationIterator to only stop at JitActivations.
@@ -1876,12 +1831,6 @@ class JitActivationIterator : public ActivationIterator
   public:
     explicit JitActivationIterator(JSContext* cx)
       : ActivationIterator(cx)
-    {
-        settle();
-    }
-
-    JitActivationIterator(JSContext* cx, const CooperatingContext& target)
-      : ActivationIterator(cx, target)
     {
         settle();
     }
@@ -2076,13 +2025,11 @@ class FrameIter
         unsigned ionInlineFrameNo_;
 
         Data(JSContext* cx, DebuggerEvalOption debuggerEvalOption, JSPrincipals* principals);
-        Data(JSContext* cx, const CooperatingContext& target, DebuggerEvalOption debuggerEvalOption);
         Data(const Data& other);
     };
 
     explicit FrameIter(JSContext* cx,
                        DebuggerEvalOption = FOLLOW_DEBUGGER_EVAL_PREV_LINK);
-    FrameIter(JSContext* cx, const CooperatingContext&, DebuggerEvalOption);
     FrameIter(JSContext* cx, DebuggerEvalOption, JSPrincipals*);
     FrameIter(const FrameIter& iter);
     MOZ_IMPLICIT FrameIter(const Data& data);
@@ -2204,7 +2151,6 @@ class FrameIter
     // -----------------------------------------------------------
 
     AbstractFramePtr abstractFramePtr() const;
-    AbstractFramePtr copyDataAsAbstractFramePtr() const;
     Data* copyData() const;
 
     // This can only be called when isInterp():
@@ -2246,14 +2192,6 @@ class ScriptFrameIter : public FrameIter
     explicit ScriptFrameIter(JSContext* cx,
                              DebuggerEvalOption debuggerEvalOption = FOLLOW_DEBUGGER_EVAL_PREV_LINK)
       : FrameIter(cx, debuggerEvalOption)
-    {
-        settle();
-    }
-
-    ScriptFrameIter(JSContext* cx,
-                     const CooperatingContext& target,
-                     DebuggerEvalOption debuggerEvalOption)
-       : FrameIter(cx, target, debuggerEvalOption)
     {
         settle();
     }
@@ -2379,10 +2317,6 @@ class AllScriptFramesIter : public ScriptFrameIter
   public:
     explicit AllScriptFramesIter(JSContext* cx)
       : ScriptFrameIter(cx, ScriptFrameIter::IGNORE_DEBUGGER_EVAL_PREV_LINK)
-    {}
-
-    explicit AllScriptFramesIter(JSContext* cx, const CooperatingContext& target)
-      : ScriptFrameIter(cx, target, ScriptFrameIter::IGNORE_DEBUGGER_EVAL_PREV_LINK)
     {}
 };
 

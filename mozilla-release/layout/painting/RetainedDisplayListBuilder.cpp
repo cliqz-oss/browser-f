@@ -12,6 +12,7 @@
 #include "nsPlaceholderFrame.h"
 #include "nsSubDocumentFrame.h"
 #include "nsViewManager.h"
+#include "nsCanvasFrame.h"
 
 /**
  * Code for doing display list building for a modified subset of the window,
@@ -22,7 +23,7 @@
  * have a defined ordering). Our display list is just one of a many possible linear
  * representations of this ordering.
  *
- * Each time a frame changes (gets a new style context, or has a size/position
+ * Each time a frame changes (gets a new ComputedStyle, or has a size/position
  * change), we schedule a paint (as we do currently), but also reord the frame that
  * changed.
  *
@@ -49,6 +50,7 @@ MarkFramesWithItemsAndImagesModified(nsDisplayList* aList)
       // whether we need to invalidate for a sync decode. If we don't, then
       // use the item's flags.
       DisplayItemData* data = FrameLayerBuilder::GetOldDataFor(i);
+      //XXX: handle webrender case
       bool invalidate = false;
       if (data &&
           data->GetGeometry()) {
@@ -70,23 +72,11 @@ MarkFramesWithItemsAndImagesModified(nsDisplayList* aList)
   }
 }
 
-static bool
-IsAnyAncestorModified(nsIFrame* aFrame)
-{
-  nsIFrame* f = aFrame;
-  while (f) {
-    if (f->IsFrameModified()) {
-      return true;
-    }
-    f = nsLayoutUtils::GetCrossDocParentFrame(f);
-  }
-  return false;
-}
-
 static AnimatedGeometryRoot*
 SelectAGRForFrame(nsIFrame* aFrame, AnimatedGeometryRoot* aParentAGR)
 {
-  if (!aFrame->IsStackingContext()) {
+  if (!aFrame->IsStackingContext() ||
+      !aFrame->IsFixedPosContainingBlock()) {
     return aParentAGR;
   }
 
@@ -108,183 +98,84 @@ SelectAGRForFrame(nsIFrame* aFrame, AnimatedGeometryRoot* aParentAGR)
 // to mark, as child stacking contexts might. It would be nice if we could
 // jump into those immediately rather than walking the entire thing.
 bool
-RetainedDisplayListBuilder::PreProcessDisplayList(nsDisplayList* aList,
-                                                  AnimatedGeometryRoot* aAGR)
+RetainedDisplayListBuilder::PreProcessDisplayList(RetainedDisplayList* aList,
+                                                  AnimatedGeometryRoot* aAGR,
+                                                  uint32_t aCallerKey,
+                                                  uint32_t aNestingDepth)
 {
-  bool modified = false;
+  // The DAG merging algorithm does not have strong mechanisms in place to keep the
+  // complexity of the resulting DAG under control. In some cases we can build up
+  // edges very quickly. Detect those cases and force a full display list build if
+  // we hit them.
+  static const uint32_t kMaxEdgeRatio = 5;
+  bool initializeDAG = !aList->mDAG.Length();
+  if (!initializeDAG &&
+      aList->mDAG.mDirectPredecessorList.Length() >
+      (aList->mDAG.mNodesInfo.Length() * kMaxEdgeRatio)) {
+    return false;
+
+  }
+
   nsDisplayList saved;
-  while (nsDisplayItem* i = aList->RemoveBottom()) {
-    if (i->HasDeletedFrame() || !i->CanBeReused()) {
-      i->Destroy(&mBuilder);
-      modified = true;
+  aList->mOldItems.SetCapacity(aList->Count());
+  MOZ_ASSERT(aList->mOldItems.IsEmpty());
+  while (nsDisplayItem* item = aList->RemoveBottom()) {
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+    item->mMergedItem = false;
+    item->mPreProcessedItem = true;
+#endif
+
+    if (item->HasDeletedFrame() || !item->CanBeReused()) {
+      size_t i = aList->mOldItems.Length();
+      aList->mOldItems.AppendElement(OldItemInfo(nullptr));
+      item->Destroy(&mBuilder);
+
+      if (initializeDAG) {
+        if (i == 0) {
+          aList->mDAG.AddNode(Span<const MergedListIndex>());
+        } else {
+          MergedListIndex previous(i - 1);
+          aList->mDAG.AddNode(Span<const MergedListIndex>(&previous, 1));
+        }
+      }
       continue;
     }
 
-    nsIFrame* f = i->Frame();
+    size_t i = aList->mOldItems.Length();
+    aList->mOldItems.AppendElement(OldItemInfo(item));
+    item->SetOldListIndex(aList, OldListIndex(i), aCallerKey, aNestingDepth);
+    if (initializeDAG) {
+      if (i == 0) {
+        aList->mDAG.AddNode(Span<const MergedListIndex>());
+      } else {
+        MergedListIndex previous(i - 1);
+        aList->mDAG.AddNode(Span<const MergedListIndex>(&previous, 1));
+      }
+    }
 
-    if (i->GetChildren()) {
-      if (PreProcessDisplayList(i->GetChildren(), SelectAGRForFrame(f, aAGR))) {
-        modified = true;
+    nsIFrame* f = item->Frame();
+
+    if (item->GetChildren()) {
+      if (!PreProcessDisplayList(item->GetChildren(), SelectAGRForFrame(f, aAGR), item->GetPerFrameKey(), aNestingDepth + 1)) {
+        return false;
       }
     }
 
     // TODO: We should be able to check the clipped bounds relative
     // to the common AGR (of both the existing item and the invalidated
     // frame) and determine if they can ever intersect.
-    if (aAGR && i->GetAnimatedGeometryRoot()->GetAsyncAGR() != aAGR) {
+    if (aAGR && item->GetAnimatedGeometryRoot()->GetAsyncAGR() != aAGR) {
       mBuilder.MarkFrameForDisplayIfVisible(f, mBuilder.RootReferenceFrame());
-      modified = true;
     }
 
     // TODO: This is here because we sometimes reuse the previous display list
     // completely. For optimization, we could only restore the state for reused
     // display items.
-    i->RestoreState();
-
-    saved.AppendToTop(i);
+    item->RestoreState();
   }
-  aList->AppendToTop(&saved);
+  MOZ_ASSERT(aList->mOldItems.Length() == aList->mDAG.Length());
   aList->RestoreState();
-  return modified;
-}
-
-struct DisplayItemKey
-{
-  bool operator ==(const DisplayItemKey& aOther) const {
-    return mFrame == aOther.mFrame &&
-           mPerFrameKey == aOther.mPerFrameKey;
-  }
-
-  nsIFrame* mFrame;
-  uint32_t mPerFrameKey;
-};
-
-class DisplayItemHashEntry : public PLDHashEntryHdr
-{
-public:
-  typedef DisplayItemKey KeyType;
-  typedef const DisplayItemKey* KeyTypePointer;
-
-  explicit DisplayItemHashEntry(KeyTypePointer aKey)
-    : mKey(*aKey) {}
-  explicit DisplayItemHashEntry(const DisplayItemHashEntry& aCopy)=default;
-
-  ~DisplayItemHashEntry() = default;
-
-  KeyType GetKey() const { return mKey; }
-  bool KeyEquals(KeyTypePointer aKey) const
-  {
-    return mKey == *aKey;
-  }
-
-  static KeyTypePointer KeyToPointer(KeyType& aKey) { return &aKey; }
-  static PLDHashNumber HashKey(KeyTypePointer aKey)
-  {
-    if (!aKey)
-      return 0;
-
-    return mozilla::HashGeneric(aKey->mFrame, aKey->mPerFrameKey);
-  }
-  enum { ALLOW_MEMMOVE = true };
-
-  DisplayItemKey mKey;
-};
-
-template<typename T>
-void SwapAndRemove(nsTArray<T>& aArray, uint32_t aIndex)
-{
-  if (aIndex != (aArray.Length() - 1)) {
-    T last = aArray.LastElement();
-    aArray.LastElement() = aArray[aIndex];
-    aArray[aIndex] = last;
-  }
-
-  aArray.RemoveElementAt(aArray.Length() - 1);
-}
-
-static bool
-MergeFrameRects(nsDisplayLayerEventRegions* aOldItem,
-                nsDisplayLayerEventRegions* aNewItem,
-                nsDisplayLayerEventRegions::FrameRects nsDisplayLayerEventRegions::*aRectList,
-                nsTArray<nsIFrame*>& aAddedFrames)
-{
-  bool modified = false;
-  // Go through the old item's rect list and remove any rectangles
-  // belonging to invalidated frames (deleted frames should
-  // already be gone at this point)
-  nsDisplayLayerEventRegions::FrameRects& oldRects = aOldItem->*aRectList;
-  uint32_t i = 0;
-  while (i < oldRects.mFrames.Length()) {
-    // TODO: As mentioned in nsDisplayLayerEventRegions, this
-    // operation might perform really poorly on a vector.
-    nsIFrame* f = oldRects.mFrames[i];
-    if (IsAnyAncestorModified(f)) {
-      MOZ_ASSERT(f != aOldItem->Frame());
-      f->RemoveDisplayItem(aOldItem);
-      SwapAndRemove(oldRects.mFrames, i);
-      SwapAndRemove(oldRects.mBoxes, i);
-      modified = true;
-    } else {
-      i++;
-    }
-  }
-  if (!aNewItem) {
-    return modified;
-  }
-
-  // Copy items from the source list to the dest list, but
-  // only if the dest doesn't already include them.
-  nsDisplayItem* destItem = aOldItem;
-  nsDisplayLayerEventRegions::FrameRects* destRects = &(aOldItem->*aRectList);
-  nsDisplayLayerEventRegions::FrameRects* srcRects = &(aNewItem->*aRectList);
-
-  for (uint32_t i = 0; i < srcRects->mFrames.Length(); i++) {
-    nsIFrame* f = srcRects->mFrames[i];
-    if (!f->HasDisplayItem(destItem)) {
-      // If this frame isn't already in the destination item,
-      // then add it!
-      destRects->Add(f, srcRects->mBoxes[i]);
-
-      // We also need to update RealDisplayItemData for 'f',
-      // but that'll mess up this check for the following
-      // FrameRects lists, so defer that until the end.
-      aAddedFrames.AppendElement(f);
-      MOZ_ASSERT(f != aOldItem->Frame());
-
-      modified = true;
-    }
-
-  }
-  return modified;
-}
-
-bool MergeLayerEventRegions(nsDisplayItem* aOldItem,
-                            nsDisplayItem* aNewItem)
-{
-  nsDisplayLayerEventRegions* oldItem =
-    static_cast<nsDisplayLayerEventRegions*>(aOldItem);
-  nsDisplayLayerEventRegions* newItem =
-    static_cast<nsDisplayLayerEventRegions*>(aNewItem);
-
-  nsTArray<nsIFrame*> addedFrames;
-
-  bool modified = false;
-  modified |= MergeFrameRects(oldItem, newItem, &nsDisplayLayerEventRegions::mHitRegion, addedFrames);
-  modified |= MergeFrameRects(oldItem, newItem, &nsDisplayLayerEventRegions::mMaybeHitRegion, addedFrames);
-  modified |= MergeFrameRects(oldItem, newItem, &nsDisplayLayerEventRegions::mDispatchToContentHitRegion, addedFrames);
-  modified |= MergeFrameRects(oldItem, newItem, &nsDisplayLayerEventRegions::mNoActionRegion, addedFrames);
-  modified |= MergeFrameRects(oldItem, newItem, &nsDisplayLayerEventRegions::mHorizontalPanRegion, addedFrames);
-  modified |= MergeFrameRects(oldItem, newItem, &nsDisplayLayerEventRegions::mVerticalPanRegion, addedFrames);
-
-  // MergeFrameRects deferred updating the display item data list during
-  // processing so that earlier calls didn't change the result of later
-  // ones. Fix that up now.
-  for (nsIFrame* f : addedFrames) {
-    if (!f->HasDisplayItem(aOldItem)) {
-      f->AddDisplayItem(aOldItem);
-    }
-  }
-  return modified;
+  return true;
 }
 
 void
@@ -300,6 +191,24 @@ RetainedDisplayListBuilder::IncrementSubDocPresShellPaintCount(nsDisplayItem* aI
   MOZ_ASSERT(presShell);
 
   mBuilder.IncrementPresShellPaintCount(presShell);
+}
+
+static bool
+AnyContentAncestorModified(nsIFrame* aFrame,
+                           nsIFrame* aStopAtFrame = nullptr)
+{
+  for (nsIFrame* f = aFrame; f;
+       f = nsLayoutUtils::GetParentOrPlaceholderForCrossDoc(f)) {
+    if (f->IsFrameModified()) {
+      return true;
+    }
+
+    if (aStopAtFrame && f == aStopAtFrame) {
+      break;
+    }
+  }
+
+  return false;
 }
 
 static void
@@ -321,266 +230,293 @@ UpdateASR(nsDisplayItem* aItem,
                                      aContainerASR.value()));
 }
 
-/**
- * Takes two display lists and merges them into an output list.
- *
- * The basic algorithm is:
- *
- * For-each item i in the new list:
- *     If the item has a matching item in the old list:
- *         Remove items from the start of the old list up until we reach an item that also exists in the new list (leaving the matched item in place):
- *             Add valid items to the merged list, destroy invalid items.
- *     Add i into the merged list.
- *     If the start of the old list matches i, remove and destroy it, otherwise mark the old version of i as used.
- * Add all remaining valid items from the old list into the merged list, skipping over (and destroying) any that are marked as used.
- *
- * If any item has a child display list, then we recurse into the merge
- * algorithm once we match up the new/old versions (if present).
- *
- * Example 1:
- *
- * Old List: A,B,C,D
- * Modified List: A,D
- * Invalidations: C,D
- *
- * We first match the A items, and add the new one to the merged list.
- * We then match the D items, copy B into the merged list, but not C
- * (since it's invalid). We then add the new D to the list and we're
- * finished.
- *
- * Merged List: A,B,D
- *
- * Example 2 (layout/reftests/retained-dl-zindex-1.html):
- *
- * Old List: A, B
- * Modified List: B, A
- * Invalidations: A
- *
- * In this example A has been explicitly moved to the back.
- *
- * We match the B items, but don't copy A since it's invalid, and then add the
- * new B into the merged list. We then add A, and we're done.
- *
- * Merged List: B, A
- *
- * Example 3:
- *
- * Old List: A, B
- * Modified List: B, A
- * Invalidations: -
- *
- * This can happen because a prior merge might have changed the ordering
- * for non-intersecting items.
- *
- * We match the B items, but don't copy A since it's also present in the new list
- * and then add the new B into the merged list. We then add A, and we're done.
- *
- * Merged List: B, A
- *
- * Example 4 (layout/reftests/retained-dl-zindex-2.html):
- *
- * Element A has two elements covering it (B and C), that don't intersect each
- * other. We then move C to the back.
- *
- * The correct initial ordering has B and C after A, in any order.
- *
- * Old List: A, B, C
- * Modified List: C, A
- * Invalidations: C
- *
- * We match the C items, but don't add anything from the old list because A is present
- * in both lists. We add C to the merged list, and mark the old version of C as reused.
- *
- * We then match A, add the new version the merged list and delete the old version.
- *
- * We then process the remainder of the old list, B is added (since it is valid,
- * and hasn't been mark as reused), C is destroyed since it's marked as reused and
- * is already present in the merged list.
- *
- * Merged List: C, A, B
- */
-bool
-RetainedDisplayListBuilder::MergeDisplayLists(nsDisplayList* aNewList,
-                                              nsDisplayList* aOldList,
-                                              nsDisplayList* aOutList,
-                                              Maybe<const ActiveScrolledRoot*>& aOutContainerASR)
+void
+OldItemInfo::AddedMatchToMergedList(RetainedDisplayListBuilder* aBuilder,
+                                    MergedListIndex aIndex)
 {
-  bool modified = false;
+  mItem->Destroy(aBuilder->Builder());
+  AddedToMergedList(aIndex);
+}
 
-  nsDisplayList merged;
-  const auto UseItem = [&](nsDisplayItem* aItem) {
+void
+OldItemInfo::Discard(RetainedDisplayListBuilder* aBuilder,
+                     nsTArray<MergedListIndex>&& aDirectPredecessors)
+{
+  MOZ_ASSERT(!IsUsed());
+  mUsed = mDiscarded = true;
+  mDirectPredecessors = Move(aDirectPredecessors);
+  if (mItem) {
+    mItem->Destroy(aBuilder->Builder());
+  }
+  mItem = nullptr;
+}
+
+bool
+OldItemInfo::IsChanged()
+{
+  return !mItem || mItem->HasDeletedFrame() || !mItem->CanBeReused();
+}
+
+/**
+ * A C++ implementation of Markus Stange's merge-dags algorithm.
+ * https://github.com/mstange/merge-dags
+ *
+ * MergeState handles combining a new list of display items into an existing
+ * DAG and computes the new DAG in a single pass.
+ * Each time we add a new item, we resolve all dependencies for it, so that the resulting
+ * list and DAG are built in topological ordering.
+ */
+class MergeState {
+public:
+  MergeState(RetainedDisplayListBuilder* aBuilder, RetainedDisplayList& aOldList, uint32_t aOuterKey)
+    : mBuilder(aBuilder)
+    , mOldList(&aOldList)
+    , mOldItems(Move(aOldList.mOldItems))
+    , mOldDAG(Move(*reinterpret_cast<DirectedAcyclicGraph<OldListUnits>*>(&aOldList.mDAG)))
+    , mOuterKey(aOuterKey)
+    , mResultIsModified(false)
+  {
+    mMergedDAG.EnsureCapacityFor(mOldDAG);
+  }
+
+  MergedListIndex ProcessItemFromNewList(nsDisplayItem* aNewItem, const Maybe<MergedListIndex>& aPreviousItem) {
+    OldListIndex oldIndex;
+    if (!HasModifiedFrame(aNewItem) &&
+        HasMatchingItemInOldList(aNewItem, &oldIndex)) {
+      nsDisplayItem* oldItem = mOldItems[oldIndex.val].mItem;
+      MOZ_DIAGNOSTIC_ASSERT(oldItem->GetPerFrameKey() == aNewItem->GetPerFrameKey() &&
+                            oldItem->Frame() == aNewItem->Frame());
+      if (!mOldItems[oldIndex.val].IsChanged()) {
+        MOZ_DIAGNOSTIC_ASSERT(!mOldItems[oldIndex.val].IsUsed());
+        if (aNewItem->GetChildren()) {
+          Maybe<const ActiveScrolledRoot*> containerASRForChildren;
+          if (mBuilder->MergeDisplayLists(aNewItem->GetChildren(),
+                                          oldItem->GetChildren(),
+                                          aNewItem->GetChildren(),
+                                          containerASRForChildren,
+                                          aNewItem->GetPerFrameKey())) {
+            mResultIsModified = true;
+
+          }
+          UpdateASR(aNewItem, containerASRForChildren);
+          aNewItem->UpdateBounds(mBuilder->Builder());
+        }
+
+        AutoTArray<MergedListIndex, 2> directPredecessors = ProcessPredecessorsOfOldNode(oldIndex);
+        MergedListIndex newIndex = AddNewNode(aNewItem, Some(oldIndex), directPredecessors, aPreviousItem);
+        mOldItems[oldIndex.val].AddedMatchToMergedList(mBuilder, newIndex);
+        return newIndex;
+      }
+    }
+    mResultIsModified = true;
+    return AddNewNode(aNewItem, Nothing(), Span<MergedListIndex>(), aPreviousItem);
+  }
+
+  RetainedDisplayList Finalize() {
+    for (size_t i = 0; i < mOldDAG.Length(); i++) {
+      if (mOldItems[i].IsUsed()) {
+        continue;
+      }
+
+      AutoTArray<MergedListIndex, 2> directPredecessors =
+        ResolveNodeIndexesOldToMerged(mOldDAG.GetDirectPredecessors(OldListIndex(i)));
+      ProcessOldNode(OldListIndex(i), Move(directPredecessors));
+    }
+
+    RetainedDisplayList result;
+    result.AppendToTop(&mMergedItems);
+    result.mDAG = Move(mMergedDAG);
+    return result;
+  }
+
+  bool HasMatchingItemInOldList(nsDisplayItem* aItem, OldListIndex* aOutIndex)
+  {
+    nsIFrame::DisplayItemArray* items = aItem->Frame()->GetProperty(nsIFrame::DisplayItems());
+    // Look for an item that matches aItem's frame and per-frame-key, but isn't the same item.
+    for (nsDisplayItem* i : *items) {
+      if (i != aItem && i->Frame() == aItem->Frame() &&
+          i->GetPerFrameKey() == aItem->GetPerFrameKey()) {
+        if (i->GetOldListIndex(mOldList, mOuterKey, aOutIndex)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  bool HasModifiedFrame(nsDisplayItem* aItem) {
+    return AnyContentAncestorModified(aItem->FrameForInvalidation());
+  }
+
+  void UpdateContainerASR(nsDisplayItem* aItem)
+  {
     const ActiveScrolledRoot* itemClipASR =
       aItem->GetClipChain() ? aItem->GetClipChain()->mASR : nullptr;
 
     const ActiveScrolledRoot* finiteBoundsASR = ActiveScrolledRoot::PickDescendant(
       itemClipASR, aItem->GetActiveScrolledRoot());
-    if (!aOutContainerASR) {
-      aOutContainerASR = Some(finiteBoundsASR);
+    if (!mContainerASR) {
+      mContainerASR = Some(finiteBoundsASR);
     } else {
-      aOutContainerASR =
-        Some(ActiveScrolledRoot::PickAncestor(aOutContainerASR.value(), finiteBoundsASR));
+      mContainerASR = Some(ActiveScrolledRoot::PickAncestor(mContainerASR.value(), finiteBoundsASR));
     }
 
-    merged.AppendToTop(aItem);
-  };
+  }
 
-  const auto ReuseItem = [&](nsDisplayItem* aItem) {
-    UseItem(aItem);
-    aItem->SetReused(true);
+  MergedListIndex AddNewNode(nsDisplayItem* aItem,
+                             const Maybe<OldListIndex>& aOldIndex,
+                             Span<const MergedListIndex> aDirectPredecessors,
+                             const Maybe<MergedListIndex>& aExtraDirectPredecessor) {
+    UpdateContainerASR(aItem);
 
-    if (aItem->GetType() == DisplayItemType::TYPE_SUBDOCUMENT) {
-      IncrementSubDocPresShellPaintCount(aItem);
-    }
-  };
-
-  const bool newListIsEmpty = aNewList->IsEmpty();
-  if (!newListIsEmpty) {
-    // Build a hashtable of items in the old list so we can look for them quickly.
-    // We have similar data in the nsIFrame DisplayItems() property, but it doesn't
-    // know which display list items are in, and we only want to match items in
-    // this list.
-    nsDataHashtable<DisplayItemHashEntry, nsDisplayItem*> oldListLookup(aOldList->Count());
-
-    for (nsDisplayItem* i = aOldList->GetBottom(); i != nullptr; i = i->GetAbove()) {
-      i->SetReused(false);
-      oldListLookup.Put({ i->Frame(), i->GetPerFrameKey() }, i);
-    }
-
-    nsDataHashtable<DisplayItemHashEntry, nsDisplayItem*> newListLookup(aNewList->Count());
-    for (nsDisplayItem* i = aNewList->GetBottom(); i != nullptr; i = i->GetAbove()) {
-#ifdef DEBUG
-      if (newListLookup.Get({ i->Frame(), i->GetPerFrameKey() }, nullptr)) {
-        MOZ_CRASH_UNSAFE_PRINTF("Duplicate display items detected!: %s(0x%p) type=%d key=%d",
-                                  i->Name(), i->Frame(),
-                                  static_cast<int>(i->GetType()), i->GetPerFrameKey());
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+    nsIFrame::DisplayItemArray* items = aItem->Frame()->GetProperty(nsIFrame::DisplayItems());
+    for (nsDisplayItem* i : *items) {
+      if (i->Frame() == aItem->Frame() &&
+          i->GetPerFrameKey() == aItem->GetPerFrameKey()) {
+        MOZ_DIAGNOSTIC_ASSERT(!i->mMergedItem);
       }
-#endif
-      newListLookup.Put({ i->Frame(), i->GetPerFrameKey() }, i);
     }
 
-    while (nsDisplayItem* newItem = aNewList->RemoveBottom()) {
-      if (nsDisplayItem* oldItem = oldListLookup.Get({ newItem->Frame(), newItem->GetPerFrameKey() })) {
-        // The new item has a matching counterpart in the old list that we haven't yet reached,
-        // so copy all valid items from the old list into the merged list until we get to the
-        // matched item.
-        nsDisplayItem* old = nullptr;
-        while ((old = aOldList->GetBottom()) && old != oldItem) {
-          if (IsAnyAncestorModified(old->FrameForInvalidation())) {
-            // The old item is invalid, discard it.
-            oldListLookup.Remove({ old->Frame(), old->GetPerFrameKey() });
-            aOldList->RemoveBottom();
-            old->Destroy(&mBuilder);
-            modified = true;
-          } else if (newListLookup.Get({ old->Frame(), old->GetPerFrameKey() })) {
-            // This old item is also in the new list, but we haven't got to it yet.
-            // Stop now, and we'll deal with it when we get to the new entry.
-            modified = true;
-            break;
-          } else {
-            // Recurse into the child list (without a matching new list) to
-            // ensure that we find and remove any invalidated items.
-            if (old->GetChildren()) {
-              nsDisplayList empty;
-              Maybe<const ActiveScrolledRoot*> containerASRForChildren;
-              if (MergeDisplayLists(&empty, old->GetChildren(),
-                                    old->GetChildren(), containerASRForChildren)) {
-                modified = true;
-              }
-              UpdateASR(old, containerASRForChildren);
-              old->UpdateBounds(&mBuilder);
-            }
-            aOldList->RemoveBottom();
-            ReuseItem(old);
-          }
-        }
-        bool destroy = false;
-        if (old == oldItem) {
-          // If we advanced the old list until the matching item then we can pop
-          // the matching item off the old list and make sure we clean it up.
-          aOldList->RemoveBottom();
-          destroy = true;
-        } else {
-          // If we didn't get to the matching item, then mark the old item
-          // as being reused (since we're adding the new version to the new
-          // list now) so that we don't add it twice at the end.
-          oldItem->SetReused(true);
-        }
+    aItem->mMergedItem = true;
+    aItem->mPreProcessedItem = false;
+#endif
 
-        // Recursively merge any child lists, destroy the old item and add
-        // the new one to the list.
-        if (destroy &&
-            oldItem->GetType() == DisplayItemType::TYPE_LAYER_EVENT_REGIONS &&
-            !IsAnyAncestorModified(oldItem->FrameForInvalidation())) {
-          // Event regions items don't have anything interesting other than
-          // the lists of regions and frames, so we have no need to use the
-          // newer item. Always use the old item instead since we assume it's
-          // likely to have the bigger lists and merging will be quicker.
-          if (MergeLayerEventRegions(oldItem, newItem)) {
-            modified = true;
-          }
-          ReuseItem(oldItem);
-          newItem->Destroy(&mBuilder);
-        } else {
-          if (IsAnyAncestorModified(oldItem->FrameForInvalidation())) {
-            modified = true;
-          } else if (oldItem->GetChildren()) {
-            MOZ_ASSERT(newItem->GetChildren());
-            Maybe<const ActiveScrolledRoot*> containerASRForChildren;
-            if (MergeDisplayLists(newItem->GetChildren(), oldItem->GetChildren(),
-                                  newItem->GetChildren(), containerASRForChildren)) {
-              modified = true;
-            }
-            UpdateASR(newItem, containerASRForChildren);
-            newItem->UpdateBounds(&mBuilder);
-          }
+    mMergedItems.AppendToTop(aItem);
+    MergedListIndex newIndex = mMergedDAG.AddNode(aDirectPredecessors, aExtraDirectPredecessor);
+    return newIndex;
+  }
 
-          if (destroy) {
-            oldItem->Destroy(&mBuilder);
-          }
-          UseItem(newItem);
+  void ProcessOldNode(OldListIndex aNode, nsTArray<MergedListIndex>&& aDirectPredecessors) {
+    nsDisplayItem* item = mOldItems[aNode.val].mItem;
+    if (mOldItems[aNode.val].IsChanged() || HasModifiedFrame(item)) {
+      mOldItems[aNode.val].Discard(mBuilder, Move(aDirectPredecessors));
+      mResultIsModified = true;
+    } else {
+      if (item->GetChildren()) {
+        Maybe<const ActiveScrolledRoot*> containerASRForChildren;
+        nsDisplayList empty;
+        if (mBuilder->MergeDisplayLists(&empty, item->GetChildren(), item->GetChildren(),
+                                        containerASRForChildren, item->GetPerFrameKey())) {
+          mResultIsModified = true;
+        }
+        UpdateASR(item, containerASRForChildren);
+        item->UpdateBounds(mBuilder->Builder());
+      }
+      if (item->GetType() == DisplayItemType::TYPE_SUBDOCUMENT) {
+        mBuilder->IncrementSubDocPresShellPaintCount(item);
+      }
+      item->SetReused(true);
+      mOldItems[aNode.val].AddedToMergedList(
+        AddNewNode(item, Some(aNode), aDirectPredecessors, Nothing()));
+    }
+  }
+
+  struct PredecessorStackItem {
+    PredecessorStackItem(OldListIndex aNode, Span<OldListIndex> aPredecessors)
+     : mNode(aNode)
+     , mDirectPredecessors(aPredecessors)
+     , mCurrentPredecessorIndex(0)
+    {}
+
+    bool IsFinished() {
+      return mCurrentPredecessorIndex == mDirectPredecessors.Length();
+    }
+
+    OldListIndex GetAndIncrementCurrentPredecessor() { return mDirectPredecessors[mCurrentPredecessorIndex++]; }
+
+    OldListIndex mNode;
+    Span<OldListIndex> mDirectPredecessors;
+    size_t mCurrentPredecessorIndex;
+  };
+
+  AutoTArray<MergedListIndex, 2> ProcessPredecessorsOfOldNode(OldListIndex aNode) {
+    AutoTArray<PredecessorStackItem,256> mStack;
+    mStack.AppendElement(PredecessorStackItem(aNode, mOldDAG.GetDirectPredecessors(aNode)));
+
+    while (true) {
+      if (mStack.LastElement().IsFinished()) {
+        // If we've finished processing all the entries in the current set, then pop
+        // it off the processing stack and process it.
+        PredecessorStackItem item = mStack.PopLastElement();
+        AutoTArray<MergedListIndex,2> result =
+          ResolveNodeIndexesOldToMerged(item.mDirectPredecessors);
+        if (mStack.IsEmpty()) {
+          return result;
+        } else {
+          ProcessOldNode(item.mNode, Move(result));
         }
       } else {
-        // If there was no matching item in the old list, then we only need to
-        // add the new item to the merged list.
-        modified = true;
-        UseItem(newItem);
+        // Grab the current predecessor, push predecessors of that onto the processing
+        // stack (if it hasn't already been processed), and then advance to the next entry.
+        OldListIndex currentIndex = mStack.LastElement().GetAndIncrementCurrentPredecessor();
+        if (!mOldItems[currentIndex.val].IsUsed()) {
+          mStack.AppendElement(
+            PredecessorStackItem(currentIndex, mOldDAG.GetDirectPredecessors(currentIndex)));
+        }
       }
     }
   }
 
-  // Reuse the remaining valid items from the old display list.
-  while (nsDisplayItem* old = aOldList->RemoveBottom()) {
-    if (!IsAnyAncestorModified(old->FrameForInvalidation()) &&
-        (!old->IsReused() || newListIsEmpty)) {
-      if (old->GetChildren()) {
-        // We are calling MergeDisplayLists() to ensure that the display items
-        // with modified or deleted children will be correctly handled.
-        // Passing an empty new display list as an argument skips the merging
-        // loop above and jumps back here.
-        nsDisplayList empty;
-        Maybe<const ActiveScrolledRoot*> containerASRForChildren;
-
-        if (MergeDisplayLists(&empty, old->GetChildren(),
-                              old->GetChildren(), containerASRForChildren)) {
-          modified = true;
+  AutoTArray<MergedListIndex, 2> ResolveNodeIndexesOldToMerged(Span<OldListIndex> aDirectPredecessors) {
+    AutoTArray<MergedListIndex, 2> result;
+    result.SetCapacity(aDirectPredecessors.Length());
+    for (OldListIndex index : aDirectPredecessors) {
+      OldItemInfo& oldItem = mOldItems[index.val];
+      if (oldItem.IsDiscarded()) {
+        for (MergedListIndex inner : oldItem.mDirectPredecessors) {
+          if (!result.Contains(inner)) {
+            result.AppendElement(inner);
+          }
         }
-        UpdateASR(old, containerASRForChildren);
-        old->UpdateBounds(&mBuilder);
+      } else {
+        result.AppendElement(oldItem.mIndex);
       }
-      if (old->GetType() == DisplayItemType::TYPE_LAYER_EVENT_REGIONS) {
-        if (MergeLayerEventRegions(old, nullptr)) {
-          modified = true;
-        }
-      }
-      ReuseItem(old);
-    } else {
-      old->Destroy(&mBuilder);
-      modified = true;
     }
+    return result;
   }
 
-  aOutList->AppendToTop(&merged);
-  return modified;
+  RetainedDisplayListBuilder* mBuilder;
+  RetainedDisplayList* mOldList;
+  Maybe<const ActiveScrolledRoot*> mContainerASR;
+  nsTArray<OldItemInfo> mOldItems;
+  DirectedAcyclicGraph<OldListUnits> mOldDAG;
+  // Unfortunately we can't use strong typing for the hashtables
+  // since they internally encode the type with the mOps pointer,
+  // and assert when we try swap the contents
+  nsDisplayList mMergedItems;
+  DirectedAcyclicGraph<MergedListUnits> mMergedDAG;
+  uint32_t mOuterKey;
+  bool mResultIsModified;
+};
+
+/**
+ * Takes two display lists and merges them into an output list.
+ *
+ * Display lists wthout an explicit DAG are interpreted as linear DAGs (with a maximum
+ * of one direct predecessor and one direct successor per node). We add the two DAGs
+ * together, and then output the topological sorted ordering as the final display list.
+ *
+ * Once we've merged a list, we then retain the DAG (as part of the RetainedDisplayList
+ * object) to use for future merges.
+ */
+bool
+RetainedDisplayListBuilder::MergeDisplayLists(nsDisplayList* aNewList,
+                                              RetainedDisplayList* aOldList,
+                                              RetainedDisplayList* aOutList,
+                                              mozilla::Maybe<const mozilla::ActiveScrolledRoot*>& aOutContainerASR,
+                                              uint32_t aOuterKey)
+{
+  MergeState merge(this, *aOldList, aOuterKey);
+
+  Maybe<MergedListIndex> previousItemIndex;
+  while (nsDisplayItem* item = aNewList->RemoveBottom()) {
+    previousItemIndex = Some(merge.ProcessItemFromNewList(item, previousItemIndex));
+  }
+
+  *aOutList = Move(merge.Finalize());
+  aOutContainerASR = merge.mContainerASR;
+  return merge.mResultIsModified;
 }
 
 static void
@@ -734,44 +670,25 @@ GetFirstDisplayItemWithChildren(nsIFrame* aFrame)
   return nullptr;
 }
 
-static nsIFrame*
-HandlePreserve3D(nsIFrame* aFrame, nsRect& aOverflow)
+static bool
+IsInPreserve3DContext(const nsIFrame* aFrame)
 {
-  // Preserve-3d frames don't have valid overflow areas, and they might
-  // have singular transforms (despite still being visible when combined
-  // with their ancestors). If we're at one, jump up to the root of the
-  // preserve-3d context and use the whole overflow area.
-  nsIFrame* last = aFrame;
-  while (aFrame->Extend3DContext() ||
-         aFrame->Combines3DTransformWithAncestors()) {
-    last = aFrame;
-    aFrame = aFrame->GetParent();
-  }
-  if (last != aFrame) {
-    aOverflow = last->GetVisualOverflowRectRelativeToParent();
-    CRR_LOG("HandlePreserve3D() Updated overflow rect to: %d %d %d %d\n",
-             aOverflow.x, aOverflow.y, aOverflow.width, aOverflow.height);
-  }
-
-  return aFrame;
+  return aFrame->Extend3DContext() ||
+         aFrame->Combines3DTransformWithAncestors();
 }
 
-static void
-ProcessFrame(nsIFrame* aFrame, nsDisplayListBuilder& aBuilder,
-             AnimatedGeometryRoot** aAGR, nsRect& aOverflow,
-             nsIFrame* aStopAtFrame, nsTArray<nsIFrame*>& aOutFramesWithProps,
-             const bool aStopAtStackingContext)
+static bool
+ProcessFrameInternal(nsIFrame* aFrame, nsDisplayListBuilder& aBuilder,
+                     AnimatedGeometryRoot** aAGR, nsRect& aOverflow,
+                     nsIFrame* aStopAtFrame, nsTArray<nsIFrame*>& aOutFramesWithProps,
+                     const bool aStopAtStackingContext)
 {
   nsIFrame* currentFrame = aFrame;
-
-  aBuilder.MarkFrameForDisplayIfVisible(aFrame, aBuilder.RootReferenceFrame());
 
   while (currentFrame != aStopAtFrame) {
     CRR_LOG("currentFrame: %p (placeholder=%d), aOverflow: %d %d %d %d\n",
              currentFrame, !aStopAtStackingContext,
              aOverflow.x, aOverflow.y, aOverflow.width, aOverflow.height);
-
-    currentFrame = HandlePreserve3D(currentFrame, aOverflow);
 
     // If the current frame is an OOF frame, DisplayListBuildingData needs to be
     // set on all the ancestor stacking contexts of the  placeholder frame, up
@@ -805,8 +722,11 @@ ProcessFrame(nsIFrame* aFrame, nsDisplayListBuilder& aBuilder,
         nsLayoutUtils::FindNearestCommonAncestorFrame(currentFrame->GetParent(),
                                                       placeholder->GetParent());
 
-      ProcessFrame(placeholder, aBuilder, &dummyAGR, placeholderOverflow,
-                   ancestor, aOutFramesWithProps, false);
+      if (!ProcessFrameInternal(placeholder, aBuilder, &dummyAGR,
+                                placeholderOverflow, ancestor,
+                                aOutFramesWithProps, false)) {
+        return false;
+      }
     }
 
     // Convert 'aOverflow' into the coordinate space of the nearest stacking context
@@ -815,6 +735,10 @@ ProcessFrame(nsIFrame* aFrame, nsDisplayListBuilder& aBuilder,
                                                            nullptr, nullptr,
                                                            /* aStopAtStackingContextAndDisplayPortAndOOFFrame = */ true,
                                                            &currentFrame);
+    if (IsInPreserve3DContext(currentFrame)) {
+      return false;
+    }
+
     MOZ_ASSERT(currentFrame);
 
     if (nsLayoutUtils::FrameHasDisplayPort(currentFrame)) {
@@ -859,7 +783,8 @@ ProcessFrame(nsIFrame* aFrame, nsDisplayListBuilder& aBuilder,
     }
 
     if (currentFrame != aBuilder.RootReferenceFrame() &&
-        currentFrame->IsStackingContext()) {
+        currentFrame->IsStackingContext() &&
+        currentFrame->IsFixedPosContainingBlock()) {
       CRR_LOG("Frame belongs to stacking context frame %p\n", currentFrame);
       // If we found an intermediate stacking context with an existing display item
       // then we can store the dirty rect there and stop. If we couldn't find one then
@@ -921,6 +846,105 @@ ProcessFrame(nsIFrame* aFrame, nsDisplayListBuilder& aBuilder,
       break;
     }
   }
+  return true;
+}
+
+bool
+RetainedDisplayListBuilder::ProcessFrame(nsIFrame* aFrame, nsDisplayListBuilder& aBuilder,
+             nsIFrame* aStopAtFrame, nsTArray<nsIFrame*>& aOutFramesWithProps,
+             const bool aStopAtStackingContext,
+             nsRect* aOutDirty,
+             AnimatedGeometryRoot** aOutModifiedAGR)
+{
+  if (aFrame->HasOverrideDirtyRegion()) {
+    aOutFramesWithProps.AppendElement(aFrame);
+  }
+
+  if (aFrame->HasAnyStateBits(NS_FRAME_IN_POPUP)) {
+    return true;
+  }
+
+  // TODO: There is almost certainly a faster way of doing this, probably can be combined with the ancestor
+  // walk for TransformFrameRectToAncestor.
+  AnimatedGeometryRoot* agr = aBuilder.FindAnimatedGeometryRootFor(aFrame)->GetAsyncAGR();
+
+  CRR_LOG("Processing frame %p with agr %p\n", aFrame, agr->mFrame);
+
+  // Convert the frame's overflow rect into the coordinate space
+  // of the nearest stacking context that has an existing display item.
+  // We store that as a dirty rect on that stacking context so that we build
+  // all items that intersect the changed frame within the stacking context,
+  // and then we use MarkFrameForDisplayIfVisible to make sure the stacking
+  // context itself gets built. We don't need to build items that intersect outside
+  // of the stacking context, since we know the stacking context item exists in
+  // the old list, so we can trivially merge without needing other items.
+  nsRect overflow = aFrame->GetVisualOverflowRectRelativeToSelf();
+
+  // If the modified frame is also a caret frame, include the caret area.
+  // This is needed because some frames (for example text frames without text)
+  // might have an empty overflow rect.
+  if (aFrame == aBuilder.GetCaretFrame()) {
+    overflow.UnionRect(overflow, aBuilder.GetCaretRect());
+  }
+
+  if (!ProcessFrameInternal(aFrame, aBuilder, &agr, overflow, aStopAtFrame,
+                            aOutFramesWithProps, aStopAtStackingContext)) {
+    return false;
+  }
+
+  if (!overflow.IsEmpty()) {
+    aOutDirty->UnionRect(*aOutDirty, overflow);
+    CRR_LOG("Adding area to root draw area: %d %d %d %d\n",
+            overflow.x, overflow.y, overflow.width, overflow.height);
+
+    // If we get changed frames from multiple AGRS, then just give up as it gets really complex to
+    // track which items would need to be marked in MarkFramesForDifferentAGR.
+    if (!*aOutModifiedAGR) {
+      CRR_LOG("Setting %p as root stacking context AGR\n", agr);
+      *aOutModifiedAGR = agr;
+    } else if (agr && *aOutModifiedAGR != agr) {
+      CRR_LOG("Found multiple AGRs in root stacking context, giving up\n");
+      return false;
+    }
+  }
+  return true;
+}
+
+static void
+AddFramesForContainingBlock(nsIFrame* aBlock,
+                            const nsFrameList& aFrames,
+                            nsTArray<nsIFrame*>& aExtraFrames)
+{
+  for (nsIFrame* f : aFrames) {
+    if (!f->IsFrameModified() &&
+        AnyContentAncestorModified(f, aBlock)) {
+      CRR_LOG("Adding invalid OOF %p\n", f);
+      aExtraFrames.AppendElement(f);
+    }
+  }
+}
+
+// Placeholder descendants of aFrame don't contribute to aFrame's overflow area.
+// Find all the containing blocks that might own placeholders under us, walk
+// their OOF frames list, and manually invalidate any frames that are descendants
+// of a modified frame (us, or another frame we'll get to soon).
+// This is combined with the work required for MarkFrameForDisplayIfVisible,
+// so that we can avoid an extra ancestor walk, and we can reuse the flag
+// to detect when we've already visited an ancestor (and thus all further ancestors
+// must also be visited).
+void FindContainingBlocks(nsIFrame* aFrame,
+                          nsTArray<nsIFrame*>& aExtraFrames)
+{
+  for (nsIFrame* f = aFrame; f;
+       f = nsLayoutUtils::GetParentOrPlaceholderForCrossDoc(f)) {
+    if (f->ForceDescendIntoIfVisible())
+      return;
+    f->SetForceDescendIntoIfVisible(true);
+    CRR_LOG("Considering OOFs for %p\n", f);
+
+    AddFramesForContainingBlock(f, f->GetChildList(nsIFrame::kFloatList), aExtraFrames);
+    AddFramesForContainingBlock(f, f->GetChildList(f->GetAbsoluteListID()), aExtraFrames);
+  }
 }
 
 /**
@@ -956,57 +980,27 @@ RetainedDisplayListBuilder::ComputeRebuildRegion(nsTArray<nsIFrame*>& aModifiedF
                                                  nsTArray<nsIFrame*>& aOutFramesWithProps)
 {
   CRR_LOG("Computing rebuild regions for %zu frames:\n", aModifiedFrames.Length());
+  nsTArray<nsIFrame*> extraFrames;
   for (nsIFrame* f : aModifiedFrames) {
     MOZ_ASSERT(f);
 
-    if (f->HasOverrideDirtyRegion()) {
-      aOutFramesWithProps.AppendElement(f);
+    mBuilder.AddFrameMarkedForDisplayIfVisible(f);
+    FindContainingBlocks(f, extraFrames);
+
+    if (!ProcessFrame(f, mBuilder, mBuilder.RootReferenceFrame(),
+                      aOutFramesWithProps, true,
+                      aOutDirty, aOutModifiedAGR)) {
+      return false;
     }
+  }
 
-    if (f->HasAnyStateBits(NS_FRAME_IN_POPUP)) {
-      continue;
-    }
+  for (nsIFrame* f : extraFrames) {
+    mBuilder.MarkFrameModifiedDuringBuilding(f);
 
-    // TODO: There is almost certainly a faster way of doing this, probably can be combined with the ancestor
-    // walk for TransformFrameRectToAncestor.
-    AnimatedGeometryRoot* agr = mBuilder.FindAnimatedGeometryRootFor(f)->GetAsyncAGR();
-
-    CRR_LOG("Processing frame %p with agr %p\n", f, agr->mFrame);
-
-    // Convert the frame's overflow rect into the coordinate space
-    // of the nearest stacking context that has an existing display item.
-    // We store that as a dirty rect on that stacking context so that we build
-    // all items that intersect the changed frame within the stacking context,
-    // and then we use MarkFrameForDisplayIfVisible to make sure the stacking
-    // context itself gets built. We don't need to build items that intersect outside
-    // of the stacking context, since we know the stacking context item exists in
-    // the old list, so we can trivially merge without needing other items.
-    nsRect overflow = f->GetVisualOverflowRectRelativeToSelf();
-
-    // If the modified frame is also a caret frame, include the caret area.
-    // This is needed because some frames (for example text frames without text)
-    // might have an empty overflow rect.
-    if (f == mBuilder.GetCaretFrame()) {
-      overflow.UnionRect(overflow, mBuilder.GetCaretRect());
-    }
-
-    ProcessFrame(f, mBuilder, &agr, overflow, mBuilder.RootReferenceFrame(),
-                 aOutFramesWithProps, true);
-
-    if (!overflow.IsEmpty()) {
-      aOutDirty->UnionRect(*aOutDirty, overflow);
-      CRR_LOG("Adding area to root draw area: %d %d %d %d\n",
-              overflow.x, overflow.y, overflow.width, overflow.height);
-
-      // If we get changed frames from multiple AGRS, then just give up as it gets really complex to
-      // track which items would need to be marked in MarkFramesForDifferentAGR.
-      if (!*aOutModifiedAGR) {
-        CRR_LOG("Setting %p as root stacking context AGR\n", agr);
-        *aOutModifiedAGR = agr;
-      } else if (agr && *aOutModifiedAGR != agr) {
-        CRR_LOG("Found multiple AGRs in root stacking context, giving up\n");
-        return false;
-      }
+    if (!ProcessFrame(f, mBuilder, mBuilder.RootReferenceFrame(),
+                      aOutFramesWithProps, true,
+                      aOutDirty, aOutModifiedAGR)) {
+      return false;
     }
   }
 
@@ -1108,7 +1102,15 @@ RetainedDisplayListBuilder::AttemptPartialUpdate(
 
   // Do not allow partial builds if the retained display list is empty, or if
   // ShouldBuildPartial heuristic fails.
-  const bool shouldBuildPartial = !mList.IsEmpty() && ShouldBuildPartial(modifiedFrames.Frames());
+  bool shouldBuildPartial = !mList.IsEmpty() && ShouldBuildPartial(modifiedFrames.Frames());
+
+  // We don't support retaining with overlay scrollbars, since they require
+  // us to look at the display list and pick the highest z-index, which
+  // we can't do during partial building.
+  if (mBuilder.DisablePartialUpdates()) {
+    shouldBuildPartial = false;
+    mBuilder.SetDisablePartialUpdates(false);
+  }
 
   if (mPreviousCaret != mBuilder.GetCaretFrame()) {
     if (mPreviousCaret) {
@@ -1130,16 +1132,27 @@ RetainedDisplayListBuilder::AttemptPartialUpdate(
   AnimatedGeometryRoot* modifiedAGR = nullptr;
   if (!shouldBuildPartial ||
       !ComputeRebuildRegion(modifiedFrames.Frames(), &modifiedDirty,
-                           &modifiedAGR, framesWithProps.Frames())) {
-    mBuilder.LeavePresShell(mBuilder.RootReferenceFrame(), &mList);
+                           &modifiedAGR, framesWithProps.Frames()) ||
+      !PreProcessDisplayList(&mList, modifiedAGR)) {
+    mBuilder.LeavePresShell(mBuilder.RootReferenceFrame(), List());
+    mList.DeleteAll(&mBuilder);
     return PartialUpdateResult::Failed;
+  }
+
+  // This is normally handled by EnterPresShell, but we skipped it so that we
+  // didn't call MarkFrameForDisplayIfVisible before ComputeRebuildRegion.
+  nsIScrollableFrame* sf = mBuilder.RootReferenceFrame()->PresShell()->GetRootScrollFrameAsScrollable();
+  if (sf) {
+    nsCanvasFrame* canvasFrame = do_QueryFrame(sf->GetScrolledFrame());
+    if (canvasFrame) {
+      mBuilder.MarkFrameForDisplayIfVisible(canvasFrame, mBuilder.RootReferenceFrame());
+    }
   }
 
   modifiedDirty.IntersectRect(modifiedDirty, mBuilder.RootReferenceFrame()->GetVisualOverflowRectRelativeToSelf());
 
   PartialUpdateResult result = PartialUpdateResult::NoChange;
-  if (PreProcessDisplayList(&mList, modifiedAGR) ||
-      !modifiedDirty.IsEmpty() ||
+  if (!modifiedDirty.IsEmpty() ||
       !framesWithProps.IsEmpty()) {
     result = PartialUpdateResult::Updated;
   }
@@ -1156,6 +1169,14 @@ RetainedDisplayListBuilder::AttemptPartialUpdate(
                                            aBackstop);
   }
   mBuilder.SetPartialUpdate(false);
+
+  if (mBuilder.PartialBuildFailed()) {
+    mBuilder.SetPartialBuildFailed(false);
+    mBuilder.LeavePresShell(mBuilder.RootReferenceFrame(), List());
+    mList.DeleteAll(&mBuilder);
+    modifiedDL.DeleteAll(&mBuilder);
+    return PartialUpdateResult::Failed;
+  }
 
   if (aChecker) {
     aChecker->Set(&modifiedDL, "TM");
@@ -1182,6 +1203,6 @@ RetainedDisplayListBuilder::AttemptPartialUpdate(
   //printf_stderr("Painting --- Merged list:\n");
   //nsFrame::PrintDisplayList(&mBuilder, mList);
 
-  mBuilder.LeavePresShell(mBuilder.RootReferenceFrame(), &mList);
+  mBuilder.LeavePresShell(mBuilder.RootReferenceFrame(), List());
   return result;
 }

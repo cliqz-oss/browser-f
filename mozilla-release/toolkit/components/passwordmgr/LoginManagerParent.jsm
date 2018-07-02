@@ -93,6 +93,13 @@ var LoginManagerParent = {
                           data.oldPasswordField,
                           msg.objects.openerTopWindow,
                           msg.target);
+
+        const flow_id = msg.target.ownerGlobal.gBrowser.getTabForBrowser(msg.target).linkedPanel;
+        Services.telemetry.recordEvent("savant", "login_form", "submit", null,
+                                      {
+                                        subcategory: "encounter",
+                                        flow_id,
+                                      });
         break;
       }
 
@@ -109,6 +116,28 @@ var LoginManagerParent = {
       case "RemoteLogins:removeLogin": {
         let login = LoginHelper.vanillaObjectToLogin(data.login);
         AutoCompletePopup.removeLogin(login);
+        break;
+      }
+
+      case "LoginStats:LoginFillSuccessful": {
+        const flow_id = msg.target.ownerGlobal.gBrowser.getTabForBrowser(msg.target).linkedPanel;
+        Services.telemetry.recordEvent("savant", "pwmgr_use", "use", null,
+                                      {
+                                        subcategory: "feature",
+                                        flow_id,
+                                      });
+        break;
+      }
+
+      case "LoginStats:LoginEncountered": {
+        const canRecordSubmit = (!data.isPrivateWindow && data.isPwmgrEnabled).toString();
+        const flow_id = msg.target.ownerGlobal.gBrowser.getTabForBrowser(msg.target).linkedPanel;
+        Services.telemetry.recordEvent("savant", "login_form", "load", null,
+                                      {
+                                        subcategory: "encounter",
+                                        flow_id,
+                                        canRecordSubmit,
+                                      });
         break;
       }
     }
@@ -181,8 +210,8 @@ var LoginManagerParent = {
       log("deferring sendLoginDataToChild for", formOrigin);
       let self = this;
       let observer = {
-        QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver,
-                                               Ci.nsISupportsWeakReference]),
+        QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver,
+                                                Ci.nsISupportsWeakReference]),
 
         observe(subject, topic, data) {
           log("Got deferred sendLoginDataToChild notification:", topic);

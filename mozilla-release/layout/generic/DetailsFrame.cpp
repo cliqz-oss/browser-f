@@ -24,15 +24,15 @@ NS_QUERYFRAME_HEAD(DetailsFrame)
 NS_QUERYFRAME_TAIL_INHERITING(nsBlockFrame)
 
 nsBlockFrame*
-NS_NewDetailsFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewDetailsFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) DetailsFrame(aContext);
+  return new (aPresShell) DetailsFrame(aStyle);
 }
 
 namespace mozilla {
 
-DetailsFrame::DetailsFrame(nsStyleContext* aContext)
-  : nsBlockFrame(aContext, kClassID)
+DetailsFrame::DetailsFrame(ComputedStyle* aStyle)
+  : nsBlockFrame(aStyle, kClassID)
 {
 }
 
@@ -58,7 +58,7 @@ DetailsFrame::CheckValidMainSummary(const nsFrameList& aFrameList) const
 {
   for (nsIFrame* child : aFrameList) {
     HTMLSummaryElement* summary =
-      HTMLSummaryElement::FromContent(child->GetContent());
+      HTMLSummaryElement::FromNode(child->GetContent());
 
     if (child == aFrameList.FirstChild()) {
       if (summary && summary->IsMainSummary()) {
@@ -91,7 +91,7 @@ DetailsFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroy
 nsresult
 DetailsFrame::CreateAnonymousContent(nsTArray<ContentInfo>& aElements)
 {
-  auto* details = HTMLDetailsElement::FromContent(GetContent());
+  auto* details = HTMLDetailsElement::FromNode(GetContent());
   if (details->GetFirstSummary()) {
     return NS_OK;
   }
@@ -130,9 +130,22 @@ DetailsFrame::AppendAnonymousContentTo(nsTArray<nsIContent*>& aElements,
 bool
 DetailsFrame::HasMainSummaryFrame(nsIFrame* aSummaryFrame)
 {
-  nsIFrame* firstChild =
-    nsPlaceholderFrame::GetRealFrameFor(mFrames.FirstChild());
-
+  nsIFrame* firstChild = nullptr;
+  for (nsIFrame* frag = this; frag; frag = frag->GetNextInFlow()) {
+    firstChild = frag->PrincipalChildList().FirstChild();
+    if (!firstChild) {
+      nsFrameList* overflowFrames = GetOverflowFrames();
+      if (overflowFrames) {
+        firstChild = overflowFrames->FirstChild();
+      }
+    }
+    if (firstChild) {
+      firstChild = nsPlaceholderFrame::GetRealFrameFor(firstChild);
+      MOZ_ASSERT(firstChild && firstChild->IsPrimaryFrame(),
+                 "this is probably not the frame you were looking for");
+      break;
+    }
+  }
   return aSummaryFrame == firstChild;
 }
 

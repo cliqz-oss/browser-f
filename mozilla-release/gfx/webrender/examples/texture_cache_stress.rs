@@ -92,12 +92,14 @@ impl Example for App {
         let info = LayoutPrimitiveInfo::new(bounds);
         builder.push_stacking_context(
             &info,
+            None,
             ScrollPolicy::Scrollable,
             None,
             TransformStyle::Flat,
             None,
             MixBlendMode::Normal,
             Vec::new(),
+            GlyphRasterSpace::Screen,
         );
 
         let x0 = 50.0;
@@ -111,7 +113,7 @@ impl Example for App {
             self.image_generator.generate_image(128);
             resources.add_image(
                 key0,
-                ImageDescriptor::new(128, 128, ImageFormat::BGRA8, true),
+                ImageDescriptor::new(128, 128, ImageFormat::BGRA8, true, false),
                 ImageData::new(self.image_generator.take()),
                 None,
             );
@@ -119,7 +121,7 @@ impl Example for App {
             self.image_generator.generate_image(128);
             resources.add_image(
                 key1,
-                ImageDescriptor::new(128, 128, ImageFormat::BGRA8, true),
+                ImageDescriptor::new(128, 128, ImageFormat::BGRA8, true, false),
                 ImageData::new(self.image_generator.take()),
                 None,
             );
@@ -215,7 +217,7 @@ impl Example for App {
 
                                 updates.add_image(
                                     image_key,
-                                    ImageDescriptor::new(size, size, ImageFormat::BGRA8, true),
+                                    ImageDescriptor::new(size, size, ImageFormat::BGRA8, true, false),
                                     ImageData::new(self.image_generator.take()),
                                     None,
                                 );
@@ -233,7 +235,7 @@ impl Example for App {
 
                         updates.update_image(
                             image_key,
-                            ImageDescriptor::new(size, size, ImageFormat::BGRA8, true),
+                            ImageDescriptor::new(size, size, ImageFormat::BGRA8, true, false),
                             ImageData::new(self.image_generator.take()),
                             None,
                         );
@@ -254,7 +256,7 @@ impl Example for App {
 
                         updates.add_image(
                             image_key,
-                            ImageDescriptor::new(size, size, ImageFormat::BGRA8, true),
+                            ImageDescriptor::new(size, size, ImageFormat::BGRA8, true, false),
                             ImageData::External(image_data),
                             None,
                         );
@@ -272,7 +274,7 @@ impl Example for App {
 
                         updates.add_image(
                             image_key,
-                            ImageDescriptor::new(size, size, ImageFormat::BGRA8, true),
+                            ImageDescriptor::new(size, size, ImageFormat::BGRA8, true, false),
                             ImageData::new(self.image_generator.take()),
                             None,
                         );

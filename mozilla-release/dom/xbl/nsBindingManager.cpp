@@ -16,7 +16,7 @@
 #include "nsString.h"
 #include "plstr.h"
 #include "nsIContent.h"
-#include "nsIDOMElement.h"
+#include "nsIContentInlines.h"
 #include "nsIDocument.h"
 #include "nsContentUtils.h"
 #include "nsIPresShell.h"
@@ -36,10 +36,6 @@
 #include "nsXULPrototypeCache.h"
 #endif
 
-#ifdef MOZ_OLD_STYLE
-#include "nsIStyleRuleProcessor.h"
-#include "nsRuleProcessorData.h"
-#endif
 #include "nsIWeakReference.h"
 
 #include "nsWrapperCacheInlines.h"
@@ -55,7 +51,6 @@
 #include "nsThreadUtils.h"
 #include "mozilla/dom/NodeListBinding.h"
 #include "mozilla/dom/ScriptSettings.h"
-#include "mozilla/ServoStyleSet.h"
 #include "mozilla/Unused.h"
 
 using namespace mozilla;
@@ -245,14 +240,6 @@ nsBindingManager::ResolveTag(nsIContent* aContent, int32_t* aNameSpaceID)
   return aContent->NodeInfo()->NameAtom();
 }
 
-nsresult
-nsBindingManager::GetAnonymousNodesFor(nsIContent* aContent,
-                                       nsIDOMNodeList** aResult)
-{
-  NS_IF_ADDREF(*aResult = GetAnonymousNodesFor(aContent));
-  return NS_OK;
-}
-
 nsINodeList*
 nsBindingManager::GetAnonymousNodesFor(nsIContent* aContent)
 {
@@ -335,7 +322,7 @@ nsBindingManager::RemoveFromAttachedQueue(nsXBLBinding* aBinding)
   // Don't remove items here as that could mess up an executing
   // ProcessAttachedQueue. Instead, null the entry in the queue.
   size_t index = mAttachedStack.IndexOf(aBinding);
-  if (index != mAttachedStack.NoIndex) {
+  if (index != nsBindingList::NoIndex) {
     mAttachedStack[index] = nullptr;
   }
 }
@@ -470,7 +457,7 @@ nsBindingManager::ExecuteDetachedHandlers()
     nsXBLBinding* binding = iter.Get()->GetKey()->GetXBLBinding();
     if (binding && bindings.AppendElement(binding)) {
       if (!boundElements.AppendObject(binding->GetBoundElement())) {
-        bindings.RemoveElementAt(bindings.Length() - 1);
+        bindings.RemoveLastElement();
       }
     }
   }
@@ -678,48 +665,6 @@ nsBindingManager::GetBindingImplementation(nsIContent* aContent, REFNSIID aIID,
   return NS_NOINTERFACE;
 }
 
-#ifdef MOZ_OLD_STYLE
-nsresult
-nsBindingManager::WalkRules(nsIStyleRuleProcessor::EnumFunc aFunc,
-                            ElementDependentRuleProcessorData* aData,
-                            bool* aCutOffInheritance)
-{
-  *aCutOffInheritance = false;
-
-  NS_ASSERTION(aData->mElement, "How did that happen?");
-
-  // Walk the binding scope chain, starting with the binding attached to our
-  // content, up till we run out of scopes or we get cut off.
-  nsIContent *content = aData->mElement;
-
-  do {
-    nsXBLBinding *binding = content->GetXBLBinding();
-    if (binding) {
-      binding->WalkRules(aFunc, aData);
-      // If we're not looking at our original content, allow the binding to cut
-      // off style inheritance
-      if (content != aData->mElement) {
-        if (!binding->InheritsStyle()) {
-          // Go no further; we're not inheriting style from anything above here
-          break;
-        }
-      }
-    }
-
-    if (content->IsRootOfNativeAnonymousSubtree()) {
-      break; // Deliberately cut off style inheritance here.
-    }
-
-    content = content->GetBindingParent();
-  } while (content);
-
-  // If "content" is non-null that means we cut off inheritance at some point
-  // in the loop.
-  *aCutOffInheritance = (content != nullptr);
-
-  return NS_OK;
-}
-#endif
 
 bool
 nsBindingManager::EnumerateBoundContentProtoBindings(
@@ -749,44 +694,6 @@ nsBindingManager::EnumerateBoundContentProtoBindings(
   }
 
   return true;
-}
-
-#ifdef MOZ_OLD_STYLE
-void
-nsBindingManager::WalkAllRules(nsIStyleRuleProcessor::EnumFunc aFunc,
-                               ElementDependentRuleProcessorData* aData)
-{
-  EnumerateBoundContentProtoBindings([=](nsXBLPrototypeBinding* aProto) {
-    nsIStyleRuleProcessor* ruleProcessor = aProto->GetRuleProcessor();
-    if (ruleProcessor) {
-      (*(aFunc))(ruleProcessor, aData);
-    }
-    return true;
-  });
-}
-#endif
-
-bool
-nsBindingManager::MediumFeaturesChanged(nsPresContext* aPresContext,
-                                        mozilla::MediaFeatureChangeReason aReason)
-{
-  MOZ_ASSERT(!mDocument->IsStyledByServo());
-#ifdef MOZ_OLD_STYLE
-  bool rulesChanged = false;
-  RefPtr<nsPresContext> presContext = aPresContext;
-  EnumerateBoundContentProtoBindings([=, &rulesChanged](nsXBLPrototypeBinding* aProto) {
-    nsIStyleRuleProcessor* ruleProcessor = aProto->GetRuleProcessor();
-    if (ruleProcessor) {
-      bool thisChanged = ruleProcessor->MediumFeaturesChanged(presContext);
-      rulesChanged = rulesChanged || thisChanged;
-    }
-    return true;
-  });
-  return rulesChanged;
-#else
-  MOZ_CRASH("old style system disabled");
-  return false;
-#endif
 }
 
 void
@@ -879,7 +786,7 @@ nsBindingManager::ContentAppended(nsIContent* aFirstNewContent)
       first = false;
       for (nsIContent* child = aFirstNewContent; child;
            child = child->GetNextSibling()) {
-        point->AppendInsertedChild(child);
+        point->AppendInsertedChild(child, true);
       }
     } else {
       InsertAppendedContent(point, aFirstNewContent);
@@ -1129,13 +1036,11 @@ nsBindingManager::SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const
     n += mDocumentTable->ShallowSizeOfIncludingThis(aMallocSizeOf);
 #ifdef MOZ_XUL
     nsXULPrototypeCache* cache = nsXULPrototypeCache::GetInstance();
-    StyleBackendType backendType = mDocument->GetStyleBackendType();
 #endif
     for (auto iter = mDocumentTable->Iter(); !iter.Done(); iter.Next()) {
       nsXBLDocumentInfo* docInfo = iter.UserData();
 #ifdef MOZ_XUL
-      nsXBLDocumentInfo* cachedInfo =
-        cache->GetXBLDocumentInfo(iter.Key(), backendType);
+      nsXBLDocumentInfo* cachedInfo = cache->GetXBLDocumentInfo(iter.Key());
       if (cachedInfo == docInfo) {
         // If this binding has been cached, skip it since it can be
         // reused by other documents.

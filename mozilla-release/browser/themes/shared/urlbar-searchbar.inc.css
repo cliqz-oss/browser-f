@@ -8,6 +8,8 @@
 %define fieldHoverBorderColor hsla(240,5%,5%,.35)
 
 :root {
+  --toolbar-field-focus-border-color: Highlight;
+
   /* 28x28 box - 16x16 image = 12x12 padding, 6 on each side */
   --urlbar-icon-padding: 6px;
 }
@@ -44,8 +46,8 @@
 
 #urlbar:-moz-lwtheme,
 #navigator-toolbox .searchbar-textbox:-moz-lwtheme {
-  background-color: var(--url-and-searchbar-background-color, hsla(0,0%,100%,.8));
-  color: var(--url-and-searchbar-color, black);
+  background-color: var(--lwt-toolbar-field-background-color, hsla(0,0%,100%,.8));
+  color: var(--lwt-toolbar-field-color, black);
 }
 
 #urlbar:not([focused="true"]):-moz-lwtheme,
@@ -59,10 +61,19 @@
 }
 
 #urlbar:-moz-lwtheme:hover,
+#navigator-toolbox .searchbar-textbox:-moz-lwtheme:hover {
+  background-color: var(--lwt-toolbar-field-background-color, white);
+}
+
+#urlbar[focused="true"],
+.searchbar-textbox[focused="true"] {
+  border-color: var(--toolbar-field-focus-border-color);
+}
+
 #urlbar:-moz-lwtheme[focused="true"],
-#navigator-toolbox .searchbar-textbox:-moz-lwtheme:hover,
 #navigator-toolbox .searchbar-textbox:-moz-lwtheme[focused="true"] {
-  background-color: var(--url-and-searchbar-background-color, white);
+  background-color: var(--lwt-toolbar-field-focus, var(--lwt-toolbar-field-background-color, white));
+  color: var(--lwt-toolbar-field-focus-color, var(--lwt-toolbar-field-color, black));
 }
 
 :root[uidensity=compact] #urlbar,
@@ -140,8 +151,8 @@
   transform: scaleX(-1);
 }
 
-.pageAction-sendToDevice-device[clientType=mobile] {
-  list-style-image: url("chrome://browser/skin/device-mobile.svg");
+.pageAction-sendToDevice-device[clientType=phone] {
+  list-style-image: url("chrome://browser/skin/device-phone.svg");
 }
 
 .pageAction-sendToDevice-device[clientType=tablet] {
@@ -156,6 +167,23 @@
 #pageAction-panel-sendToDevice-fxa,
 #pageAction-urlbar-sendToDevice-fxa {
   list-style-image: url("chrome://browser/skin/sync.svg");
+}
+
+#pageAction-panel-addSearchEngine > .toolbarbutton-badge-stack > .toolbarbutton-icon {
+  width: 16px;
+  height: 16px;
+}
+#pageAction-panel-addSearchEngine > .toolbarbutton-badge-stack > .toolbarbutton-badge {
+  display: -moz-box;
+  background: url(chrome://browser/skin/search-indicator-badge-add.svg) no-repeat center;
+  box-shadow: none;
+  /* "!important" is necessary to override the rule in toolbarbutton.css */
+  margin: -4px 0 0 !important;
+  margin-inline-end: -4px !important;
+  width: 11px;
+  height: 11px;
+  min-width: 11px;
+  min-height: 11px;
 }
 
 /* URL bar and page action buttons */

@@ -14,7 +14,7 @@ var gThreadClient;
 var gCallback;
 
 function run_test() {
-  run_test_with_server(DebuggerServer, function () {
+  run_test_with_server(DebuggerServer, function() {
     run_test_with_server(WorkerDebuggerServer, do_test_finished);
   });
   do_test_pending();
@@ -29,9 +29,9 @@ function run_test_with_server(server, callback) {
   }.toString());
 
   gClient = new DebuggerClient(server.connectPipe());
-  gClient.connect().then(function () {
+  gClient.connect().then(function() {
     attachTestTabAndResume(gClient, "test-grips",
-                           function (response, tabClient, threadClient) {
+                           function(response, tabClient, threadClient) {
                              gThreadClient = threadClient;
                              test_object_grip();
                            });
@@ -39,7 +39,7 @@ function run_test_with_server(server, callback) {
 }
 
 function test_object_grip() {
-  gThreadClient.addOneTimeListener("paused", function (event, packet) {
+  gThreadClient.addOneTimeListener("paused", function(event, packet) {
     let [f, s, ne, e] = packet.frame.arguments;
     let [fClient, sClient, neClient, eClient] = packet.frame.arguments.map(
       a => gThreadClient.pauseGrip(a));
@@ -61,7 +61,8 @@ function test_object_grip() {
     });
   });
 
-  gDebuggee.eval("(" + function () {
+  /* eslint-disable no-undef */
+  gDebuggee.eval("(" + function() {
     let f = {};
     Object.freeze(f);
     let s = {};
@@ -70,5 +71,5 @@ function test_object_grip() {
     Object.preventExtensions(ne);
     stopMe(f, s, ne, {});
   } + "())");
+  /* eslint-enable no-undef */
 }
-

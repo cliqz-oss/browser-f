@@ -159,12 +159,14 @@ browser.engagement:
   restored_pinned_tabs_count:
     bug_numbers:
       - 1373728
+      - 1451475
     description: >
       The count of the number of pinned tabs that were restored.
-    expires: '62'
+    expires: '67'
     kind: uint
     notification_emails:
       - chutten@mozilla.com
+      - jrediger@mozilla.com
     release_channel_collection: opt-out
     record_in_processes:
       - 'main'
@@ -361,88 +363,6 @@ browser.usage:
 
 # The following section contains the session restore scalars.
 browser.session.restore:
-  number_of_win:
-    bug_numbers:
-      - 1379226
-    description: The count of windows open after a session has been restored.
-    expires: never
-    kind: uint
-    notification_emails:
-      - bwinton@mozilla.com
-    release_channel_collection: opt-out
-    record_in_processes:
-      - 'main'
-
-  number_of_tabs:
-    bug_numbers:
-      - 1379226
-    description: The count of tabs open after a session has been restored.
-    expires: never
-    kind: uint
-    notification_emails:
-      - bwinton@mozilla.com
-    release_channel_collection: opt-out
-    record_in_processes:
-      - 'main'
-
-  tabbar_restore_available:
-    bug_numbers:
-      - 1379226
-    description: >
-      Recorded on startup. Boolean stating whether the tabbar session
-      restore button was ever available.
-    expires: never
-    kind: boolean
-    notification_emails:
-      - bwinton@mozilla.com
-    release_channel_collection: opt-out
-    record_in_processes:
-      - 'main'
-
-  tabbar_restore_clicked:
-    bug_numbers:
-      - 1379226
-    description: >
-      Recorded on click event. Boolean stating if the session restore button
-      was clicked.
-    expires: never
-    kind: boolean
-    notification_emails:
-      - bwinton@mozilla.com
-    release_channel_collection: opt-out
-    record_in_processes:
-      - 'main'
-
-  browser_startup_page:
-    bug_numbers:
-      - 1379226
-    description: >
-      The value of the browser.startup.page pref.
-      This pref restores the tabs and windows automatically when set to 3.
-    expires: never
-    kind: uint
-    notification_emails:
-      - bwinton@mozilla.com
-    release_channel_collection: opt-out
-    record_in_processes:
-      - 'main'
-
-  browser_tabs_restorebutton:
-    bug_numbers:
-      - 1379226
-    description: >
-      The value of the browser.tabs.restorebutton pref.
-      0 - the user is not a part of the experiment
-      1 - the user is a part of the experiment
-      2 - the user is part of the control group
-    expires: never
-    kind: uint
-    notification_emails:
-      - bwinton@mozilla.com
-    release_channel_collection: opt-out
-    record_in_processes:
-      - 'main'
-
   worker_restart_count:
     bug_numbers:
       - 1402267
@@ -530,14 +450,16 @@ security:
   pkcs11_modules_loaded:
     bug_numbers:
       - 1369911
+      - 1445961
     description: >
       A keyed boolean indicating the library names of the PKCS#11 modules that
       have been loaded by the browser.
-    expires: "62"
+    expires: "69"
     kind: boolean
     keyed: true
     notification_emails:
       - seceng-telemetry@mozilla.com
+      - dkeeler@mozilla.com
     release_channel_collection: opt-out
     record_in_processes:
       - main
@@ -722,7 +644,8 @@ webrtc.nicer:
     expires: "62"
     kind: uint
     notification_emails:
-      - webrtc-ice-telemetry-alerts@mozilla.com, nohlmeier@mozilla.com
+      - webrtc-ice-telemetry-alerts@mozilla.com
+      - nohlmeier@mozilla.com
     release_channel_collection: opt-in
     record_in_processes:
       - 'main'
@@ -743,7 +666,8 @@ webrtc.nicer:
     expires: "62"
     kind: uint
     notification_emails:
-      - webrtc-ice-telemetry-alerts@mozilla.com, nohlmeier@mozilla.com
+      - webrtc-ice-telemetry-alerts@mozilla.com
+      - nohlmeier@mozilla.com
     release_channel_collection: opt-in
     record_in_processes:
       - 'main'
@@ -763,7 +687,8 @@ webrtc.nicer:
     expires: "62"
     kind: uint
     notification_emails:
-      - webrtc-ice-telemetry-alerts@mozilla.com, nohlmeier@mozilla.com
+      - webrtc-ice-telemetry-alerts@mozilla.com
+      - nohlmeier@mozilla.com
     release_channel_collection: opt-in
     record_in_processes:
       - 'main'
@@ -782,7 +707,8 @@ webrtc.nicer:
     expires: "62"
     kind: uint
     notification_emails:
-      - webrtc-ice-telemetry-alerts@mozilla.com, nohlmeier@mozilla.com
+      - webrtc-ice-telemetry-alerts@mozilla.com
+      - nohlmeier@mozilla.com
     release_channel_collection: opt-in
     record_in_processes:
       - 'main'
@@ -959,6 +885,23 @@ devtools.grid.showInfiniteLines:
     record_in_processes:
       - 'main'
 
+devtools.inspector:
+  three_pane_enabled:
+    bug_numbers:
+      - 1437881
+    description: >
+      Number of times the DevTools inspector was opened with the 3 pane inspector enabled,
+      keyed by true/false.
+    expires: "65"
+    kind: uint
+    keyed: true
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+      - gl@mozilla.com
+    release_channel_collection: opt-out
+    record_in_processes:
+      - 'main'
+
 devtools:
   current_theme:
     bug_numbers:
@@ -983,7 +926,8 @@ devtools.aboutdevtools:
     expires: "63"
     kind: uint
     notification_emails:
-      - dev-developer-tools@lists.mozilla.org, jdescottes@mozilla.com
+      - dev-developer-tools@lists.mozilla.org
+      - jdescottes@mozilla.com
     record_in_processes:
       - 'main'
   installed:
@@ -994,7 +938,8 @@ devtools.aboutdevtools:
     expires: "63"
     kind: uint
     notification_emails:
-      - dev-developer-tools@lists.mozilla.org, jdescottes@mozilla.com
+      - dev-developer-tools@lists.mozilla.org
+      - jdescottes@mozilla.com
     record_in_processes:
       - 'main'
   noinstall_exits:
@@ -1005,7 +950,8 @@ devtools.aboutdevtools:
     expires: "63"
     kind: uint
     notification_emails:
-      - dev-developer-tools@lists.mozilla.org, jdescottes@mozilla.com
+      - dev-developer-tools@lists.mozilla.org
+      - jdescottes@mozilla.com
     record_in_processes:
       - 'main'
 
@@ -1018,7 +964,150 @@ devtools.onboarding:
     expires: "63"
     kind: boolean
     notification_emails:
-      - dev-developer-tools@lists.mozilla.org, jdescottes@mozilla.com
+      - dev-developer-tools@lists.mozilla.org
+      - jdescottes@mozilla.com
+    record_in_processes:
+      - 'main'
+
+devtools.responsive:
+  toolbox_opened_first:
+    bug_numbers:
+      - 1444497
+    description: >
+      Number of Responsive Design Mode opens with a toolbox already open.
+    expires: never
+    kind: uint
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+      - jryans@mozilla.com
+    record_in_processes:
+      - main
+    release_channel_collection: opt-out
+  open_trigger:
+    bug_numbers:
+      - 1444497
+    description: >
+      Number of Responsive Design Mode opens keyed by the UI entry point used.
+    expires: never
+    kind: uint
+    keyed: true
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+      - jryans@mozilla.com
+    record_in_processes:
+      - main
+    release_channel_collection: opt-out
+
+devtools.tool:
+  registered:
+    bug_numbers:
+      - 1447302
+    description: >
+      Recorded on enable tool checkbox check/uncheck in Developer Tools options
+      panel. Boolean stating if the tool was enabled or disabled by the user.
+      Keyed by tool id. Current default tools with their id's are defined in
+      https://dxr.mozilla.org/mozilla-central/source/devtools/client/definitions.js
+    expires: "65"
+    kind: boolean
+    keyed: true
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+      - yzenevich@mozilla.com
+    release_channel_collection: opt-out
+    record_in_processes:
+      - 'main'
+
+devtools.accessibility:
+  node_inspected_count:
+    bug_numbers:
+      - 1447302
+    description: >
+      Number of times a DOM node was inspected from within the Accessibility
+      tool.
+    expires: "65"
+    kind: uint
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+      - yzenevich@mozilla.com
+    release_channel_collection: opt-out
+    record_in_processes:
+      - 'main'
+
+  opened_count:
+    bug_numbers:
+      - 1447302
+    description: >
+      Number of times the DevTools Accessibility tool has been opened.
+    expires: "65"
+    kind: uint
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+      - yzenevich@mozilla.com
+    release_channel_collection: opt-out
+    record_in_processes:
+      - 'main'
+
+  picker_used_count:
+    bug_numbers:
+      - 1447302
+    description: >
+      Number of times the picker tool has been used in DevTools Accessibility
+      panel.
+    expires: "65"
+    kind: uint
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+      - yzenevich@mozilla.com
+    release_channel_collection: opt-out
+    record_in_processes:
+      - 'main'
+
+  select_accessible_for_node:
+    bug_numbers:
+      - 1447302
+    description: >
+      Number of times an accessible object was inspected from outside the
+      Accessibility tool (navigation to Accessibility panel). Keyed by the
+      source of user action (inspector context menu, browser context menu, etc).
+    expires: "65"
+    kind: uint
+    keyed: true
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+      - yzenevich@mozilla.com
+    release_channel_collection: opt-out
+    record_in_processes:
+      - 'main'
+
+  service_enabled_count:
+    bug_numbers:
+      - 1447302
+    description: >
+      Number of times platform accessibility has been enabled in DevTools
+      Accessibility panel.
+    expires: "65"
+    kind: uint
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+      - yzenevich@mozilla.com
+    release_channel_collection: opt-out
+    record_in_processes:
+      - 'main'
+
+devtools.toolbox:
+  tabs_reordered:
+    bug_numbers:
+      - 1456551
+    description: >
+      Number of times the DevTools tab was reordered.
+      Keyed by tab's id.
+    expires: "65"
+    kind: uint
+    keyed: true
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+      - daisuke@mozilla.com
+    release_channel_collection: opt-out
     record_in_processes:
       - 'main'
 
@@ -1087,6 +1176,23 @@ telemetry:
     release_channel_collection: opt-in
     record_in_processes:
       - 'main'
+
+  event_counts:
+    bug_numbers:
+      - 1440673
+    description: >
+      The counts of events recorded in the process, category, method, and
+      object of the key, even if event recording for the category was not
+      enabled.
+    expires: never
+    kind: uint
+    keyed: true
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+      - chutten@mozilla.com
+    release_channel_collection: opt-out
+    record_in_processes:
+      - 'all'
 
 telemetry.discarded:
   accumulations:
@@ -1462,6 +1568,109 @@ sw:
     release_channel_collection: opt-out
     record_in_processes:
       - 'main'
+      - 'content'
+
+# The following section contains the BrowserErrorReporter scalars.
+browser.errors:
+  collected_count:
+    bug_numbers:
+      - 1444554
+    description: >
+      The count of all browser chrome JS errors that were collected locally.
+    expires: "64"
+    kind: uint
+    notification_emails:
+      - nightly-js-errors@mozilla.com
+      - mkelly@mozilla.com
+    record_in_processes:
+      - 'main'
+
+  collected_with_stack_count:
+    bug_numbers:
+      - 1444554
+    description: >
+      The count of browser chrome JS errors that were collected locally and had
+      a usable stack trace.
+    expires: "64"
+    kind: uint
+    notification_emails:
+      - nightly-js-errors@mozilla.com
+      - mkelly@mozilla.com
+    record_in_processes:
+      - 'main'
+
+  reported_success_count:
+    bug_numbers:
+      - 1444554
+    description: >
+      The count of all browser chrome JS errors that were reported to the
+      remote collection service.
+    expires: "64"
+    kind: uint
+    notification_emails:
+      - nightly-js-errors@mozilla.com
+      - mkelly@mozilla.com
+    record_in_processes:
+      - 'main'
+
+  reported_failure_count:
+    bug_numbers:
+      - 1444554
+    description: >
+      The count of all browser chrome JS errors that we attempted to report to
+      the remote collection service, but failed to.
+    expires: "64"
+    kind: uint
+    notification_emails:
+      - nightly-js-errors@mozilla.com
+      - mkelly@mozilla.com
+    record_in_processes:
+      - 'main'
+
+  sample_rate:
+    bug_numbers:
+      - 1444554
+    description: >
+      The sample rate at which collected errors were reported.
+    expires: "64"
+    kind: string
+    notification_emails:
+      - nightly-js-errors@mozilla.com
+      - mkelly@mozilla.com
+    record_in_processes:
+      - 'main'
+
+  collected_count_by_filename:
+    bug_numbers:
+      - 1444554
+    description: >
+      The count of all browser chrome JS errors that were collected locally,
+      keyed by the filename of the file in which the error occurred. Collected
+      filenames are limited to specific paths under the resource:// and
+      chrome:// protocols; non-matching filenames are reported as "FILTERED".
+      Long filenames are truncated to the first 70 characters.
+    keyed: true
+    expires: "64"
+    kind: uint
+    notification_emails:
+      - nightly-js-errors@mozilla.com
+      - mkelly@mozilla.com
+    record_in_processes:
+      - 'main'
+
+# The following section contains memory reporter counters.
+memoryreporter:
+  max_ghost_windows:
+    bug_numbers:
+      - 1454724
+    description: >
+      The maximum number of leaked ghost windows seen.
+    expires: "66"
+    kind: uint
+    notification_emails:
+      - memshrink-telemetry-alerts@mozilla.com
+    release_channel_collection: opt-out
+    record_in_processes:
       - 'content'
 
 # The following section is for probes testing the Telemetry system. They will not be

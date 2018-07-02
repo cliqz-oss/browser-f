@@ -36,6 +36,7 @@
 #include "mozilla/dom/quota/PQuotaParent.h"
 #include "mozilla/dom/quota/PQuotaRequestParent.h"
 #include "mozilla/dom/quota/PQuotaUsageRequestParent.h"
+#include "mozilla/dom/StorageActivityService.h"
 #include "mozilla/ipc/BackgroundParent.h"
 #include "mozilla/ipc/BackgroundUtils.h"
 #include "mozilla/IntegerRange.h"
@@ -43,6 +44,7 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/Services.h"
 #include "mozilla/StaticPtr.h"
+#include "mozilla/TextUtils.h"
 #include "mozilla/TypeTraits.h"
 #include "mozilla/Unused.h"
 #include "mozStorageCID.h"
@@ -1553,7 +1555,8 @@ ReportInternalError(const char* aFile, uint32_t aLine, const char* aStr)
   nsContentUtils::LogSimpleConsoleError(
     NS_ConvertUTF8toUTF16(nsPrintfCString(
                           "Quota %s: %s:%" PRIu32, aStr, aFile, aLine)),
-    "quota");
+    "quota",
+    false /* Quota Manager is not active in private browsing mode */);
 }
 
 namespace {
@@ -3022,6 +3025,11 @@ QuotaObject::LockedMaybeUpdateSize(int64_t aSize, bool aTruncate)
   MOZ_ASSERT(quotaManager);
 
   quotaManager->mQuotaMutex.AssertCurrentThreadOwns();
+
+  if (mWritingDone == false && mOriginInfo) {
+    mWritingDone = true;
+    StorageActivityService::SendActivity(mOriginInfo->mOrigin);
+  }
 
   if (mQuotaCheckDisabled) {
     return true;
@@ -8332,7 +8340,7 @@ OriginParser::HandleToken(const nsDependentCSubstring& aToken)
         return;
       }
 
-      if (NS_IsAsciiDigit(aToken.First())) {
+      if (IsAsciiDigit(aToken.First())) {
         // nsDependentCSubstring doesn't provice ToInteger()
         nsCString token(aToken);
 
@@ -8493,7 +8501,7 @@ OriginParser::HandleToken(const nsDependentCSubstring& aToken)
         return;
       }
 
-      if (aToken.Length() == 1 && NS_IsAsciiAlpha(aToken.First())) {
+      if (aToken.Length() == 1 && IsAsciiAlpha(aToken.First())) {
         mMaybeDriveLetter = true;
 
         mPathnameComponents.AppendElement(aToken);

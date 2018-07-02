@@ -103,8 +103,8 @@ TEST_P(TlsPaddingTest, LastByteOfPadWrong) {
 
 class RecordReplacer : public TlsRecordFilter {
  public:
-  RecordReplacer(const std::shared_ptr<TlsAgent>& agent, size_t size)
-      : TlsRecordFilter(agent), enabled_(false), size_(size) {}
+  RecordReplacer(const std::shared_ptr<TlsAgent>& a, size_t size)
+      : TlsRecordFilter(a), enabled_(false), size_(size) {}
 
   PacketFilter::Action FilterRecord(const TlsRecordHeader& header,
                                     const DataBuffer& data,
@@ -166,6 +166,29 @@ TEST_F(TlsConnectStreamTls13, TooLargeRecord) {
   rv = PR_Read(client_->ssl_fd(), buf, sizeof(buf));
   EXPECT_GT(0, rv);
   EXPECT_EQ(SSL_ERROR_RECORD_OVERFLOW_ALERT, PORT_GetError());
+}
+
+class ShortHeaderChecker : public PacketFilter {
+ public:
+  PacketFilter::Action Filter(const DataBuffer& input, DataBuffer* output) {
+    // The first octet should be 0b001xxxxx.
+    EXPECT_EQ(1, input.data()[0] >> 5);
+    return KEEP;
+  }
+};
+
+TEST_F(TlsConnectDatagram13, ShortHeadersClient) {
+  Connect();
+  client_->SetOption(SSL_ENABLE_DTLS_SHORT_HEADER, PR_TRUE);
+  client_->SetFilter(std::make_shared<ShortHeaderChecker>());
+  SendReceive();
+}
+
+TEST_F(TlsConnectDatagram13, ShortHeadersServer) {
+  Connect();
+  server_->SetOption(SSL_ENABLE_DTLS_SHORT_HEADER, PR_TRUE);
+  server_->SetFilter(std::make_shared<ShortHeaderChecker>());
+  SendReceive();
 }
 
 const static size_t kContentSizesArr[] = {

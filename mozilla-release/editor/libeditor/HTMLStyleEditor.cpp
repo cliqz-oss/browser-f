@@ -27,7 +27,6 @@
 #include "nsAtom.h"
 #include "nsIContent.h"
 #include "nsIContentIterator.h"
-#include "nsIDOMElement.h"
 #include "nsNameSpaceManager.h"
 #include "nsINode.h"
 #include "nsISupportsImpl.h"
@@ -292,7 +291,7 @@ HTMLEditor::SetInlinePropertyOnTextNode(Text& aText,
   if (!atEnd.IsEndOfContainer()) {
     // We need to split off back of text node
     ErrorResult error;
-    textNodeForTheRange = SplitNode(atEnd, error);
+    textNodeForTheRange = SplitNodeWithTransaction(atEnd, error);
     if (NS_WARN_IF(error.Failed())) {
       return error.StealNSResult();
     }
@@ -303,7 +302,7 @@ HTMLEditor::SetInlinePropertyOnTextNode(Text& aText,
   if (!atStart.IsStartOfContainer()) {
     // We need to split off front of text node
     ErrorResult error;
-    nsCOMPtr<nsIContent> newLeftNode = SplitNode(atStart, error);
+    nsCOMPtr<nsIContent> newLeftNode = SplitNodeWithTransaction(atStart, error);
     if (NS_WARN_IF(error.Failed())) {
       return error.StealNSResult();
     }
@@ -315,12 +314,13 @@ HTMLEditor::SetInlinePropertyOnTextNode(Text& aText,
     nsIContent* sibling = GetPriorHTMLSibling(textNodeForTheRange);
     if (IsSimpleModifiableNode(sibling, &aProperty, aAttribute, &aValue)) {
       // Previous sib is already right kind of inline node; slide this over
-      return MoveNode(textNodeForTheRange, sibling, -1);
+      return MoveNodeToEndWithTransaction(*textNodeForTheRange, *sibling);
     }
     sibling = GetNextHTMLSibling(textNodeForTheRange);
     if (IsSimpleModifiableNode(sibling, &aProperty, aAttribute, &aValue)) {
       // Following sib is already right kind of inline node; slide this over
-      return MoveNode(textNodeForTheRange, sibling, 0);
+      return MoveNodeWithTransaction(*textNodeForTheRange,
+                                     EditorRawDOMPoint(sibling, 0));
     }
   }
 
@@ -364,17 +364,24 @@ HTMLEditor::SetInlinePropertyOnNodeImpl(nsIContent& aNode,
   nsCOMPtr<nsIContent> previousSibling = GetPriorHTMLSibling(&aNode);
   nsCOMPtr<nsIContent> nextSibling = GetNextHTMLSibling(&aNode);
   if (IsSimpleModifiableNode(previousSibling, &aProperty, aAttribute, &aValue)) {
-    nsresult rv = MoveNode(&aNode, previousSibling, -1);
-    NS_ENSURE_SUCCESS(rv, rv);
+    nsresult rv = MoveNodeToEndWithTransaction(aNode, *previousSibling);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
     if (IsSimpleModifiableNode(nextSibling, &aProperty, aAttribute, &aValue)) {
-      rv = JoinNodes(*previousSibling, *nextSibling);
-      NS_ENSURE_SUCCESS(rv, rv);
+      rv = JoinNodesWithTransaction(*previousSibling, *nextSibling);
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        return rv;
+      }
     }
     return NS_OK;
   }
   if (IsSimpleModifiableNode(nextSibling, &aProperty, aAttribute, &aValue)) {
-    nsresult rv = MoveNode(&aNode, nextSibling, 0);
-    NS_ENSURE_SUCCESS(rv, rv);
+    nsresult rv =
+      MoveNodeWithTransaction(aNode, EditorRawDOMPoint(nextSibling, 0));
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
     return NS_OK;
   }
 
@@ -396,15 +403,17 @@ HTMLEditor::SetInlinePropertyOnNodeImpl(nsIContent& aNode,
                 aAttribute == nsGkAtoms::bgcolor;
 
   if (useCSS) {
-    nsCOMPtr<dom::Element> tmp;
+    RefPtr<dom::Element> tmp;
     // We only add style="" to <span>s with no attributes (bug 746515).  If we
     // don't have one, we need to make one.
     if (aNode.IsHTMLElement(nsGkAtoms::span) &&
         !aNode.AsElement()->GetAttrCount()) {
       tmp = aNode.AsElement();
     } else {
-      tmp = InsertContainerAbove(&aNode, nsGkAtoms::span);
-      NS_ENSURE_STATE(tmp);
+      tmp = InsertContainerWithTransaction(aNode, *nsGkAtoms::span);
+      if (NS_WARN_IF(!tmp)) {
+        return NS_ERROR_FAILURE;
+      }
     }
 
     // Add the CSS styles corresponding to the HTML style request
@@ -416,15 +425,22 @@ HTMLEditor::SetInlinePropertyOnNodeImpl(nsIContent& aNode,
 
   // is it already the right kind of node, but with wrong attribute?
   if (aNode.IsHTMLElement(&aProperty)) {
+    if (NS_WARN_IF(!aAttribute)) {
+      return NS_ERROR_FAILURE;
+    }
     // Just set the attribute on it.
-    return SetAttribute(aNode.AsElement(), aAttribute, aValue);
+    return SetAttributeWithTransaction(*aNode.AsElement(), *aAttribute, aValue);
   }
 
   // ok, chuck it in its very own container
-  RefPtr<Element> tmp = InsertContainerAbove(&aNode, &aProperty, aAttribute,
-                                             &aValue);
-  NS_ENSURE_STATE(tmp);
-
+  RefPtr<Element> tmp =
+      InsertContainerWithTransaction(aNode, aProperty,
+                                     aAttribute ? *aAttribute :
+                                                  *nsGkAtoms::_empty,
+                                     aValue);
+  if (NS_WARN_IF(!tmp)) {
+    return NS_ERROR_FAILURE;
+  }
   return NS_OK;
 }
 
@@ -557,8 +573,8 @@ HTMLEditor::SplitStyleAbovePoint(nsCOMPtr<nsINode>* aNode,
         isSet) {
       // Found a style node we need to split
       SplitNodeResult splitNodeResult =
-        SplitNodeDeep(*node, EditorRawDOMPoint(*aNode, *aOffset),
-                      SplitAtEdges::eAllowToCreateEmptyContainer);
+        SplitNodeDeepWithTransaction(*node, EditorRawDOMPoint(*aNode, *aOffset),
+                                     SplitAtEdges::eAllowToCreateEmptyContainer);
       NS_WARNING_ASSERTION(splitNodeResult.Succeeded(),
         "Failed to split the node");
 
@@ -595,8 +611,10 @@ HTMLEditor::ClearStyle(nsCOMPtr<nsINode>* aNode,
     IsEmptyNode(leftNode, &bIsEmptyNode, false, true);
     if (bIsEmptyNode) {
       // delete leftNode if it became empty
-      rv = DeleteNode(leftNode);
-      NS_ENSURE_SUCCESS(rv, rv);
+      rv = DeleteNodeWithTransaction(*leftNode);
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        return rv;
+      }
     }
   }
   if (rightNode) {
@@ -626,8 +644,10 @@ HTMLEditor::ClearStyle(nsCOMPtr<nsINode>* aNode,
       IsEmptyNode(rightNode, &bIsEmptyNode, false, true);
       if (bIsEmptyNode) {
         // delete rightNode if it became empty
-        rv = DeleteNode(rightNode);
-        NS_ENSURE_SUCCESS(rv, rv);
+        rv = DeleteNodeWithTransaction(*rightNode);
+        if (NS_WARN_IF(NS_FAILED(rv))) {
+          return rv;
+        }
       }
     }
 
@@ -644,8 +664,11 @@ HTMLEditor::ClearStyle(nsCOMPtr<nsINode>* aNode,
     // leftNode.  This is so we you don't revert back to the previous style
     // if you happen to click at the end of a line.
     if (savedBR) {
-      rv = MoveNode(savedBR, newSelParent, 0);
-      NS_ENSURE_SUCCESS(rv, rv);
+      rv = MoveNodeWithTransaction(*savedBR,
+                                   EditorRawDOMPoint(newSelParent, 0));
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        return rv;
+      }
     }
     // remove the style on this new hierarchy
     int32_t newSelOffset = 0;
@@ -681,7 +704,7 @@ HTMLEditor::RemoveStyleInside(nsIContent& aNode,
                               nsAtom* aAttribute,
                               const bool aChildrenOnly /* = false */)
 {
-  if (aNode.GetAsText()) {
+  if (!aNode.IsElement()) {
     return NS_OK;
   }
 
@@ -709,10 +732,8 @@ HTMLEditor::RemoveStyleInside(nsIContent& aNode,
     // remove any matching inlinestyles entirely
     if (!aAttribute) {
       bool hasStyleAttr =
-        aNode.IsElement() &&
         aNode.AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::style);
       bool hasClassAttr =
-        aNode.IsElement() &&
         aNode.AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::_class);
       if (aProperty && (hasStyleAttr || hasClassAttr)) {
         // aNode carries inline styles or a class attribute so we can't
@@ -720,16 +741,23 @@ HTMLEditor::RemoveStyleInside(nsIContent& aNode,
         // a span that will carry those styles or class, then we can delete
         // the node.
         RefPtr<Element> spanNode =
-          InsertContainerAbove(&aNode, nsGkAtoms::span);
-        NS_ENSURE_STATE(spanNode);
+          InsertContainerWithTransaction(aNode, *nsGkAtoms::span);
+        if (NS_WARN_IF(!spanNode)) {
+          return NS_ERROR_FAILURE;
+        }
         nsresult rv =
-          CloneAttribute(nsGkAtoms::style, spanNode, aNode.AsElement());
-        NS_ENSURE_SUCCESS(rv, rv);
-        rv =
-          CloneAttribute(nsGkAtoms::_class, spanNode, aNode.AsElement());
-        NS_ENSURE_SUCCESS(rv, rv);
+          CloneAttributeWithTransaction(*nsGkAtoms::style, *spanNode,
+                                        *aNode.AsElement());
+        if (NS_WARN_IF(NS_FAILED(rv))) {
+          return rv;
+        }
+        rv = CloneAttributeWithTransaction(*nsGkAtoms::_class, *spanNode,
+                                           *aNode.AsElement());
+        if (NS_WARN_IF(NS_FAILED(rv))) {
+          return rv;
+        }
       }
-      nsresult rv = RemoveContainer(&aNode);
+      nsresult rv = RemoveContainerWithTransaction(*aNode.AsElement());
       NS_ENSURE_SUCCESS(rv, rv);
     } else if (aNode.IsElement()) {
       // otherwise we just want to eliminate the attribute
@@ -737,12 +765,13 @@ HTMLEditor::RemoveStyleInside(nsIContent& aNode,
         // if this matching attribute is the ONLY one on the node,
         // then remove the whole node.  Otherwise just nix the attribute.
         if (IsOnlyAttribute(aNode.AsElement(), aAttribute)) {
-          nsresult rv = RemoveContainer(&aNode);
+          nsresult rv = RemoveContainerWithTransaction(*aNode.AsElement());
           if (NS_WARN_IF(NS_FAILED(rv))) {
             return rv;
           }
         } else {
-          nsresult rv = RemoveAttribute(aNode.AsElement(), aAttribute);
+          nsresult rv =
+            RemoveAttributeWithTransaction(*aNode.AsElement(), *aAttribute);
           if (NS_WARN_IF(NS_FAILED(rv))) {
             return rv;
           }
@@ -786,7 +815,7 @@ HTMLEditor::RemoveStyleInside(nsIContent& aNode,
        aNode.IsHTMLElement(nsGkAtoms::small)) &&
       aAttribute == nsGkAtoms::size) {
     // if we are setting font size, remove any nested bigs and smalls
-    return RemoveContainer(&aNode);
+    return RemoveContainerWithTransaction(*aNode.AsElement());
   }
   return NS_OK;
 }
@@ -1464,7 +1493,7 @@ HTMLEditor::RelativeFontChangeOnTextNode(FontSize aDir,
   if (!atEnd.IsEndOfContainer()) {
     // We need to split off back of text node
     ErrorResult error;
-    textNodeForTheRange = SplitNode(atEnd, error);
+    textNodeForTheRange = SplitNodeWithTransaction(atEnd, error);
     if (NS_WARN_IF(error.Failed())) {
       return error.StealNSResult();
     }
@@ -1475,7 +1504,7 @@ HTMLEditor::RelativeFontChangeOnTextNode(FontSize aDir,
   if (!atStart.IsStartOfContainer()) {
     // We need to split off front of text node
     ErrorResult error;
-    nsCOMPtr<nsIContent> newLeftNode = SplitNode(atStart, error);
+    nsCOMPtr<nsIContent> newLeftNode = SplitNodeWithTransaction(atStart, error);
     if (NS_WARN_IF(error.Failed())) {
       return error.StealNSResult();
     }
@@ -1488,23 +1517,29 @@ HTMLEditor::RelativeFontChangeOnTextNode(FontSize aDir,
   nsCOMPtr<nsIContent> sibling = GetPriorHTMLSibling(textNodeForTheRange);
   if (sibling && sibling->IsHTMLElement(nodeType)) {
     // Previous sib is already right kind of inline node; slide this over
-    nsresult rv = MoveNode(textNodeForTheRange, sibling, -1);
-    NS_ENSURE_SUCCESS(rv, rv);
+    nsresult rv = MoveNodeToEndWithTransaction(*textNodeForTheRange, *sibling);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
     return NS_OK;
   }
   sibling = GetNextHTMLSibling(textNodeForTheRange);
   if (sibling && sibling->IsHTMLElement(nodeType)) {
     // Following sib is already right kind of inline node; slide this over
-    nsresult rv = MoveNode(textNodeForTheRange, sibling, 0);
-    NS_ENSURE_SUCCESS(rv, rv);
+    nsresult rv = MoveNodeWithTransaction(*textNodeForTheRange,
+                                          EditorRawDOMPoint(sibling, 0));
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
     return NS_OK;
   }
 
   // Else reparent the node inside font node with appropriate relative size
-  nsCOMPtr<Element> newElement =
-    InsertContainerAbove(textNodeForTheRange, nodeType);
-  NS_ENSURE_STATE(newElement);
-
+  RefPtr<Element> newElement =
+    InsertContainerWithTransaction(*textNodeForTheRange, *nodeType);
+  if (NS_WARN_IF(!newElement)) {
+    return NS_ERROR_FAILURE;
+  }
   return NS_OK;
 }
 
@@ -1584,7 +1619,7 @@ HTMLEditor::RelativeFontChangeOnNode(int32_t aSizeChange,
     nsresult rv = RelativeFontChangeHelper(aSizeChange, aNode);
     NS_ENSURE_SUCCESS(rv, rv);
     // in that case, just remove this node and pull up the children
-    return RemoveContainer(aNode);
+    return RemoveContainerWithTransaction(*aNode->AsElement());
   }
 
   // can it be put inside a "big" or "small"?
@@ -1599,19 +1634,20 @@ HTMLEditor::RelativeFontChangeOnNode(int32_t aSizeChange,
     nsIContent* sibling = GetPriorHTMLSibling(aNode);
     if (sibling && sibling->IsHTMLElement(atom)) {
       // previous sib is already right kind of inline node; slide this over into it
-      return MoveNode(aNode, sibling, -1);
+      return MoveNodeToEndWithTransaction(*aNode, *sibling);
     }
 
     sibling = GetNextHTMLSibling(aNode);
     if (sibling && sibling->IsHTMLElement(atom)) {
       // following sib is already right kind of inline node; slide this over into it
-      return MoveNode(aNode, sibling, 0);
+      return MoveNodeWithTransaction(*aNode, EditorRawDOMPoint(sibling, 0));
     }
 
     // else insert it above aNode
-    nsCOMPtr<Element> newElement = InsertContainerAbove(aNode, atom);
-    NS_ENSURE_STATE(newElement);
-
+    RefPtr<Element> newElement = InsertContainerWithTransaction(*aNode, *atom);
+    if (NS_WARN_IF(!newElement)) {
+      return NS_ERROR_FAILURE;
+    }
     return NS_OK;
   }
 
@@ -1747,7 +1783,7 @@ HTMLEditor::RemoveElementIfNoStyleOrIdOrClass(Element& aElement)
     return NS_OK;
   }
 
-  return RemoveContainer(&aElement);
+  return RemoveContainerWithTransaction(aElement);
 }
 
 } // namespace mozilla

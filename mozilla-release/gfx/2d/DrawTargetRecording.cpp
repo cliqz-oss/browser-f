@@ -38,26 +38,6 @@ void RecordingSourceSurfaceUserDataFunc(void *aUserData)
 }
 
 static void
-StoreSourceSurfaceRecording(DrawEventRecorderPrivate *aRecorder, SourceSurface *aSurface,
-                   DataSourceSurface *aDataSurf, const char *reason)
-{
-  if (!aDataSurf) {
-    gfxWarning() << "Recording failed to record SourceSurface for " << reason;
-    // Insert a bogus source surface.
-    int32_t stride = aSurface->GetSize().width * BytesPerPixel(aSurface->GetFormat());
-    UniquePtr<uint8_t[]> sourceData(new uint8_t[stride * aSurface->GetSize().height]());
-    aRecorder->RecordEvent(
-      RecordedSourceSurfaceCreation(aSurface, sourceData.get(), stride,
-                                    aSurface->GetSize(), aSurface->GetFormat()));
-  } else {
-    DataSourceSurface::ScopedMap map(aDataSurf, DataSourceSurface::READ);
-    aRecorder->RecordEvent(
-      RecordedSourceSurfaceCreation(aSurface, map.GetData(), map.GetStride(),
-                                    aDataSurf->GetSize(), aDataSurf->GetFormat()));
-  }
-}
-
-static void
 EnsureSurfaceStoredRecording(DrawEventRecorderPrivate *aRecorder, SourceSurface *aSurface,
                     const char *reason)
 {
@@ -65,8 +45,7 @@ EnsureSurfaceStoredRecording(DrawEventRecorderPrivate *aRecorder, SourceSurface 
     return;
   }
 
-  RefPtr<DataSourceSurface> dataSurf = aSurface->GetDataSurface();
-  StoreSourceSurfaceRecording(aRecorder, aSurface, dataSurf, reason);
+  aRecorder->StoreSourceSurfaceRecording(aSurface, reason);
   aRecorder->AddStoredObject(aSurface);
   aRecorder->AddSourceSurface(aSurface);
 
@@ -646,6 +625,24 @@ DrawTargetRecording::EnsurePathStored(const Path *aPath)
   pathRecording->mStoredRecorders.push_back(mRecorder);
 
   return pathRecording.forget();
+}
+
+// This should only be called on the 'root' DrawTargetRecording.
+// Calling it on a child DrawTargetRecordings will cause confusion.
+void
+DrawTargetRecording::FlushItem(const IntRect &aBounds)
+{
+  mRecorder->FlushItem(aBounds);
+  // Reinitialize the recorder (FlushItem will write a new recording header)
+  // Tell the new recording about our draw target
+  // This code should match what happens in the DrawTargetRecording constructor.
+  mRecorder->RecordEvent(RecordedDrawTargetCreation(this,
+                                                    mFinalDT->GetBackendType(),
+                                                    mSize,
+                                                    mFinalDT->GetFormat(),
+                                                    false, nullptr));
+  // Add the current transform to the new recording
+  mRecorder->RecordEvent(RecordedSetTransform(this, DrawTarget::GetTransform()));
 }
 
 void

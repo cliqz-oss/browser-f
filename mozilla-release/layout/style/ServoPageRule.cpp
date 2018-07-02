@@ -87,16 +87,6 @@ ServoPageRuleDeclaration::DocToUpdate()
   return nullptr;
 }
 
-void
-ServoPageRuleDeclaration::GetCSSParsingEnvironment(
-  CSSParsingEnvironment& aCSSParseEnv,
-  nsIPrincipal* aSubjectPrincipal)
-{
-  MOZ_ASSERT_UNREACHABLE("GetCSSParsingEnvironment "
-                         "shouldn't be calling for a Servo rule");
-  GetCSSParsingEnvironmentForRule(Rule(), aCSSParseEnv);
-}
-
 nsDOMCSSDeclaration::ServoCSSParsingEnvironment
 ServoPageRuleDeclaration::GetServoCSSParsingEnvironment(
   nsIPrincipal* aSubjectPrincipal) const
@@ -158,16 +148,6 @@ ServoPageRule::IsCCLeaf() const
   }
 
   return !mDecls.PreservingWrapper();
-}
-
-already_AddRefed<css::Rule>
-ServoPageRule::Clone() const
-{
-  // Rule::Clone is only used when CSSStyleSheetInner is cloned in
-  // preparation of being mutated. However, ServoStyleSheet never clones
-  // anything, so this method should never be called.
-  MOZ_ASSERT_UNREACHABLE("Shouldn't be cloning ServoPageRule");
-  return nullptr;
 }
 
 size_t

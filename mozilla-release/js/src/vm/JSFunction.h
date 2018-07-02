@@ -61,7 +61,8 @@ class JSFunction : public js::NativeObject
         BOUND_FUN        = 0x0008,  /* function was created with Function.prototype.bind. */
         WASM_OPTIMIZED   = 0x0010,  /* asm.js/wasm function that has a jit entry */
         HAS_GUESSED_ATOM = 0x0020,  /* function had no explicit name, but a
-                                       name was guessed for it anyway */
+                                       name was guessed for it anyway. See
+                                       atom_ for more info about this flag. */
         HAS_BOUND_FUNCTION_NAME_PREFIX = 0x0020, /* bound functions reuse the HAS_GUESSED_ATOM
                                                     flag to track if atom_ already contains the
                                                     "bound " function name prefix */
@@ -70,12 +71,15 @@ class JSFunction : public js::NativeObject
                                        function-statement) */
         SELF_HOSTED      = 0x0080,  /* function is self-hosted builtin and must not be
                                        decompilable nor constructible. */
-        HAS_COMPILE_TIME_NAME = 0x0100, /* function had no explicit name, but a
-                                           name was set by SetFunctionName
-                                           at compile time */
+        HAS_INFERRED_NAME = 0x0100, /* function had no explicit name, but a name was
+                                       set by SetFunctionName at compile time or
+                                       SetFunctionNameIfNoOwnName at runtime. See
+                                       atom_ for more info about this flag. */
         INTERPRETED_LAZY = 0x0200,  /* function is interpreted but doesn't have a script yet */
         RESOLVED_LENGTH  = 0x0400,  /* f.length has been resolved (see fun_resolve). */
         RESOLVED_NAME    = 0x0800,  /* f.name has been resolved (see fun_resolve). */
+        NEW_SCRIPT_CLEARED  = 0x1000, /* For a function used as an interpreted constructor, whether
+                                         a 'new' type had constructor information cleared. */
 
         FUNCTION_KIND_SHIFT = 13,
         FUNCTION_KIND_MASK  = 0x7 << FUNCTION_KIND_SHIFT,
@@ -93,6 +97,7 @@ class JSFunction : public js::NativeObject
         NATIVE_CLASS_CTOR = NATIVE_FUN | CONSTRUCTOR | CLASSCONSTRUCTOR_KIND,
         ASMJS_CTOR = ASMJS_KIND | NATIVE_CTOR,
         ASMJS_LAMBDA_CTOR = ASMJS_KIND | NATIVE_CTOR | LAMBDA,
+        ASMJS_NATIVE = ASMJS_KIND | NATIVE_FUN,
         WASM_FUN = NATIVE_FUN | WASM_OPTIMIZED,
         INTERPRETED_METHOD = INTERPRETED | METHOD_KIND,
         INTERPRETED_METHOD_GENERATOR_OR_ASYNC = INTERPRETED | METHOD_KIND,
@@ -106,8 +111,7 @@ class JSFunction : public js::NativeObject
         INTERPRETED_GENERATOR_OR_ASYNC = INTERPRETED,
         NO_XDR_FLAGS = RESOLVED_LENGTH | RESOLVED_NAME,
 
-        STABLE_ACROSS_CLONES = CONSTRUCTOR | LAMBDA | SELF_HOSTED | HAS_COMPILE_TIME_NAME |
-                               FUNCTION_KIND_MASK
+        STABLE_ACROSS_CLONES = CONSTRUCTOR | LAMBDA | SELF_HOSTED | FUNCTION_KIND_MASK
     };
 
     static_assert((INTERPRETED | INTERPRETED_LAZY) == js::JS_FUNCTION_INTERPRETED_BITS,
@@ -142,7 +146,42 @@ class JSFunction : public js::NativeObject
             } s;
         } scripted;
     } u;
-    js::GCPtrAtom atom_; /* name for diagnostics and decompiling */
+
+    // The |atom_| field can have different meanings depending on the function
+    // type and flags. It is used for diagnostics, decompiling, and
+    //
+    // 1. If the function is not a bound function:
+    //   a. If HAS_GUESSED_ATOM is not set, to store the initial value of the
+    //      "name" property of functions. But also see RESOLVED_NAME.
+    //   b. If HAS_GUESSED_ATOM is set, |atom_| is only used for diagnostics,
+    //      but must not be used for the "name" property.
+    //   c. If HAS_INFERRED_NAME is set, the function wasn't given an explicit
+    //      name in the source text, e.g. |function fn(){}|, but instead it
+    //      was inferred based on how the function was defined in the source
+    //      text. The exact name inference rules are defined in the ECMAScript
+    //      specification.
+    //      Name inference can happen at compile-time, for example in
+    //      |var fn = function(){}|, or it can happen at runtime, for example
+    //      in |var o = {[Symbol.iterator]: function(){}}|. When it happens at
+    //      compile-time, the HAS_INFERRED_NAME is set directly in the
+    //      bytecode emitter, when it happens at runtime, the flag is set when
+    //      evaluating the JSOP_SETFUNNAME bytecode.
+    //   d. HAS_GUESSED_ATOM and HAS_INFERRED_NAME cannot both be set.
+    //   e. |atom_| can be null if neither an explicit, nor inferred, nor a
+    //      guessed name was set.
+    //   f. HAS_INFERRED_NAME can be set for cloned singleton function, even
+    //      though the clone shouldn't receive an inferred name. See the
+    //      comments in NewFunctionClone() and SetFunctionNameIfNoOwnName()
+    //      for details.
+    //
+    // 2. If the function is a bound function:
+    //   a. To store the initial value of the "name" property.
+    //   b. If HAS_BOUND_FUNCTION_NAME_PREFIX is not set, |atom_| doesn't
+    //      contain the "bound " prefix which is prepended to the "name"
+    //      property of bound functions per ECMAScript.
+    //   c. Bound functions can never have an inferred or guessed name.
+    //   d. |atom_| is never null for bound functions.
+    js::GCPtrAtom atom_;
 
   public:
     /* Call objects must be created for each invocation of this function. */
@@ -205,7 +244,7 @@ class JSFunction : public js::NativeObject
 
     /* Possible attributes of an interpreted function: */
     bool isBoundFunction()          const { return flags() & BOUND_FUN; }
-    bool hasCompileTimeName()       const { return flags() & HAS_COMPILE_TIME_NAME; }
+    bool hasInferredName()          const { return flags() & HAS_INFERRED_NAME; }
     bool hasGuessedAtom()           const {
         static_assert(HAS_GUESSED_ATOM == HAS_BOUND_FUNCTION_NAME_PREFIX,
                       "HAS_GUESSED_ATOM is unused for bound functions");
@@ -259,7 +298,7 @@ class JSFunction : public js::NativeObject
     }
 
     bool isNamedLambda() const {
-        return isLambda() && displayAtom() && !hasCompileTimeName() && !hasGuessedAtom();
+        return isLambda() && displayAtom() && !hasInferredName() && !hasGuessedAtom();
     }
 
     bool hasLexicalThis() const {
@@ -332,6 +371,14 @@ class JSFunction : public js::NativeObject
         flags_ |= RESOLVED_NAME;
     }
 
+    // Mark a function as having its 'new' script information cleared.
+    bool wasNewScriptCleared() const {
+        return flags_ & NEW_SCRIPT_CLEARED;
+    }
+    void setNewScriptCleared() {
+        flags_ |= NEW_SCRIPT_CLEARED;
+    }
+
     void setAsyncKind(js::FunctionAsyncKind asyncKind) {
         if (isInterpretedLazy())
             lazyScript()->setAsyncKind(asyncKind);
@@ -342,13 +389,17 @@ class JSFunction : public js::NativeObject
     static bool getUnresolvedLength(JSContext* cx, js::HandleFunction fun,
                                     js::MutableHandleValue v);
 
+    JSAtom* infallibleGetUnresolvedName(JSContext* cx);
+
     static bool getUnresolvedName(JSContext* cx, js::HandleFunction fun,
-                                  js::MutableHandleAtom v);
+                                  js::MutableHandleString v);
+
+    static JSLinearString* getBoundFunctionName(JSContext* cx, js::HandleFunction fun);
 
     JSAtom* explicitName() const {
-        return (hasCompileTimeName() || hasGuessedAtom()) ? nullptr : atom_.get();
+        return (hasInferredName() || hasGuessedAtom()) ? nullptr : atom_.get();
     }
-    JSAtom* explicitOrCompileTimeName() const {
+    JSAtom* explicitOrInferredName() const {
         return hasGuessedAtom() ? nullptr : atom_.get();
     }
 
@@ -366,16 +417,21 @@ class JSFunction : public js::NativeObject
         return atom_;
     }
 
-    void setCompileTimeName(JSAtom* atom) {
+    void setInferredName(JSAtom* atom) {
         MOZ_ASSERT(!atom_);
         MOZ_ASSERT(atom);
         MOZ_ASSERT(!hasGuessedAtom());
-        MOZ_ASSERT(!isClassConstructor());
         setAtom(atom);
-        flags_ |= HAS_COMPILE_TIME_NAME;
+        flags_ |= HAS_INFERRED_NAME;
     }
-    JSAtom* compileTimeName() const {
-        MOZ_ASSERT(hasCompileTimeName());
+    void clearInferredName() {
+        MOZ_ASSERT(hasInferredName());
+        MOZ_ASSERT(atom_);
+        setAtom(nullptr);
+        flags_ &= ~HAS_INFERRED_NAME;
+    }
+    JSAtom* inferredName() const {
+        MOZ_ASSERT(hasInferredName());
         MOZ_ASSERT(atom_);
         return atom_;
     }
@@ -383,7 +439,7 @@ class JSFunction : public js::NativeObject
     void setGuessedAtom(JSAtom* atom) {
         MOZ_ASSERT(!atom_);
         MOZ_ASSERT(atom);
-        MOZ_ASSERT(!hasCompileTimeName());
+        MOZ_ASSERT(!hasInferredName());
         MOZ_ASSERT(!hasGuessedAtom());
         MOZ_ASSERT(!isBoundFunction());
         setAtom(atom);
@@ -796,10 +852,6 @@ extern JSAtom*
 IdToFunctionName(JSContext* cx, HandleId id,
                  FunctionPrefixKind prefixKind = FunctionPrefixKind::None);
 
-extern JSAtom*
-NameToFunctionName(JSContext* cx, HandleAtom name,
-                   FunctionPrefixKind prefixKind = FunctionPrefixKind::None);
-
 extern bool
 SetFunctionNameIfNoOwnName(JSContext* cx, HandleFunction fun, HandleValue name,
                            FunctionPrefixKind prefixKind);
@@ -950,7 +1002,7 @@ namespace js {
 JSString* FunctionToString(JSContext* cx, HandleFunction fun, bool isToSource);
 
 template<XDRMode mode>
-bool
+XDRResult
 XDRInterpretedFunction(XDRState<mode>* xdr, HandleScope enclosingScope,
                        HandleScriptSource sourceObject, MutableHandleFunction objp);
 

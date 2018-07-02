@@ -32,7 +32,7 @@
 #include "nsISelectControlFrame.h"
 #include "nsLayoutUtils.h"
 #include "nsMappedAttributes.h"
-#include "nsPresState.h"
+#include "mozilla/PresState.h"
 #include "nsServiceManagerUtils.h"
 #include "nsStyleConsts.h"
 #include "nsTextNode.h"
@@ -41,8 +41,6 @@ NS_IMPL_NS_NEW_HTML_ELEMENT_CHECK_PARSER(Select)
 
 namespace mozilla {
 namespace dom {
-
-NS_IMPL_ISUPPORTS(SelectState, SelectState)
 
 //----------------------------------------------------------------------
 //
@@ -54,7 +52,7 @@ SafeOptionListMutation::SafeOptionListMutation(nsIContent* aSelect,
                                                nsIContent* aKid,
                                                uint32_t aIndex,
                                                bool aNotify)
-  : mSelect(HTMLSelectElement::FromContentOrNull(aSelect))
+  : mSelect(HTMLSelectElement::FromNodeOrNull(aSelect))
   , mTopLevelMutation(false)
   , mNeedsRebuild(false)
   , mNotify(aNotify)
@@ -258,7 +256,7 @@ HTMLSelectElement::InsertOptionsIntoList(nsIContent* aOptions,
   MOZ_ASSERT(aDepth == 0 || aDepth == 1);
   int32_t insertIndex = aListIndex;
 
-  HTMLOptionElement* optElement = HTMLOptionElement::FromContent(aOptions);
+  HTMLOptionElement* optElement = HTMLOptionElement::FromNode(aOptions);
   if (optElement) {
     mOptions->InsertOptionAt(optElement, insertIndex);
     insertIndex++;
@@ -274,7 +272,7 @@ HTMLSelectElement::InsertOptionsIntoList(nsIContent* aOptions,
       for (nsIContent* child = aOptions->GetFirstChild();
            child;
            child = child->GetNextSibling()) {
-        optElement = HTMLOptionElement::FromContent(child);
+        optElement = HTMLOptionElement::FromNode(child);
         if (optElement) {
           mOptions->InsertOptionAt(optElement, insertIndex);
           insertIndex++;
@@ -339,7 +337,7 @@ HTMLSelectElement::RemoveOptionsFromList(nsIContent* aOptions,
   MOZ_ASSERT(aDepth == 0 || aDepth == 1);
   int32_t numRemoved = 0;
 
-  HTMLOptionElement* optElement = HTMLOptionElement::FromContent(aOptions);
+  HTMLOptionElement* optElement = HTMLOptionElement::FromNode(aOptions);
   if (optElement) {
     if (mOptions->ItemAsOption(aListIndex) != optElement) {
       NS_ERROR("wrong option at index");
@@ -358,7 +356,7 @@ HTMLSelectElement::RemoveOptionsFromList(nsIContent* aOptions,
       for (nsIContent* child = aOptions->GetFirstChild();
           child;
           child = child->GetNextSibling()) {
-        optElement = HTMLOptionElement::FromContent(child);
+        optElement = HTMLOptionElement::FromNode(child);
         if (optElement) {
           if (mOptions->ItemAsOption(aListIndex) != optElement) {
             NS_ERROR("wrong option at index");
@@ -534,7 +532,7 @@ int32_t
 HTMLSelectElement::GetFirstOptionIndex(nsIContent* aOptions)
 {
   int32_t listIndex = -1;
-  HTMLOptionElement* optElement = HTMLOptionElement::FromContent(aOptions);
+  HTMLOptionElement* optElement = HTMLOptionElement::FromNode(aOptions);
   if (optElement) {
     mOptions->GetOptionIndex(optElement->AsElement(), 0, true, &listIndex);
     return listIndex;
@@ -698,7 +696,7 @@ HTMLSelectElement::MatchSelectedOptions(Element* aElement,
                                         nsAtom* /* unused */,
                                         void* /* unused*/)
 {
-  HTMLOptionElement* option = HTMLOptionElement::FromContent(aElement);
+  HTMLOptionElement* option = HTMLOptionElement::FromNode(aElement);
   return option && option->Selected();
 }
 
@@ -1014,7 +1012,7 @@ HTMLSelectElement::IsOptionDisabled(HTMLOptionElement* aOption) const
       }
 
       RefPtr<HTMLOptGroupElement> optGroupElement =
-        HTMLOptGroupElement::FromContent(node);
+        HTMLOptGroupElement::FromNode(node);
 
       if (!optGroupElement) {
         // If you put something else between you and the optgroup, you're a
@@ -1245,7 +1243,7 @@ HTMLSelectElement::DoneAddingChildren(bool aHaveNotified)
   // If we foolishly tried to restore before we were done adding
   // content, restore the rest of the options proper-like
   if (mRestoreState) {
-    RestoreStateTo(mRestoreState);
+    RestoreStateTo(*mRestoreState);
     mRestoreState = nullptr;
   }
 
@@ -1344,15 +1342,15 @@ HTMLSelectElement::IsDisabledForEvents(EventMessage aMessage)
   return IsElementDisabledForEvents(aMessage, formFrame);
 }
 
-nsresult
+void
 HTMLSelectElement::GetEventTargetParent(EventChainPreVisitor& aVisitor)
 {
   aVisitor.mCanHandle = false;
   if (IsDisabledForEvents(aVisitor.mEvent->mMessage)) {
-    return NS_OK;
+    return;
   }
 
-  return nsGenericHTMLFormElementWithState::GetEventTargetParent(aVisitor);
+  nsGenericHTMLFormElementWithState::GetEventTargetParent(aVisitor);
 }
 
 nsresult
@@ -1422,12 +1420,12 @@ HTMLSelectElement::IntrinsicState() const
 NS_IMETHODIMP
 HTMLSelectElement::SaveState()
 {
-  nsPresState* presState = GetPrimaryPresState();
+  PresState* presState = GetPrimaryPresState();
   if (!presState) {
     return NS_OK;
   }
 
-  RefPtr<SelectState> state = new SelectState();
+  SelectContentData state;
 
   uint32_t len = Length();
 
@@ -1436,37 +1434,40 @@ HTMLSelectElement::SaveState()
     if (option && option->Selected()) {
       nsAutoString value;
       option->GetValue(value);
-      state->PutOption(optIndex, value);
+      if (value.IsEmpty()) {
+        state.indices().AppendElement(optIndex);
+      } else {
+        state.values().AppendElement(Move(value));
+      }
     }
   }
 
-  presState->SetStateProperty(state);
+  presState->contentData() = Move(state);
 
   if (mDisabledChanged) {
     // We do not want to save the real disabled state but the disabled
     // attribute.
-    presState->SetDisabled(HasAttr(kNameSpaceID_None, nsGkAtoms::disabled));
+    presState->disabled() = HasAttr(kNameSpaceID_None, nsGkAtoms::disabled);
+    presState->disabledSet() = true;
   }
 
   return NS_OK;
 }
 
 bool
-HTMLSelectElement::RestoreState(nsPresState* aState)
+HTMLSelectElement::RestoreState(PresState* aState)
 {
   // Get the presentation state object to retrieve our stuff out of.
-  nsCOMPtr<SelectState> state(
-    do_QueryInterface(aState->GetStateProperty()));
-
-  if (state) {
-    RestoreStateTo(state);
+  const PresContentData& state = aState->contentData();
+  if (state.type() == PresContentData::TSelectContentData) {
+    RestoreStateTo(state.get_SelectContentData());
 
     // Don't flush, if the frame doesn't exist yet it doesn't care if
     // we're reset or not.
     DispatchContentReset();
   }
 
-  if (aState->IsDisabledSet() && !aState->GetDisabled()) {
+  if (aState->disabledSet() && !aState->disabled()) {
     SetDisabled(false, IgnoreErrors());
   }
 
@@ -1474,10 +1475,11 @@ HTMLSelectElement::RestoreState(nsPresState* aState)
 }
 
 void
-HTMLSelectElement::RestoreStateTo(SelectState* aNewSelected)
+HTMLSelectElement::RestoreStateTo(const SelectContentData& aNewSelected)
 {
   if (!mIsDoneAddingChildren) {
-    mRestoreState = aNewSelected;
+    // Make a copy of the state for us to restore from in the future.
+    mRestoreState = MakeUnique<SelectContentData>(aNewSelected);
     return;
   }
 
@@ -1487,13 +1489,20 @@ HTMLSelectElement::RestoreStateTo(SelectState* aNewSelected)
   // First clear all
   SetOptionsSelectedByIndex(-1, -1, mask);
 
-  // Next set the proper ones
-  for (uint32_t i = 0; i < len; i++) {
+  // Select by index.
+  for (uint32_t idx : aNewSelected.indices()) {
+    if (idx < len) {
+      SetOptionsSelectedByIndex(idx, idx, IS_SELECTED | SET_DISABLED | NOTIFY);
+    }
+  }
+
+  // Select by value.
+  for (uint32_t i = 0; i < len; ++i) {
     HTMLOptionElement* option = Item(i);
     if (option) {
       nsAutoString value;
       option->GetValue(value);
-      if (aNewSelected->ContainsOption(i, value)) {
+      if (aNewSelected.values().Contains(value)) {
         SetOptionsSelectedByIndex(i, i, IS_SELECTED | SET_DISABLED | NOTIFY);
       }
     }
@@ -1634,14 +1643,14 @@ AddOptions(nsIContent* aRoot, HTMLOptionsCollection* aArray)
   for (nsIContent* child = aRoot->GetFirstChild();
        child;
        child = child->GetNextSibling()) {
-    HTMLOptionElement* opt = HTMLOptionElement::FromContent(child);
+    HTMLOptionElement* opt = HTMLOptionElement::FromNode(child);
     if (opt) {
       aArray->AppendOption(opt);
     } else if (child->IsHTMLElement(nsGkAtoms::optgroup)) {
       for (nsIContent* grandchild = child->GetFirstChild();
            grandchild;
            grandchild = grandchild->GetNextSibling()) {
-        opt = HTMLOptionElement::FromContent(grandchild);
+        opt = HTMLOptionElement::FromNode(grandchild);
         if (opt) {
           aArray->AppendOption(opt);
         }
@@ -1726,7 +1735,7 @@ HTMLSelectElement::VerifyOptionsArray()
   for (nsIContent* child = nsINode::GetFirstChild();
        child;
        child = child->GetNextSibling()) {
-    HTMLOptionElement* opt = HTMLOptionElement::FromContent(child);
+    HTMLOptionElement* opt = HTMLOptionElement::FromNode(child);
     if (opt) {
       NS_ASSERTION(opt == mOptions->ItemAsOption(index++),
                    "Options collection broken");
@@ -1734,7 +1743,7 @@ HTMLSelectElement::VerifyOptionsArray()
       for (nsIContent* grandchild = child->GetFirstChild();
            grandchild;
            grandchild = grandchild->GetNextSibling()) {
-        opt = HTMLOptionElement::FromContent(grandchild);
+        opt = HTMLOptionElement::FromNode(grandchild);
         if (opt) {
           NS_ASSERTION(opt == mOptions->ItemAsOption(index++),
                        "Options collection broken");

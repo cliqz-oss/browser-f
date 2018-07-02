@@ -6,7 +6,6 @@
 #include "nsPluginStreamListenerPeer.h"
 #include "nsIContentPolicy.h"
 #include "nsContentPolicyUtils.h"
-#include "nsIDOMElement.h"
 #include "nsIStreamConverterService.h"
 #include "nsIStreamLoader.h"
 #include "nsIHttpChannel.h"
@@ -173,26 +172,12 @@ nsPluginStreamListenerPeer::OnStartRequest(nsIRequest *request,
     return rv;
 
   // Check ShouldProcess with content policy
-  RefPtr<nsPluginInstanceOwner> owner;
-  if (mPluginInstance) {
-    owner = mPluginInstance->GetOwner();
-  }
-  nsCOMPtr<nsIDOMElement> element;
-  nsCOMPtr<nsIDocument> doc;
-  if (owner) {
-    owner->GetDOMElement(getter_AddRefs(element));
-    owner->GetDocument(getter_AddRefs(doc));
-  }
-  nsCOMPtr<nsIPrincipal> principal = doc ? doc->NodePrincipal() : nullptr;
+  nsCOMPtr<nsILoadInfo> loadInfo = channel->GetLoadInfo();
 
   int16_t shouldLoad = nsIContentPolicy::ACCEPT;
-  rv = NS_CheckContentProcessPolicy(nsIContentPolicy::TYPE_OBJECT_SUBREQUEST,
-                                    mURL,
-                                    principal, // loading principal
-                                    principal, // triggering principal
-                                    element,
+  rv = NS_CheckContentProcessPolicy(mURL,
+                                    loadInfo,
                                     contentType,
-                                    nullptr,
                                     &shouldLoad);
   if (NS_FAILED(rv) || NS_CP_REJECTED(shouldLoad)) {
     mRequestFailed = true;
@@ -683,15 +668,6 @@ nsPluginStreamListenerPeer::AsyncOnChannelRedirect(nsIChannel *oldChannel, nsICh
     return NS_ERROR_FAILURE;
   }
 
-  nsCOMPtr<nsIAsyncVerifyRedirectCallback> proxyCallback =
-    new ChannelRedirectProxyCallback(this, callback, oldChannel, newChannel);
-
-  // Give NPAPI a chance to control redirects.
-  bool notificationHandled = mPStreamListener->HandleRedirectNotification(oldChannel, newChannel, proxyCallback);
-  if (notificationHandled) {
-    return NS_OK;
-  }
-
   // Don't allow cross-origin 307 POST redirects.
   nsCOMPtr<nsIHttpChannel> oldHttpChannel(do_QueryInterface(oldChannel));
   if (oldHttpChannel) {
@@ -713,6 +689,15 @@ nsPluginStreamListenerPeer::AsyncOnChannelRedirect(nsIChannel *oldChannel, nsICh
         }
       }
     }
+  }
+
+  nsCOMPtr<nsIAsyncVerifyRedirectCallback> proxyCallback =
+    new ChannelRedirectProxyCallback(this, callback, oldChannel, newChannel);
+
+  // Give NPAPI a chance to control redirects.
+  bool notificationHandled = mPStreamListener->HandleRedirectNotification(oldChannel, newChannel, proxyCallback);
+  if (notificationHandled) {
+    return NS_OK;
   }
 
   // Fall back to channel event sink for window.

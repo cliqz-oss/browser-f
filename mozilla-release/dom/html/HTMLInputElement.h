@@ -10,7 +10,6 @@
 #include "mozilla/Attributes.h"
 #include "nsGenericHTMLElement.h"
 #include "nsImageLoadingContent.h"
-#include "nsIDOMHTMLInputElement.h"
 #include "nsITextControlElement.h"
 #include "nsITimer.h"
 #include "nsIDOMNSEditableElement.h"
@@ -125,7 +124,6 @@ public:
 
 class HTMLInputElement final : public nsGenericHTMLFormElementWithState,
                                public nsImageLoadingContent,
-                               public nsIDOMHTMLInputElement,
                                public nsITextControlElement,
                                public nsIDOMNSEditableElement,
                                public nsIConstraintValidation
@@ -145,7 +143,7 @@ public:
                    mozilla::dom::FromParser aFromParser,
                    FromClone aFromClone = FromClone::no);
 
-  NS_IMPL_FROMCONTENT_HTML_WITH_TAG(HTMLInputElement, input)
+  NS_IMPL_FROMNODE_HTML_WITH_TAG(HTMLInputElement, input)
 
   // nsISupports
   NS_DECL_ISUPPORTS_INHERITED
@@ -166,9 +164,6 @@ public:
   // EventTarget
   virtual void AsyncEventRunning(AsyncEventDispatcher* aEvent) override;
 
-  // nsIDOMHTMLInputElement
-  NS_DECL_NSIDOMHTMLINPUTELEMENT
-
   // nsIDOMNSEditableElement
   NS_IMETHOD GetEditor(nsIEditor** aEditor) override
   {
@@ -183,7 +178,7 @@ public:
   NS_IMETHOD Reset() override;
   NS_IMETHOD SubmitNamesValues(HTMLFormSubmission* aFormSubmission) override;
   NS_IMETHOD SaveState() override;
-  virtual bool RestoreState(nsPresState* aState) override;
+  virtual bool RestoreState(PresState* aState) override;
   virtual bool AllowDrop() override;
   virtual bool IsDisabledForEvents(EventMessage aMessage) override;
 
@@ -202,8 +197,7 @@ public:
   NS_IMETHOD_(bool) IsAttributeMapped(const nsAtom* aAttribute) const override;
   virtual nsMapRuleToAttributesFunc GetAttributeMappingFunction() const override;
 
-  virtual nsresult GetEventTargetParent(
-                     EventChainPreVisitor& aVisitor) override;
+  void GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
   virtual nsresult PreHandleEvent(EventChainVisitor& aVisitor) override;
   virtual nsresult PostHandleEvent(
                      EventChainPostVisitor& aVisitor) override;
@@ -247,9 +241,6 @@ public:
   NS_IMETHOD BindToFrame(nsTextControlFrame* aFrame) override;
   NS_IMETHOD_(void) UnbindFromFrame(nsTextControlFrame* aFrame) override;
   NS_IMETHOD CreateEditor() override;
-  NS_IMETHOD_(Element*) GetRootEditorNode() override;
-  NS_IMETHOD_(Element*) GetPlaceholderNode() override;
-  NS_IMETHOD_(Element*) GetPreviewNode() override;
   NS_IMETHOD_(void) UpdateOverlayTextVisibility(bool aNotify) override;
   NS_IMETHOD_(void) SetPreviewValue(const nsAString& aValue) override;
   NS_IMETHOD_(void) GetPreviewValue(nsAString& aValue) override;
@@ -274,7 +265,7 @@ public:
 
   void SetFilesOrDirectories(const nsTArray<OwningFileOrDirectory>& aFilesOrDirectories,
                              bool aSetValueChanged);
-  void SetFiles(nsIDOMFileList* aFiles, bool aSetValueChanged);
+  void SetFiles(FileList* aFiles, bool aSetValueChanged);
 
   // This method is used for test only. Onces the data is set, a 'change' event
   // is dispatched.
@@ -340,12 +331,6 @@ public:
   bool HasPatternAttribute() const
   {
     return mHasPatternAttribute;
-  }
-
-  virtual already_AddRefed<nsITextControlElement> GetAsTextControlElement() override
-  {
-    nsCOMPtr<nsITextControlElement> txt = this;
-    return txt.forget();
   }
 
   // nsIConstraintValidation
@@ -1762,13 +1747,6 @@ private:
    */
   static bool
   IsInputDateTimeOthersEnabled();
-
-  /**
-   * Checks preference "dom.forms.number" to determine if input type=number
-   * should be supported.
-   */
-  static bool
-  IsInputNumberEnabled();
 
   /**
    * Checks preference "dom.forms.color" to determine if date/time related

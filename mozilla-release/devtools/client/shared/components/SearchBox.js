@@ -12,6 +12,10 @@ const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const KeyShortcuts = require("devtools/client/shared/key-shortcuts");
 const AutocompletePopup = createFactory(require("devtools/client/shared/components/AutoCompletePopup"));
 
+loader.lazyGetter(this, "MDNLink", function() {
+  return createFactory(require("./MdnLink"));
+});
+
 class SearchBox extends Component {
   static get propTypes() {
     return {
@@ -22,8 +26,11 @@ class SearchBox extends Component {
       onBlur: PropTypes.func,
       onKeyDown: PropTypes.func,
       placeholder: PropTypes.string,
+      plainStyle: PropTypes.bool,
       type: PropTypes.string,
       autocompleteProvider: PropTypes.func,
+      learnMoreUrl: PropTypes.string,
+      learnMoreTitle: PropTypes.string,
     };
   }
 
@@ -160,15 +167,23 @@ class SearchBox extends Component {
       type = "search",
       placeholder,
       autocompleteProvider,
+      plainStyle,
+      learnMoreUrl,
+      learnMoreTitle,
     } = this.props;
     let { value } = this.state;
     let divClassList = ["devtools-searchbox", "has-clear-btn"];
     let inputClassList = [`devtools-${type}input`];
+    if (plainStyle) {
+      inputClassList.push("devtools-plaininput");
+    }
     let showAutocomplete = autocompleteProvider && this.state.focused && value !== "";
 
     if (value !== "") {
       inputClassList.push("filled");
+      learnMoreUrl = false;
     }
+
     return dom.div(
       { className: divClassList.join(" ") },
       dom.input({
@@ -185,6 +200,10 @@ class SearchBox extends Component {
         className: "devtools-searchinput-clear",
         hidden: value == "",
         onClick: this.onClearButtonClick
+      }),
+      learnMoreUrl && MDNLink({
+        url: learnMoreUrl,
+        title: learnMoreTitle,
       }),
       showAutocomplete && AutocompletePopup({
         autocompleteProvider,

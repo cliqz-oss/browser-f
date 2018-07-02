@@ -8,8 +8,8 @@
 
 const TEST_URI = URL_ROOT + "browser_fontinspector.html";
 
-add_task(function* () {
-  let { view } = yield openFontInspectorForURL(TEST_URI);
+add_task(async function() {
+  let { view } = await openFontInspectorForURL(TEST_URI);
   let viewDoc = view.document;
 
   info("Checking that the css font-face rule is collapsed by default");
@@ -20,14 +20,14 @@ add_task(function* () {
   info("Expanding the rule by clicking on the expander icon");
   let onExpanded = BrowserTestUtils.waitForCondition(() => {
     return codeEl.textContent === `@font-face {
-  font-family: "bar";
+  font-family: bar;
   src: url("bad/font/name.ttf"), url("ostrich-regular.ttf") format("truetype");
 }`;
-  }, "Waiting for the font-face rule");
+  }, "Waiting for the font-face rule 1");
 
   let expander = fontEl.querySelector(".font-css-code .theme-twisty");
   expander.click();
-  yield onExpanded;
+  await onExpanded;
 
   ok(true, "Font-face rule is now expanded");
 
@@ -37,15 +37,15 @@ add_task(function* () {
 
   onExpanded = BrowserTestUtils.waitForCondition(() => {
     return codeEl.textContent === `@font-face {
-  font-family: "bar";
-  font-weight: bold;
+  font-family: bar;
   src: url("ostrich-black.ttf");
+  font-weight: bold;
 }`;
-  }, "Waiting for the font-face rule");
+  }, "Waiting for the font-face rule 2");
 
   expander = fontEl.querySelector(".font-css-code .font-css-code-expander");
   expander.click();
-  yield onExpanded;
+  await onExpanded;
 
   ok(true, "Font-face rule is now expanded too");
 });

@@ -3,6 +3,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 /* eslint-disable mozilla/reject-some-requires */
 
+// This file is a chrome-API-dependent version of the module
+// devtools/client/netmonitor/src/utils/open-request-in-tab.js, so that it can
+// take advantage of utilizing chrome APIs. But because of this, it isn't
+// intended to be used in Chrome-API-free applications, such as the Launchpad.
+//
+// Please keep in mind that if the feature in this file has changed, don't
+// forget to also change that accordingly in
+// devtools/client/netmonitor/src/utils/open-request-in-tab.js.
+
 "use strict";
 
 let { Cc, Ci } = require("chrome");
@@ -12,9 +21,9 @@ const { gDevTools } = require("devtools/client/framework/devtools");
 /**
  * Opens given request in a new tab.
  */
-function openRequestInTab(request) {
+function openRequestInTab(url, requestPostData) {
   let win = Services.wm.getMostRecentWindow(gDevTools.chromeWindowType);
-  let rawData = request.requestPostData ? request.requestPostData.postData : null;
+  let rawData = requestPostData ? requestPostData.postData : null;
   let postData;
 
   if (rawData && rawData.text) {
@@ -25,7 +34,7 @@ function openRequestInTab(request) {
     postData.setData(stringStream);
   }
 
-  win.gBrowser.selectedTab = win.gBrowser.addTab(request.url, null, null, postData);
+  win.gBrowser.selectedTab = win.gBrowser.addTab(url, null, null, postData);
 }
 
 function getInputStreamFromString(data) {

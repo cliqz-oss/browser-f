@@ -64,7 +64,7 @@ class TestConfig(object):
         level_desc = "The default log level to use when running tests with `mach test`."
         level_choices = [l.lower() for l in log_levels]
         return [
-            ('test.format', 'string', format_desc, 'tbpl', {'choices': format_choices}),
+            ('test.format', 'string', format_desc, 'mach', {'choices': format_choices}),
             ('test.level', 'string', level_desc, 'info', {'choices': level_choices}),
         ]
 
@@ -122,10 +122,13 @@ class Test(MachCommandBase):
             return 1
 
         # Create shared logger
+        format_args = {'level': self._mach_context.settings['test']['level']}
+        if not run_suites and len(run_tests) == 1:
+            format_args['verbose'] = True
+            format_args['compact'] = False
+
         default_format = self._mach_context.settings['test']['format']
-        default_level = self._mach_context.settings['test']['level']
-        log = setup_logging('mach-test', log_args, {default_format: sys.stdout},
-                            {'level': default_level})
+        log = setup_logging('mach-test', log_args, {default_format: sys.stdout}, format_args)
         for handler in log.handlers:
             if isinstance(handler, StreamHandler):
                 handler.formatter.inner.summary_on_shutdown = True
@@ -305,18 +308,6 @@ class CheckSpiderMonkeyCommand(MachCommandBase):
             self.bindir, executable_name('jsapi-tests'))]
         jsapi_tests_result = subprocess.call(jsapi_tests_cmd)
 
-        print('running check-style')
-        check_style_cmd = [python, os.path.join(
-            self.topsrcdir, 'config', 'check_spidermonkey_style.py')]
-        check_style_result = subprocess.call(
-            check_style_cmd, cwd=os.path.join(self.topsrcdir, 'js', 'src'))
-
-        print('running check-masm')
-        check_masm_cmd = [python, os.path.join(
-            self.topsrcdir, 'config', 'check_macroassembler_style.py')]
-        check_masm_result = subprocess.call(
-            check_masm_cmd, cwd=os.path.join(self.topsrcdir, 'js', 'src'))
-
         print('running check-js-msg-encoding')
         check_js_msg_cmd = [python, os.path.join(
             self.topsrcdir, 'config', 'check_js_msg_encoding.py')]
@@ -324,7 +315,7 @@ class CheckSpiderMonkeyCommand(MachCommandBase):
             check_js_msg_cmd, cwd=self.topsrcdir)
 
         all_passed = jittest_result and jstest_result and jsapi_tests_result and \
-            check_style_result and check_masm_result and check_js_msg_result
+            check_js_msg_result
 
         return all_passed
 

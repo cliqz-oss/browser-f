@@ -12,13 +12,15 @@
 #include "nsContainerFrame.h"
 #include "mozilla/UniquePtr.h"
 
+class nsStyleCoord;
+
 namespace mozilla {
 template <class T> class LinkedList;
 class LogicalPoint;
 } // namespace mozilla
 
 nsContainerFrame* NS_NewFlexContainerFrame(nsIPresShell* aPresShell,
-                                           nsStyleContext* aContext);
+                                           mozilla::ComputedStyle* aStyle);
 
 /**
  * These structures are used to capture data during reflow to be
@@ -97,7 +99,7 @@ public:
 
   // Factory method:
   friend nsContainerFrame* NS_NewFlexContainerFrame(nsIPresShell* aPresShell,
-                                                    nsStyleContext* aContext);
+                                                    ComputedStyle* aStyle);
 
   // Forward-decls of helper classes
   class FlexItem;
@@ -197,10 +199,38 @@ public:
    */
   static nsFlexContainerFrame* GetFlexFrameWithComputedInfo(nsIFrame* aFrame);
 
+  /**
+   * Given a frame for a flex item, this method returns true IFF that flex
+   * item's inline axis is the same as (i.e. not orthogonal to) its flex
+   * container's main axis.
+   *
+   * (This method is only intended to be used from external
+   * callers. Inside of flex reflow code, FlexItem::IsInlineAxisMainAxis() is
+   * equivalent & more optimal.)
+   *
+   * @param aFrame a flex item (must return true from IsFlexItem)
+   * @return true iff aFrame's inline axis is the same as (i.e. not orthogonal
+   *              to) its flex container's main axis. Otherwise, false.
+   */
+  static bool IsItemInlineAxisMainAxis(nsIFrame* aFrame);
+
+  /**
+   * Returns true iff the given computed 'flex-basis' & main-size property
+   * values collectively represent a used flex-basis of 'content'.
+   * See https://drafts.csswg.org/css-flexbox-1/#valdef-flex-basis-auto
+   *
+   * @param aFlexBasis the computed 'flex-basis' for a flex item.
+   * @param aMainSize the computed main-size property for a flex item.
+   */
+  static bool IsUsedFlexBasisContent(const nsStyleCoord* aFlexBasis,
+                                     const nsStyleCoord* aMainSize);
+
 protected:
   // Protected constructor & destructor
-  explicit nsFlexContainerFrame(nsStyleContext* aContext)
-    : nsContainerFrame(aContext, kClassID)
+  explicit nsFlexContainerFrame(ComputedStyle* aStyle)
+    : nsContainerFrame(aStyle, kClassID)
+    , mCachedMinISize(NS_INTRINSIC_WIDTH_UNKNOWN)
+    , mCachedPrefISize(NS_INTRINSIC_WIDTH_UNKNOWN)
     , mBaselineFromLastReflow(NS_INTRINSIC_WIDTH_UNKNOWN)
     , mLastBaselineFromLastReflow(NS_INTRINSIC_WIDTH_UNKNOWN)
   {}
@@ -407,6 +437,18 @@ protected:
                           nsTArray<nsIFrame*>& aPlaceholders,
                           const mozilla::LogicalPoint& aContentBoxOrigin,
                           const nsSize& aContainerSize);
+
+  /**
+   * Helper for GetMinISize / GetPrefISize.
+   */
+  nscoord IntrinsicISize(gfxContext* aRenderingContext,
+                         nsLayoutUtils::IntrinsicISizeType aType);
+
+  /**
+   * Cached values to optimize GetMinISize/GetPrefISize.
+   */
+  nscoord mCachedMinISize;
+  nscoord mCachedPrefISize;
 
   nscoord mBaselineFromLastReflow;
   // Note: the last baseline is a distance from our border-box end edge.

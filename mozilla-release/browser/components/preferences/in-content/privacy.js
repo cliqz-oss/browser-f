@@ -395,12 +395,7 @@ var gPrivacyPane = {
         document.getElementById("notificationsDoNotDisturbBox");
       notificationsDoNotDisturbBox.removeAttribute("hidden");
       let checkbox = document.getElementById("notificationsDoNotDisturb");
-      let brandName = document.getElementById("bundleBrand")
-        .getString("brandShortName");
-      checkbox.setAttribute("label",
-        bundlePrefs.getFormattedString("pauseNotifications.label",
-          [brandName]));
-      checkbox.setAttribute("accesskey", bundlePrefs.getString("pauseNotifications.accesskey"));
+      document.l10n.setAttributes(checkbox, "permissions-notification-pause");
       if (AlertsServiceDND.manualDoNotDisturb) {
         let notificationsDoNotDisturb =
           document.getElementById("notificationsDoNotDisturb");
@@ -408,25 +403,21 @@ var gPrivacyPane = {
       }
     }
 
-    if (Services.prefs.getBoolPref("browser.storageManager.enabled")) {
-      Services.obs.addObserver(this, "sitedatamanager:sites-updated");
-      Services.obs.addObserver(this, "sitedatamanager:updating-sites");
-      let unload = () => {
-        window.removeEventListener("unload", unload);
-        Services.obs.removeObserver(this, "sitedatamanager:sites-updated");
-        Services.obs.removeObserver(this, "sitedatamanager:updating-sites");
-      };
-      window.addEventListener("unload", unload);
-      SiteDataManager.updateSites();
-      setEventListener("clearSiteDataButton", "command",
-        gPrivacyPane.clearSiteData);
-      setEventListener("siteDataSettings", "command",
-        gPrivacyPane.showSiteDataSettings);
-      let url = Services.urlFormatter.formatURLPref("app.support.baseURL") + "storage-permissions";
-      document.getElementById("siteDataLearnMoreLink").setAttribute("href", url);
-      let siteDataGroup = document.getElementById("siteDataGroup");
-      siteDataGroup.removeAttribute("data-hidden-from-search");
-    }
+    Services.obs.addObserver(this, "sitedatamanager:sites-updated");
+    Services.obs.addObserver(this, "sitedatamanager:updating-sites");
+    let unload = () => {
+      window.removeEventListener("unload", unload);
+      Services.obs.removeObserver(this, "sitedatamanager:sites-updated");
+      Services.obs.removeObserver(this, "sitedatamanager:updating-sites");
+    };
+    window.addEventListener("unload", unload);
+    SiteDataManager.updateSites();
+    setEventListener("clearSiteDataButton", "command",
+      gPrivacyPane.clearSiteData);
+    setEventListener("siteDataSettings", "command",
+      gPrivacyPane.showSiteDataSettings);
+    let url = Services.urlFormatter.formatURLPref("app.support.baseURL") + "storage-permissions";
+    document.getElementById("siteDataLearnMoreLink").setAttribute("href", url);
 
     let notificationInfoURL =
       Services.urlFormatter.formatURLPref("app.support.baseURL") + "push";
@@ -476,10 +467,6 @@ var gPrivacyPane = {
       bundlePrefs.getString("trackingprotectionpermissionstitle"),
       bundlePrefs.getString("trackingprotectionpermissionstext2"),
     ]);
-    appendSearchKeywords("changeBlockList", [
-      bundlePrefs.getString("blockliststitle"),
-      bundlePrefs.getString("blockliststext"),
-    ]);
 #endif
     appendSearchKeywords("popupPolicyButton", [
       bundlePrefs.getString("popuppermissionstitle2"),
@@ -520,8 +507,7 @@ var gPrivacyPane = {
     ]);
     appendSearchKeywords("siteDataSettings", [
       bundlePrefs.getString("siteDataSettings3.description"),
-      bundlePrefs.getString("removeAllCookies.label"),
-      bundlePrefs.getString("removeSelectedCookies.label"),
+      bundlePrefs.getString("removeAllSiteData.label"),
     ]);
 
     if (!PrivateBrowsingUtils.enabled) {
@@ -705,6 +691,8 @@ var gPrivacyPane = {
     document.getElementById("keepCookiesUntil").value = this.readKeepCookiesUntil();
     this.readAcceptCookies();
 
+    let clearDataSettings = document.getElementById("clearDataSettings");
+
     if (document.getElementById("historyMode").value == "custom") {
       let disabled = Preferences.get("browser.privatebrowsing.autostart").value;
       this.dependentControls.forEach(function(aElement) {
@@ -722,6 +710,8 @@ var gPrivacyPane = {
         control.disabled = disabled || preference.locked;
       });
 
+      clearDataSettings.removeAttribute("hidden");
+
       // adjust the checked state of the sanitizeOnShutdown checkbox
       document.getElementById("alwaysClear").checked = disabled ? false :
         Preferences.get("privacy.sanitize.sanitizeOnShutdown").value;
@@ -736,6 +726,8 @@ var gPrivacyPane = {
         // adjust the Settings button for sanitizeOnShutdown
         this._updateSanitizeSettingsButton();
       }
+    } else {
+      clearDataSettings.setAttribute("hidden", "true");
     }
   },
 
@@ -868,16 +860,7 @@ var gPrivacyPane = {
    * Displays the available block lists for tracking protection.
    */
   showBlockLists() {
-    var bundlePreferences = document.getElementById("bundlePreferences");
-    let brandName = document.getElementById("bundleBrand")
-      .getString("brandShortName");
-    var params = {
-      brandShortName: brandName,
-      windowTitle: bundlePreferences.getString("blockliststitle"),
-      introText: bundlePreferences.getString("blockliststext")
-    };
-    gSubDialog.open("chrome://browser/content/preferences/blocklists.xul",
-      null, params);
+    gSubDialog.open("chrome://browser/content/preferences/blocklists.xul", null);
   },
 #endif
 
@@ -909,17 +892,17 @@ var gPrivacyPane = {
   readKeepCookiesUntil() {
     let privateBrowsing = Preferences.get("browser.privatebrowsing.autostart").value;
     if (privateBrowsing) {
-      return "2";
+      return Ci.nsICookieService.ACCEPT_SESSION;
     }
 
     let lifetimePolicy = Preferences.get("network.cookie.lifetimePolicy").value;
-    if (lifetimePolicy != Ci.nsICookieService.ACCEPT_NORMALLY &&
-      lifetimePolicy != Ci.nsICookieService.ACCEPT_SESSION &&
-      lifetimePolicy != Ci.nsICookieService.ACCEPT_FOR_N_DAYS) {
-      return Ci.nsICookieService.ACCEPT_NORMALLY;
+    if (lifetimePolicy == Ci.nsICookieService.ACCEPT_SESSION) {
+      return Ci.nsICookieService.ACCEPT_SESSION;
     }
 
-    return lifetimePolicy;
+    // network.cookie.lifetimePolicy can be set to any value, but we just
+    // support ACCEPT_SESSION and ACCEPT_NORMALLY. Let's force ACCEPT_NORMALLY.
+    return Ci.nsICookieService.ACCEPT_NORMALLY;
   },
 
   /**
@@ -1649,14 +1632,10 @@ var gPasswordManagers = {
   getExisting: function() {
     let KNOWN_PW_MANAGERS = ["support@lastpass.com", "{446900e4-71c2-419f-a6a7-df9c091e268b}"];
 
-    return new Promise(function(resolve, reject) {
-      AddonManager.getAllAddons(function(all) {
-        // filter only installed extensions
-        var extensions = all.filter(function(addon) {
-          return addon.type == "extension" && addon.hidden == false && KNOWN_PW_MANAGERS.indexOf(addon.id) != -1;
-        });
-
-        resolve(extensions);
+    return AddonManager.getAllAddons().then((all) => {
+      // filter only installed extensions
+      return all.filter(function(addon) {
+        return addon.type == "extension" && addon.hidden == false && KNOWN_PW_MANAGERS.includes(addon.id);
       });
     });
   },
@@ -1739,14 +1718,10 @@ var gPrivacyManagers = {
   getExisting: function() {
     let KNOWN_PW_MANAGERS = ["firefox@ghostery.com"];
 
-    return new Promise(function(resolve, reject) {
-      AddonManager.getAllAddons(function(all) {
-        // filter only installed extensions
-        var extensions = all.filter(function(addon) {
-          return addon.type == "extension" && addon.hidden == false && KNOWN_PW_MANAGERS.indexOf(addon.id) != -1;
-        });
-
-        resolve(extensions);
+    return AddonManager.getAllAddons().then((all) => {
+      // filter only installed extensions
+      return all.filter(function(addon) {
+        return addon.type == "extension" && addon.hidden == false && KNOWN_PW_MANAGERS.includes(addon.id);
       });
     });
   },
@@ -1803,8 +1778,8 @@ ItemHandler.prototype = {
     let self = this;
     let reloadTimeout = 3000;
 
-    AddonManager.getInstallForURL(this.listItemDesc.sourceURI,
-      function(addon) {
+    AddonManager.getInstallForURL(this.listItemDesc.sourceURI, "application/x-xpinstall")
+      .then((addon) => {
         addon.addListener({
           onDownloadProgress: function(aInstall) {
             let percent = gStrings.GetStringFromName("installDownloading") + ' ' + parseInt(aInstall.progress / aInstall.maxProgress * 100) + "%";
@@ -1822,7 +1797,7 @@ ItemHandler.prototype = {
           },
           onInstallEnded: function(aInstall, aAddon) {
             // redrawing the listItem as *installed*
-            AddonManager.getAddonByID(self.listItemDesc.id, (newlyInstalled) => {
+            AddonManager.getAddonByID(self.listItemDesc.id).then((newlyInstalled) => {
               self.listContainer.removeChild(self.listItem);
               let installedItem = new ItemHandler(self.listContainer, self.listItemDesc, newlyInstalled, 'installed');
               self.listContainer.appendChild(installedItem.listItem);
@@ -1833,9 +1808,7 @@ ItemHandler.prototype = {
           }
         });
         addon.install();
-      },
-      "application/x-xpinstall"
-    )
+      });
   },
 
   onUninstallClick: function() {

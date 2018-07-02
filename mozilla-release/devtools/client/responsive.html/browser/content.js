@@ -10,7 +10,7 @@
 var global = this;
 
 // Guard against loading this frame script mutiple times
-(function () {
+(function() {
   if (global.responsiveFrameScriptLoaded) {
     return;
   }
@@ -183,14 +183,8 @@ var global = this;
       }
       makeScrollbarsFloating();
     },
-    QueryInterface: function QueryInterface(iid) {
-      if (iid.equals(Ci.nsIWebProgressListener) ||
-          iid.equals(Ci.nsISupportsWeakReference) ||
-          iid.equals(Ci.nsISupports)) {
-        return this;
-      }
-      throw Cr.NS_ERROR_NO_INTERFACE;
-    }
+    QueryInterface: ChromeUtils.generateQI(["nsIWebProgressListener",
+                                            "nsISupportsWeakReference"]),
   };
 })();
 

@@ -74,7 +74,7 @@ add_task(async function step_4() {
 add_task(async function step_5() {
   info("Running step 5 - remove tab immediately");
   let tab = BrowserTestUtils.addTab(gBrowser, "about:logo");
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
   await ensure_opentabs_match_db();
 });
 
@@ -90,7 +90,7 @@ add_task(async function step_6() {
 
   await ensure_opentabs_match_db();
 
-  await BrowserTestUtils.removeTab(tabToKeep);
+  BrowserTestUtils.removeTab(tabToKeep);
 
   await ensure_opentabs_match_db();
 });
@@ -204,7 +204,7 @@ function checkAutocompleteResults(aExpected, aCallback) {
     setSelectedIndex() {},
     get searchCount() { return this.searches.length; },
     getSearchAt(aIndex) { return this.searches[aIndex]; },
-    QueryInterface: XPCOMUtils.generateQI([
+    QueryInterface: ChromeUtils.generateQI([
       Ci.nsIAutoCompleteInput,
       Ci.nsIAutoCompletePopup,
     ])

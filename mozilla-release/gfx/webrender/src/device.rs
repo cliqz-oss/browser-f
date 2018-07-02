@@ -3,12 +3,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use super::shader_source;
-use api::{ColorF, ImageDescriptor, ImageFormat};
+use api::{ColorF, ImageFormat};
 use api::{DeviceIntPoint, DeviceIntRect, DeviceUintRect, DeviceUintSize};
 use api::TextureTarget;
+#[cfg(any(feature = "debug_renderer", feature="capture"))]
+use api::ImageDescriptor;
 use euclid::Transform3D;
 use gleam::gl;
 use internal_types::{FastHashMap, RenderTargetInfo};
+use log::Level;
 use smallvec::SmallVec;
 use std::cell::RefCell;
 use std::fs::File;
@@ -19,8 +22,8 @@ use std::ops::Add;
 use std::path::PathBuf;
 use std::ptr;
 use std::rc::Rc;
+use std::slice;
 use std::thread;
-
 
 #[derive(Debug, Copy, Clone, PartialEq, Ord, Eq, PartialOrd)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
@@ -51,7 +54,6 @@ const SHADER_VERSION_GLES: &str = "#version 300 es\n";
 const SHADER_KIND_VERTEX: &str = "#define WR_VERTEX_SHADER\n";
 const SHADER_KIND_FRAGMENT: &str = "#define WR_FRAGMENT_SHADER\n";
 const SHADER_IMPORT: &str = "#include ";
-const SHADER_LINE_MARKER: &str = "#line 1\n";
 
 pub struct TextureSlot(pub usize);
 
@@ -60,6 +62,7 @@ const DEFAULT_TEXTURE: TextureSlot = TextureSlot(0);
 
 #[repr(u32)]
 pub enum DepthFunction {
+    #[cfg(feature = "debug_renderer")]
     Less = gl::LESS,
     LessEqual = gl::LEQUAL,
 }
@@ -76,6 +79,7 @@ pub enum TextureFilter {
 #[derive(Debug)]
 pub enum VertexAttributeKind {
     F32,
+    #[cfg(feature = "debug_renderer")]
     U8Norm,
     U16Norm,
     I32,
@@ -108,6 +112,11 @@ pub enum UploadMethod {
     /// Accumulate the changes in PBO first before transferring to a texture.
     PixelBuffer(VertexUsageHint),
 }
+
+/// Plain old data that can be used to initialize a texture.
+pub unsafe trait Texel: Copy {}
+unsafe impl Texel for u8 {}
+unsafe impl Texel for f32 {}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ReadPixelsFormat {
@@ -161,11 +170,9 @@ fn get_shader_source(shader_name: &str, base_path: &Option<PathBuf>) -> Option<S
 // Parse a shader string for imports. Imports are recursively processed, and
 // prepended to the list of outputs.
 fn parse_shader_source(source: String, base_path: &Option<PathBuf>, output: &mut String) {
-    output.push_str(SHADER_LINE_MARKER);
-
-    for (line_num, line) in source.lines().enumerate() {
+    for line in source.lines() {
         if line.starts_with(SHADER_IMPORT) {
-            let imports = line[SHADER_IMPORT.len() ..].split(",");
+            let imports = line[SHADER_IMPORT.len() ..].split(',');
 
             // For each import, get the source, and recurse.
             for import in imports {
@@ -173,8 +180,6 @@ fn parse_shader_source(source: String, base_path: &Option<PathBuf>, output: &mut
                     parse_shader_source(include, base_path, output);
                 }
             }
-
-            output.push_str(&format!("#line {}\n", line_num+1));
         } else {
             output.push_str(line);
             output.push_str("\n");
@@ -230,6 +235,7 @@ impl VertexAttributeKind {
     fn size_in_bytes(&self) -> u32 {
         match *self {
             VertexAttributeKind::F32 => 4,
+            #[cfg(feature = "debug_renderer")]
             VertexAttributeKind::U8Norm => 1,
             VertexAttributeKind::U16Norm => 2,
             VertexAttributeKind::I32 => 4,
@@ -265,6 +271,7 @@ impl VertexAttribute {
                     offset,
                 );
             }
+            #[cfg(feature = "debug_renderer")]
             VertexAttributeKind::U8Norm => {
                 gl.vertex_attrib_pointer(
                     attr_index,
@@ -338,11 +345,11 @@ impl VertexDescriptor {
     }
 
     fn bind(&self, gl: &gl::Gl, main: VBOId, instance: VBOId) {
-        Self::bind_attributes(&self.vertex_attributes, 0, 0, gl, main);
+        Self::bind_attributes(self.vertex_attributes, 0, 0, gl, main);
 
         if !self.instance_attributes.is_empty() {
             Self::bind_attributes(
-                &self.instance_attributes,
+                self.instance_attributes,
                 self.vertex_attributes.len(),
                 1, gl, instance,
             );
@@ -458,10 +465,12 @@ impl Texture {
         self.format
     }
 
+    #[cfg(any(feature = "debug_renderer", feature = "capture"))]
     pub fn get_filter(&self) -> TextureFilter {
         self.filter
     }
 
+    #[cfg(any(feature = "debug_renderer", feature = "capture"))]
     pub fn get_render_target(&self) -> Option<RenderTargetInfo> {
         self.render_target.clone()
     }
@@ -633,18 +642,17 @@ impl VertexUsageHint {
 pub struct UniformLocation(gl::GLint);
 
 impl UniformLocation {
-    pub fn invalid() -> UniformLocation {
-        UniformLocation(-1)
-    }
+    pub const INVALID: Self = UniformLocation(-1);
 }
 
+#[cfg(feature = "debug_renderer")]
 pub struct Capabilities {
     pub supports_multisampling: bool,
 }
 
 #[derive(Clone, Debug)]
 pub enum ShaderError {
-    Compilation(String, String), // name, error mssage
+    Compilation(String, String), // name, error message
     Link(String, String),        // name, error message
 }
 
@@ -656,13 +664,15 @@ pub struct Device {
     bound_vao: gl::GLuint,
     bound_read_fbo: FBOId,
     bound_draw_fbo: FBOId,
+    program_mode_id: UniformLocation,
     default_read_fbo: gl::GLuint,
     default_draw_fbo: gl::GLuint,
 
     device_pixel_ratio: f32,
     upload_method: UploadMethod,
 
-    // HW or API capabilties
+    // HW or API capabilities
+    #[cfg(feature = "debug_renderer")]
     capabilities: Capabilities,
 
     // debug
@@ -709,6 +719,7 @@ impl Device {
             upload_method,
             inside_frame: false,
 
+            #[cfg(feature = "debug_renderer")]
             capabilities: Capabilities {
                 supports_multisampling: false, //TODO
             },
@@ -718,6 +729,7 @@ impl Device {
             bound_vao: 0,
             bound_read_fbo: FBOId(0),
             bound_draw_fbo: FBOId(0),
+            program_mode_id: UniformLocation::INVALID,
             default_read_fbo: 0,
             default_draw_fbo: 0,
 
@@ -749,6 +761,7 @@ impl Device {
         self.max_texture_size
     }
 
+    #[cfg(feature = "debug_renderer")]
     pub fn get_capabilities(&self) -> &Capabilities {
         &self.capabilities
     }
@@ -758,6 +771,25 @@ impl Device {
         self.bound_vao = 0;
         self.bound_read_fbo = FBOId(0);
         self.bound_draw_fbo = FBOId(0);
+    }
+
+    #[cfg(debug_assertions)]
+    fn print_shader_errors(source: &str, log: &str) {
+        // hacky way to extract the offending lines
+        if !log.starts_with("0:") {
+            return;
+        }
+        let end_pos = match log[2..].chars().position(|c| !c.is_digit(10)) {
+            Some(pos) => 2 + pos,
+            None => return,
+        };
+        let base_line_number = match log[2 .. end_pos].parse::<usize>() {
+            Ok(number) if number >= 2 => number - 2,
+            _ => return,
+        };
+        for (line, prefix) in source.lines().skip(base_line_number).zip(&["|",">","|"]) {
+            error!("{}\t{}", prefix, line);
+        }
     }
 
     pub fn compile_shader(
@@ -772,11 +804,13 @@ impl Device {
         gl.compile_shader(id);
         let log = gl.get_shader_info_log(id);
         if gl.get_shader_iv(id, gl::COMPILE_STATUS) == (0 as gl::GLint) {
-            println!("Failed to compile shader: {}\n{}", name, log);
+            error!("Failed to compile shader: {}\n{}", name, log);
+            #[cfg(debug_assertions)]
+            Self::print_shader_errors(source, &log);
             Err(ShaderError::Compilation(name.to_string(), log))
         } else {
             if !log.is_empty() {
-                println!("Warnings detected on shader: {}\n{}", name, log);
+                warn!("Warnings detected on shader: {}\n{}", name, log);
             }
             Ok(id)
         }
@@ -786,7 +820,7 @@ impl Device {
         debug_assert!(!self.inside_frame);
         self.inside_frame = true;
 
-        // Retrive the currently set FBO.
+        // Retrieve the currently set FBO.
         let default_read_fbo = self.gl.get_integer_v(gl::READ_FRAMEBUFFER_BINDING);
         self.default_read_fbo = default_read_fbo as gl::GLuint;
         let default_draw_fbo = self.gl.get_integer_v(gl::DRAW_FRAMEBUFFER_BINDING);
@@ -801,6 +835,7 @@ impl Device {
 
         // Shader state
         self.bound_program = 0;
+        self.program_mode_id = UniformLocation::INVALID;
         self.gl.use_program(0);
 
         // Vertex state
@@ -926,6 +961,7 @@ impl Device {
         if self.bound_program != program.id {
             self.gl.use_program(program.id);
             self.bound_program = program.id;
+            self.program_mode_id = UniformLocation(program.u_mode);
         }
     }
 
@@ -993,7 +1029,7 @@ impl Device {
 
         self.bind_texture(DEFAULT_TEXTURE, texture);
         self.set_texture_parameters(texture.target, texture.filter);
-        self.update_target_storage(texture, &rt_info, true, None);
+        self.update_target_storage::<u8>(texture, &rt_info, true, None);
 
         let rect = DeviceIntRect::new(DeviceIntPoint::zero(), old_size.to_i32());
         for (read_fbo, &draw_fbo) in old_fbos.into_iter().zip(&texture.fbo_ids) {
@@ -1006,7 +1042,7 @@ impl Device {
         self.bind_read_target(None);
     }
 
-    pub fn init_texture(
+    pub fn init_texture<T: Texel>(
         &mut self,
         texture: &mut Texture,
         mut width: u32,
@@ -1014,7 +1050,7 @@ impl Device {
         filter: TextureFilter,
         render_target: Option<RenderTargetInfo>,
         layer_count: i32,
-        pixels: Option<&[u8]>,
+        pixels: Option<&[T]>,
     ) {
         debug_assert!(self.inside_frame);
 
@@ -1047,12 +1083,12 @@ impl Device {
     }
 
     /// Updates the render target storage for the texture, creating FBOs as required.
-    fn update_target_storage(
+    fn update_target_storage<T: Texel>(
         &mut self,
         texture: &mut Texture,
         rt_info: &RenderTargetInfo,
         is_resized: bool,
-        pixels: Option<&[u8]>,
+        pixels: Option<&[T]>,
     ) {
         assert!(texture.layer_count > 0 || texture.width + texture.height == 0);
 
@@ -1073,7 +1109,7 @@ impl Device {
                         0,
                         desc.external,
                         desc.pixel_type,
-                        pixels,
+                        pixels.map(texels_to_u8_slice),
                     )
                 }
                 _ => {
@@ -1087,7 +1123,7 @@ impl Device {
                         0,
                         desc.external,
                         desc.pixel_type,
-                        pixels,
+                        pixels.map(texels_to_u8_slice),
                     )
                 }
             }
@@ -1170,7 +1206,7 @@ impl Device {
         }
     }
 
-    fn update_texture_storage(&mut self, texture: &Texture, pixels: Option<&[u8]>) {
+    fn update_texture_storage<T: Texel>(&mut self, texture: &Texture, pixels: Option<&[T]>) {
         let desc = gl_describe_format(self.gl(), texture.format);
         match texture.target {
             gl::TEXTURE_2D_ARRAY => {
@@ -1184,7 +1220,7 @@ impl Device {
                     0,
                     desc.external,
                     desc.pixel_type,
-                    pixels,
+                    pixels.map(texels_to_u8_slice),
                 );
             }
             gl::TEXTURE_2D | gl::TEXTURE_RECTANGLE | gl::TEXTURE_EXTERNAL_OES => {
@@ -1197,7 +1233,7 @@ impl Device {
                     0,
                     desc.external,
                     desc.pixel_type,
-                    pixels,
+                    pixels.map(texels_to_u8_slice),
                 );
             }
             _ => panic!("BUG: Unexpected texture target!"),
@@ -1286,6 +1322,13 @@ impl Device {
     pub fn delete_texture(&mut self, mut texture: Texture) {
         self.free_texture_storage(&mut texture);
         self.gl.delete_textures(&[texture.id]);
+
+        for bound_texture in &mut self.bound_textures {
+            if *bound_texture == texture.id {
+                *bound_texture = 0
+            }
+        }
+
         texture.id = 0;
     }
 
@@ -1338,7 +1381,7 @@ impl Device {
 
                 if self.gl.get_program_iv(pid, gl::LINK_STATUS) == (0 as gl::GLint) {
                     let error_log = self.gl.get_program_info_log(pid);
-                    println!(
+                    error!(
                       "Failed to load a program object with a program binary: {} renderer {}\n{}",
                       base_filename,
                       self.renderer_name,
@@ -1400,7 +1443,7 @@ impl Device {
 
             if self.gl.get_program_iv(pid, gl::LINK_STATUS) == (0 as gl::GLint) {
                 let error_log = self.gl.get_program_info_log(pid);
-                println!(
+                error!(
                     "Failed to link shader program: {}\n{}",
                     base_filename,
                     error_log
@@ -1449,29 +1492,26 @@ impl Device {
         }
     }
 
+    #[cfg(feature = "debug_renderer")]
     pub fn get_uniform_location(&self, program: &Program, name: &str) -> UniformLocation {
         UniformLocation(self.gl.get_uniform_location(program.id, name))
-    }
-
-    pub fn set_uniform_2f(&self, uniform: UniformLocation, x: f32, y: f32) {
-        debug_assert!(self.inside_frame);
-        let UniformLocation(location) = uniform;
-        self.gl.uniform_2f(location, x, y);
     }
 
     pub fn set_uniforms(
         &self,
         program: &Program,
         transform: &Transform3D<f32>,
-        mode: i32,
     ) {
         debug_assert!(self.inside_frame);
         self.gl
             .uniform_matrix_4fv(program.u_transform, false, &transform.to_row_major_array());
         self.gl
             .uniform_1f(program.u_device_pixel_ratio, self.device_pixel_ratio);
-        self.gl
-            .uniform_1i(program.u_mode, mode);
+    }
+
+    pub fn switch_mode(&self, mode: i32) {
+        debug_assert!(self.inside_frame);
+        self.gl.uniform_1i(self.program_mode_id.0, mode);
     }
 
     pub fn create_pbo(&mut self) -> PBO {
@@ -1520,6 +1560,7 @@ impl Device {
         }
     }
 
+    #[cfg(any(feature = "debug_renderer", feature = "capture"))]
     pub fn read_pixels(&mut self, img_desc: &ImageDescriptor) -> Vec<u8> {
         let desc = gl_describe_format(self.gl(), img_desc.format);
         self.gl.read_pixels(
@@ -1566,6 +1607,7 @@ impl Device {
     }
 
     /// Get texels of a texture into the specified output slice.
+    #[cfg(feature = "debug_renderer")]
     pub fn get_tex_image_into(
         &mut self,
         texture: &Texture,
@@ -1584,6 +1626,7 @@ impl Device {
     }
 
     /// Attaches the provided texture to the current Read FBO binding.
+    #[cfg(any(feature = "debug_renderer", feature="capture"))]
     fn attach_read_texture_raw(
         &mut self, texture_id: gl::GLuint, target: gl::GLuint, layer_id: i32
     ) {
@@ -1610,12 +1653,14 @@ impl Device {
         }
     }
 
+    #[cfg(any(feature = "debug_renderer", feature="capture"))]
     pub fn attach_read_texture_external(
         &mut self, texture_id: gl::GLuint, target: TextureTarget, layer_id: i32
     ) {
         self.attach_read_texture_raw(texture_id, get_gl_target(target), layer_id)
     }
 
+    #[cfg(any(feature = "debug_renderer", feature="capture"))]
     pub fn attach_read_texture(&mut self, texture: &Texture, layer_id: i32) {
         self.attach_read_texture_raw(texture.id, texture.target, layer_id)
     }
@@ -1851,6 +1896,7 @@ impl Device {
         );
     }
 
+    #[cfg(feature = "debug_renderer")]
     pub fn draw_triangles_u32(&mut self, first_vertex: i32, index_count: i32) {
         debug_assert!(self.inside_frame);
         self.gl.draw_elements(
@@ -1866,6 +1912,7 @@ impl Device {
         self.gl.draw_arrays(gl::POINTS, first_vertex, vertex_count);
     }
 
+    #[cfg(feature = "debug_renderer")]
     pub fn draw_nonindexed_lines(&mut self, first_vertex: i32, vertex_count: i32) {
         debug_assert!(self.inside_frame);
         self.gl.draw_arrays(gl::LINES, first_vertex, vertex_count);
@@ -2016,6 +2063,7 @@ impl Device {
             .blend_func_separate(gl::ONE, gl::ONE, gl::ONE, gl::ONE);
         self.gl.blend_equation_separate(gl::MAX, gl::FUNC_ADD);
     }
+    #[cfg(feature = "debug_renderer")]
     pub fn set_blend_mode_min(&self) {
         self.gl
             .blend_func_separate(gl::ONE, gl::ONE, gl::ONE, gl::ONE);
@@ -2023,9 +2071,11 @@ impl Device {
     }
     pub fn set_blend_mode_subpixel_pass0(&self) {
         self.gl.blend_func(gl::ZERO, gl::ONE_MINUS_SRC_COLOR);
+        self.gl.blend_equation(gl::FUNC_ADD);
     }
     pub fn set_blend_mode_subpixel_pass1(&self) {
         self.gl.blend_func(gl::ONE, gl::ONE);
+        self.gl.blend_equation(gl::FUNC_ADD);
     }
     pub fn set_blend_mode_subpixel_with_bg_color_pass0(&self) {
         self.gl.blend_func_separate(gl::ZERO, gl::ONE_MINUS_SRC_COLOR, gl::ZERO, gl::ONE);
@@ -2048,10 +2098,36 @@ impl Device {
     }
     pub fn set_blend_mode_subpixel_dual_source(&self) {
         self.gl.blend_func(gl::ONE, gl::ONE_MINUS_SRC1_COLOR);
+        self.gl.blend_equation(gl::FUNC_ADD);
     }
 
     pub fn supports_extension(&self, extension: &str) -> bool {
         self.extensions.iter().any(|s| s == extension)
+    }
+
+    pub fn echo_driver_messages(&self) {
+        for msg in self.gl.get_debug_messages() {
+            let level = match msg.severity {
+                gl::DEBUG_SEVERITY_HIGH => Level::Error,
+                gl::DEBUG_SEVERITY_MEDIUM => Level::Warn,
+                gl::DEBUG_SEVERITY_LOW => Level::Info,
+                gl::DEBUG_SEVERITY_NOTIFICATION => Level::Debug,
+                _ => Level::Trace,
+            };
+            let ty = match msg.ty {
+                gl::DEBUG_TYPE_ERROR => "error",
+                gl::DEBUG_TYPE_DEPRECATED_BEHAVIOR => "deprecated",
+                gl::DEBUG_TYPE_UNDEFINED_BEHAVIOR => "undefined",
+                gl::DEBUG_TYPE_PORTABILITY => "portability",
+                gl::DEBUG_TYPE_PERFORMANCE => "perf",
+                gl::DEBUG_TYPE_MARKER => "marker",
+                gl::DEBUG_TYPE_PUSH_GROUP => "group push",
+                gl::DEBUG_TYPE_POP_GROUP => "group pop",
+                gl::DEBUG_TYPE_OTHER => "other",
+                _ => "?",
+            };
+            log!(level, "({}) {}", ty, msg.message);
+        }
     }
 }
 
@@ -2260,5 +2336,11 @@ impl<'a> UploadTarget<'a> {
         if chunk.stride.is_some() {
             self.gl.pixel_store_i(gl::UNPACK_ROW_LENGTH, 0 as _);
         }
+    }
+}
+
+fn texels_to_u8_slice<T: Texel>(texels: &[T]) -> &[u8] {
+    unsafe {
+        slice::from_raw_parts(texels.as_ptr() as *const u8, texels.len() * mem::size_of::<T>())
     }
 }

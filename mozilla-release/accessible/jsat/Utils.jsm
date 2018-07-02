@@ -29,8 +29,7 @@ var Utils = { // jshint ignore:line
     "{3c2e2abc-06d4-11e1-ac3b-374f68613e61}": "b2g",
     "{d1bfe7d9-c01e-4237-998b-7b5f960a4314}": "graphene",
     "{ec8030f7-c20a-464f-9b0e-13a3a9e97384}": "browser",
-    "{aa3c5121-dab2-40e2-81ca-7ea25febc110}": "mobile/android",
-    "{a23983c0-fd0e-11dc-95ff-0800200c9a66}": "mobile/xul"
+    "{aa3c5121-dab2-40e2-81ca-7ea25febc110}": "mobile/android"
   },
 
   init: function Utils_init(aWindow) {
@@ -142,7 +141,8 @@ var Utils = { // jshint ignore:line
 
   get CurrentBrowser() {
     if (!this.BrowserApp) {
-      return null;
+      // Get the first content browser element when no 'BrowserApp' exists.
+      return this.win.document.querySelector("browser[type=content]");
     }
     if (this.MozBuildApp == "b2g") {
       return this.BrowserApp.contentBrowser;
@@ -302,15 +302,11 @@ var Utils = { // jshint ignore:line
     return res.value;
   },
 
-  getBounds: function getBounds(aAccessible, aPreserveContentScale) {
+  getBounds: function getBounds(aAccessible) {
     let objX = {}, objY = {}, objW = {}, objH = {};
     aAccessible.getBounds(objX, objY, objW, objH);
 
-    let scale = aPreserveContentScale ? 1 :
-      this.getContentResolution(aAccessible);
-
-    return new Rect(objX.value, objY.value, objW.value, objH.value).scale(
-      scale, scale);
+    return new Rect(objX.value, objY.value, objW.value, objH.value);
   },
 
   getTextBounds: function getTextBounds(aAccessible, aStart, aEnd,
@@ -320,11 +316,7 @@ var Utils = { // jshint ignore:line
     accText.getRangeExtents(aStart, aEnd, objX, objY, objW, objH,
       Ci.nsIAccessibleCoordinateType.COORDTYPE_SCREEN_RELATIVE);
 
-    let scale = aPreserveContentScale ? 1 :
-      this.getContentResolution(aAccessible);
-
-    return new Rect(objX.value, objY.value, objW.value, objH.value).scale(
-      scale, scale);
+    return new Rect(objX.value, objY.value, objW.value, objH.value);
   },
 
   /**
@@ -1065,6 +1057,6 @@ PrefCache.prototype = {
     }
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver,
-                                          Ci.nsISupportsWeakReference])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver,
+                                           Ci.nsISupportsWeakReference])
 };

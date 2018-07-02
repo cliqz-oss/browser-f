@@ -38,7 +38,10 @@ public:
                         gfx::Matrix4x4* aPerspectivePtr = nullptr,
                         const gfx::CompositionOp& aMixBlendMode = gfx::CompositionOp::OP_OVER,
                         bool aBackfaceVisible = true,
-                        bool aIsPreserve3D = false);
+                        bool aIsPreserve3D = false,
+                        const Maybe<gfx::Matrix4x4>& aTransformForScrollData = Nothing(),
+                        const wr::WrClipId* aClipNodeId = nullptr,
+                        bool aRasterizeLocally = false);
   // This version of the constructor should only be used at the root level
   // of the tree, so that we have a StackingContextHelper to pass down into
   // the RenderLayer traversal, but don't actually want it to push a stacking
@@ -48,24 +51,6 @@ public:
   // Pops the stacking context, if one was pushed during the constructor.
   ~StackingContextHelper();
 
-  // When this StackingContextHelper is in scope, this function can be used
-  // to convert a rect from the layer system's coordinate space to a LayoutRect
-  // that is relative to the stacking context. This is useful because most
-  // things that are pushed inside the stacking context need to be relative
-  // to the stacking context.
-  // We allow passing in a LayoutDeviceRect for convenience because in a lot of
-  // cases with WebRender display item generate the layout device space is the
-  // same as the layer space. (TODO: try to make this more explicit somehow).
-  // We also round the rectangle to ints after transforming since the output
-  // is the final destination rect.
-  wr::LayoutRect ToRelativeLayoutRect(const LayoutDeviceRect& aRect) const;
-  // Same but for points
-  wr::LayoutPoint ToRelativeLayoutPoint(const LayoutDevicePoint& aPoint) const
-  {
-    return wr::ToLayoutPoint(aPoint);
-  }
-
-
   // Export the inherited scale
   gfx::Size GetInheritedScale() const { return mScale; }
 
@@ -74,6 +59,8 @@ public:
     return mInheritedTransform;
   }
 
+  const Maybe<gfx::Matrix4x4>& GetTransformForScrollData() const;
+
   bool AffectsClipPositioning() const { return mAffectsClipPositioning; }
 
 private:
@@ -81,6 +68,9 @@ private:
   gfx::Size mScale;
   gfx::Matrix mInheritedTransform;
   bool mAffectsClipPositioning;
+  Maybe<gfx::Matrix4x4> mTransformForScrollData;
+  bool mIsPreserve3D;
+  bool mRasterizeLocally;
 };
 
 } // namespace layers

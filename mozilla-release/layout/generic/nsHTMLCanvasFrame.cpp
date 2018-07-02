@@ -84,7 +84,7 @@ public:
     *aSnap = false;
     nsHTMLCanvasFrame* f = static_cast<nsHTMLCanvasFrame*>(Frame());
     HTMLCanvasElement* canvas =
-      HTMLCanvasElement::FromContent(f->GetContent());
+      HTMLCanvasElement::FromNode(f->GetContent());
     nsRegion result;
     if (canvas->GetIsOpaque()) {
       // OK, the entire region painted by the canvas is opaque. But what is
@@ -173,7 +173,7 @@ public:
         // where it will be done when we build the display list for the iframe.
         // That happens in WebRenderCompositableHolder.
 
-        wr::LayoutRect r = aSc.ToRelativeLayoutRect(bounds);
+        wr::LayoutRect r = wr::ToRoundedLayoutRect(bounds);
         aBuilder.PushIFrame(r, !BackfaceIsHidden(), data->GetPipelineId().ref());
 
         gfx::Matrix4x4 scTransform;
@@ -211,7 +211,7 @@ public:
                                    LayerManager* aManager,
                                    const ContainerLayerParameters& aParameters) override
   {
-    if (HTMLCanvasElement::FromContent(mFrame->GetContent())->ShouldForceInactiveLayer(aManager))
+    if (HTMLCanvasElement::FromNode(mFrame->GetContent())->ShouldForceInactiveLayer(aManager))
       return LAYER_INACTIVE;
 
     // If compositing is cheap, just do that
@@ -225,9 +225,9 @@ public:
 
 
 nsIFrame*
-NS_NewHTMLCanvasFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewHTMLCanvasFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsHTMLCanvasFrame(aContext);
+  return new (aPresShell) nsHTMLCanvasFrame(aStyle);
 }
 
 NS_QUERYFRAME_HEAD(nsHTMLCanvasFrame)
@@ -258,7 +258,7 @@ nsHTMLCanvasFrame::GetCanvasSize()
 {
   nsIntSize size(0,0);
   HTMLCanvasElement *canvas =
-    HTMLCanvasElement::FromContentOrNull(GetContent());
+    HTMLCanvasElement::FromNodeOrNull(GetContent());
   if (canvas) {
     size = canvas->GetSize();
     MOZ_ASSERT(size.width >= 0 && size.height >= 0,

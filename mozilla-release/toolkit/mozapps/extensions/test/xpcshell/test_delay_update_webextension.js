@@ -16,8 +16,6 @@ if (AppConstants.platform == "win" && AppConstants.DEBUG) {
   Services.prefs.setBoolPref("extensions.webextensions.remote", false);
 }
 
-ChromeUtils.import("resource://testing-common/PromiseTestUtils.jsm");
-
 PromiseTestUtils.expectUncaughtRejection(/Message manager disconnected/);
 
 /* globals browser*/
@@ -33,15 +31,11 @@ const DEFER_ID = "test_delay_update_defer_webext@tests.mozilla.org";
 const NOUPDATE_ID = "test_no_update_webext@tests.mozilla.org";
 
 // Create and configure the HTTP server.
-let testserver = createHttpServer();
-gPort = testserver.identity.primaryPort;
-mapFile("/data/test_delay_updates_complete.json", testserver);
-mapFile("/data/test_delay_updates_ignore.json", testserver);
-mapFile("/data/test_delay_updates_defer.json", testserver);
-mapFile("/data/test_no_update.json", testserver);
+var testserver = AddonTestUtils.createHttpServer({hosts: ["example.com"]});
+testserver.registerDirectory("/data/", do_get_file("data"));
 testserver.registerDirectory("/addons/", do_get_file("addons"));
 
-createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "42");
+createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "42", "42");
 
 // add-on registers upgrade listener, and ignores update.
 add_task(async function delay_updates_ignore() {
@@ -54,7 +48,7 @@ add_task(async function delay_updates_ignore() {
       "applications": {
         "gecko": {
           "id": IGNORE_ID,
-          "update_url": `http://localhost:${gPort}/data/test_delay_updates_ignore.json`,
+          "update_url": `http://example.com/data/test_delay_updates_ignore.json`,
         },
       },
     },
@@ -133,7 +127,7 @@ add_task(async function delay_updates_complete() {
       "applications": {
         "gecko": {
           "id": COMPLETE_ID,
-          "update_url": `http://localhost:${gPort}/data/test_delay_updates_complete.json`,
+          "update_url": `http://example.com/data/test_delay_updates_complete.json`,
         },
       },
     },
@@ -196,7 +190,7 @@ add_task(async function delay_updates_defer() {
       "applications": {
         "gecko": {
           "id": DEFER_ID,
-          "update_url": `http://localhost:${gPort}/data/test_delay_updates_defer.json`,
+          "update_url": `http://example.com/data/test_delay_updates_defer.json`,
         },
       },
     },
@@ -292,7 +286,7 @@ add_task(async function runtime_reload() {
       "applications": {
         "gecko": {
           "id": NOUPDATE_ID,
-          "update_url": `http://localhost:${gPort}/data/test_no_update.json`,
+          "update_url": `http://example.com/data/test_no_update.json`,
         },
       },
     },

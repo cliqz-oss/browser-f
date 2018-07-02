@@ -10,7 +10,7 @@ const { Cc, Ci } = require("chrome");
 const Services = require("Services");
 const { BreakpointActor, setBreakpointAtEntryPoints } = require("devtools/server/actors/breakpoint");
 const { OriginalLocation, GeneratedLocation } = require("devtools/server/actors/common");
-const { createValueGrip, arrayBufferGrip } = require("devtools/server/actors/object");
+const { createValueGrip } = require("devtools/server/actors/object/utils");
 const { ActorClassWithSpec } = require("devtools/shared/protocol");
 const DevToolsUtils = require("devtools/shared/DevToolsUtils");
 const { assert, fetch } = DevToolsUtils;
@@ -20,6 +20,7 @@ const { sourceSpec } = require("devtools/shared/specs/source");
 loader.lazyRequireGetter(this, "SourceMapConsumer", "source-map", true);
 loader.lazyRequireGetter(this, "SourceMapGenerator", "source-map", true);
 loader.lazyRequireGetter(this, "mapURIToAddonID", "devtools/server/actors/utils/map-uri-to-addon-id");
+loader.lazyRequireGetter(this, "arrayBufferGrip", "devtools/server/actors/array-buffer", true);
 
 function isEvalSource(source) {
   let introType = source.introductionType;
@@ -139,7 +140,7 @@ function resolveURIToLocalPath(uri) {
 let SourceActor = ActorClassWithSpec(sourceSpec, {
   typeName: "source",
 
-  initialize: function ({ source, thread, originalUrl, generatedSource,
+  initialize: function({ source, thread, originalUrl, generatedSource,
                           isInlineSource, contentType }) {
     this._threadActor = thread;
     this._originalUrl = originalUrl;
@@ -219,7 +220,7 @@ let SourceActor = ActorClassWithSpec(sourceSpec, {
     return true;
   },
 
-  form: function () {
+  form: function() {
     let source = this.source || this.generatedSource;
     // This might not have a source or a generatedSource because we
     // treat HTML pages with inline scripts as a special SourceActor
@@ -244,13 +245,13 @@ let SourceActor = ActorClassWithSpec(sourceSpec, {
     };
   },
 
-  destroy: function () {
+  destroy: function() {
     if (this.registeredPool && this.registeredPool.sourceActors) {
       delete this.registeredPool.sourceActors[this.actorID];
     }
   },
 
-  _mapSourceToAddon: function () {
+  _mapSourceToAddon: function() {
     let nsuri;
     try {
       nsuri = Services.io.newURI(this.url.split(" -> ").pop());
@@ -299,7 +300,7 @@ let SourceActor = ActorClassWithSpec(sourceSpec, {
     }
   },
 
-  _reportLoadSourceError: function (error, map = null) {
+  _reportLoadSourceError: function(error, map = null) {
     try {
       DevToolsUtils.reportException("SourceActor", error);
 
@@ -332,7 +333,7 @@ let SourceActor = ActorClassWithSpec(sourceSpec, {
     }
   },
 
-  _getSourceText: function () {
+  _getSourceText: function() {
     let toResolvedContent = t => ({
       content: t,
       contentType: this._contentType
@@ -403,10 +404,6 @@ let SourceActor = ActorClassWithSpec(sourceSpec, {
         if (loadFromCache &&
           webNav.currentDocumentChannel instanceof Ci.nsICacheInfoChannel) {
           cacheKey = webNav.currentDocumentChannel.cacheKey;
-          assert(
-            cacheKey,
-            "Could not fetch the cacheKey from the related document."
-          );
         }
       }
 
@@ -432,7 +429,7 @@ let SourceActor = ActorClassWithSpec(sourceSpec, {
    * Get all executable lines from the current source
    * @return Array - Executable lines of the current script
    **/
-  getExecutableLines: function () {
+  getExecutableLines: function() {
     function sortLines(lines) {
       // Converting the Set into an array
       lines = [...lines];
@@ -473,7 +470,7 @@ let SourceActor = ActorClassWithSpec(sourceSpec, {
    * @param Boolean onlyLine - will return only the line number
    * @return Set - Executable offsets/lines of the script
    **/
-  getExecutableOffsets: function (source, onlyLine) {
+  getExecutableOffsets: function(source, onlyLine) {
     let offsets = new Set();
     for (let s of this.dbg.findScripts({ source })) {
       for (let offset of s.getAllColumnOffsets()) {
@@ -487,7 +484,7 @@ let SourceActor = ActorClassWithSpec(sourceSpec, {
   /**
    * Handler for the "source" packet.
    */
-  onSource: function () {
+  onSource: function() {
     return Promise.resolve(this._init)
       .then(this._getSourceText)
       .then(({ content, contentType }) => {
@@ -514,7 +511,7 @@ let SourceActor = ActorClassWithSpec(sourceSpec, {
   /**
    * Handler for the "prettyPrint" packet.
    */
-  prettyPrint: function (indent) {
+  prettyPrint: function(indent) {
     this.threadActor.sources.prettyPrint(this.url, indent);
     return this._getSourceText()
       .then(this._sendToPrettyPrintWorker(indent))
@@ -545,7 +542,7 @@ let SourceActor = ActorClassWithSpec(sourceSpec, {
    *          is resolved with `{ code, mappings }` where `code` is the pretty
    *          printed code, and `mappings` is an array of source mappings.
    */
-  _sendToPrettyPrintWorker: function (indent) {
+  _sendToPrettyPrintWorker: function(indent) {
     return ({ content }) => {
       return this.prettyPrintWorker.performTask("pretty-print", {
         url: this.url,
@@ -563,7 +560,7 @@ let SourceActor = ActorClassWithSpec(sourceSpec, {
    *
    * Note that the source map is modified in place.
    */
-  _invertSourceMap: function ({ code, mappings }) {
+  _invertSourceMap: function({ code, mappings }) {
     const generator = new SourceMapGenerator({ file: this.url });
     return DevToolsUtils.yieldingEach(mappings._array, m => {
       let mapping = {
@@ -598,7 +595,7 @@ let SourceActor = ActorClassWithSpec(sourceSpec, {
    * pretty printing a source mapped source, we need to compose the existing
    * source map with our new one.
    */
-  _encodeAndSetSourceMapURL: function ({ map: sm }) {
+  _encodeAndSetSourceMapURL: function({ map: sm }) {
     let source = this.generatedSource || this.source;
     let sources = this.threadActor.sources;
 
@@ -624,7 +621,7 @@ let SourceActor = ActorClassWithSpec(sourceSpec, {
   /**
    * Handler for the "disablePrettyPrint" packet.
    */
-  disablePrettyPrint: function () {
+  disablePrettyPrint: function() {
     let source = this.generatedSource || this.source;
     let sources = this.threadActor.sources;
 
@@ -644,7 +641,7 @@ let SourceActor = ActorClassWithSpec(sourceSpec, {
   /**
    * Handler for the "blackbox" packet.
    */
-  blackbox: function () {
+  blackbox: function() {
     this.threadActor.sources.blackBox(this.url);
     if (this.threadActor.state == "paused"
         && this.threadActor.youngestFrame
@@ -657,8 +654,24 @@ let SourceActor = ActorClassWithSpec(sourceSpec, {
   /**
    * Handler for the "unblackbox" packet.
    */
-  unblackbox: function () {
+  unblackbox: function() {
     this.threadActor.sources.unblackBox(this.url);
+  },
+
+  /**
+   * Handler for the "setPausePoints" packet.
+   *
+   * @param Array pausePoints
+   *        A dictionary of pausePoint objects
+   *
+   *        type PausePoints = {
+   *          line: {
+   *            column: { break?: boolean, step?: boolean }
+   *          }
+   *        }
+   */
+  setPausePoints: function(pausePoints) {
+    this.pausePoints = pausePoints;
   },
 
   /**
@@ -677,7 +690,7 @@ let SourceActor = ActorClassWithSpec(sourceSpec, {
    *          A promise that resolves to a JSON object representing the
    *          response.
    */
-  setBreakpoint: function (line, column, condition, noSliding) {
+  setBreakpoint: function(line, column, condition, noSliding) {
     if (this.threadActor.state !== "paused") {
       let errorObject = {
         error: "wrongState",
@@ -723,7 +736,7 @@ let SourceActor = ActorClassWithSpec(sourceSpec, {
    * @returns BreakpointActor
    *          A BreakpointActor representing the breakpoint.
    */
-  _getOrCreateBreakpointActor: function (originalLocation, condition, noSliding) {
+  _getOrCreateBreakpointActor: function(originalLocation, condition, noSliding) {
     let actor = this.breakpointActorMap.getActor(originalLocation);
     if (!actor) {
       actor = new BreakpointActor(this.threadActor, originalLocation);
@@ -758,7 +771,7 @@ let SourceActor = ActorClassWithSpec(sourceSpec, {
    *
    * @returns A Promise that resolves to the given BreakpointActor.
    */
-  _setBreakpoint: function (actor, noSliding) {
+  _setBreakpoint: function(actor, noSliding) {
     const { originalLocation } = actor;
     const { originalLine, originalSourceActor } = originalLocation;
 
@@ -859,7 +872,7 @@ let SourceActor = ActorClassWithSpec(sourceSpec, {
       });
   },
 
-  _setBreakpointAtAllGeneratedLocations: function (actor, generatedLocations) {
+  _setBreakpointAtAllGeneratedLocations: function(actor, generatedLocations) {
     let success = false;
     for (let generatedLocation of generatedLocations) {
       if (this._setBreakpointAtGeneratedLocation(
@@ -886,7 +899,7 @@ let SourceActor = ActorClassWithSpec(sourceSpec, {
    * @returns A Boolean that is true if the BreakpointActor was set as a
    *          breakpoint handler on at least one script, and false otherwise.
    */
-  _setBreakpointAtGeneratedLocation: function (actor, generatedLocation) {
+  _setBreakpointAtGeneratedLocation: function(actor, generatedLocation) {
     let {
       generatedSourceActor,
       generatedLine,

@@ -102,9 +102,9 @@ nsBulletFrame::IsSelfEmpty()
 }
 
 /* virtual */ void
-nsBulletFrame::DidSetStyleContext(nsStyleContext* aOldStyleContext)
+nsBulletFrame::DidSetComputedStyle(ComputedStyle* aOldComputedStyle)
 {
-  nsFrame::DidSetStyleContext(aOldStyleContext);
+  nsFrame::DidSetComputedStyle(aOldComputedStyle);
 
   imgRequestProxy *newRequest = StyleList()->GetListStyleImage();
 
@@ -148,17 +148,17 @@ nsBulletFrame::DidSetStyleContext(nsStyleContext* aOldStyleContext)
       RegisterImageRequest(/* aKnownToBeAnimated = */ false);
     }
   } else {
-    // No image request on the new style context.
+    // No image request on the new ComputedStyle.
     DeregisterAndCancelImageRequest();
   }
 
 #ifdef ACCESSIBILITY
   // Update the list bullet accessible. If old style list isn't available then
   // no need to update the accessible tree because it's not created yet.
-  if (aOldStyleContext) {
+  if (aOldComputedStyle) {
     nsAccessibilityService* accService = nsIPresShell::AccService();
     if (accService) {
-      const nsStyleList* oldStyleList = aOldStyleContext->PeekStyleList();
+      const nsStyleList* oldStyleList = aOldComputedStyle->PeekStyleList();
       if (oldStyleList) {
         bool hadBullet = oldStyleList->GetListStyleImage() ||
           !oldStyleList->mCounterStyle->IsNone();
@@ -525,7 +525,7 @@ BulletRenderer::CreateWebRenderCommandsForImage(nsDisplayItem* aItem,
     return true;  // Nothing to do
   }
 
-  wr::LayoutRect dest = aSc.ToRelativeLayoutRect(destRect);
+  wr::LayoutRect dest = wr::ToRoundedLayoutRect(destRect);
 
   aBuilder.PushImage(dest,
                      dest,
@@ -545,7 +545,7 @@ BulletRenderer::CreateWebRenderCommandsForPath(nsDisplayItem* aItem,
                                                nsDisplayListBuilder* aDisplayListBuilder)
 {
   MOZ_ASSERT(IsPathType());
-  wr::LayoutRect dest = aSc.ToRelativeLayoutRect(mPathRect);
+  wr::LayoutRect dest = wr::ToRoundedLayoutRect(mPathRect);
   auto color = wr::ToColorF(ToDeviceColor(mColor));
   bool isBackfaceVisible = !aItem->BackfaceIsHidden();
   switch (mListStyleType) {
@@ -631,14 +631,6 @@ public:
     return mFrame->GetVisualOverflowRectRelativeToSelf() + ToReferenceFrame();
   }
 
-  virtual LayerState GetLayerState(nsDisplayListBuilder* aBuilder,
-                                   LayerManager* aManager,
-                                   const ContainerLayerParameters& aParameters) override;
-
-  virtual already_AddRefed<Layer> BuildLayer(nsDisplayListBuilder* aBuilder,
-                                             LayerManager* aManager,
-                                             const ContainerLayerParameters& aParameters) override;
-
   virtual bool CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aBuilder,
                                        mozilla::wr::IpcResourceUpdateQueue&,
                                        const StackingContextHelper& aSc,
@@ -691,56 +683,6 @@ public:
 protected:
   Maybe<BulletRenderer> mBulletRenderer;
 };
-
-LayerState
-nsDisplayBullet::GetLayerState(nsDisplayListBuilder* aBuilder,
-                               LayerManager* aManager,
-                               const ContainerLayerParameters& aParameters)
-{
-  if (!ShouldUseAdvancedLayer(aManager, gfxPrefs::LayersAllowBulletLayers)) {
-    return LAYER_NONE;
-  }
-  RefPtr<gfxContext> screenRefCtx = gfxContext::CreateOrNull(
-    gfxPlatform::GetPlatform()->ScreenReferenceDrawTarget().get());
-
-  Maybe<BulletRenderer> br = static_cast<nsBulletFrame*>(mFrame)->
-    CreateBulletRenderer(*screenRefCtx, ToReferenceFrame());
-
-  if (!br) {
-    return LAYER_NONE;
-  }
-
-  if (br->IsImageType()) {
-    uint32_t flags = aBuilder->ShouldSyncDecodeImages()
-                   ? imgIContainer::FLAG_SYNC_DECODE
-                   : imgIContainer::FLAG_NONE;
-
-    if (!br->IsImageContainerAvailable(aManager, flags)) {
-      return LAYER_NONE;
-    }
-  }
-
-  if (br->IsTextType()) {
-    if (!br->BuildGlyphForText(this, mDisableSubpixelAA)) {
-      return LAYER_NONE;
-    }
-  }
-
-  mBulletRenderer = br;
-  return LAYER_ACTIVE;
-}
-
-already_AddRefed<layers::Layer>
-nsDisplayBullet::BuildLayer(nsDisplayListBuilder* aBuilder,
-                            LayerManager* aManager,
-                            const ContainerLayerParameters& aContainerParameters)
-{
-  if (!mBulletRenderer) {
-    return nullptr;
-  }
-
-  return BuildDisplayItemLayer(aBuilder, aManager, aContainerParameters);
-}
 
 bool
 nsDisplayBullet::CreateWebRenderCommands(wr::DisplayListBuilder& aBuilder,
@@ -974,7 +916,7 @@ nsBulletFrame::SetListItemOrdinal(int32_t aNextOrdinal,
   nsIContent* parentContent = GetParent()->GetContent();
   if (parentContent) {
     nsGenericHTMLElement *hc =
-      nsGenericHTMLElement::FromContent(parentContent);
+      nsGenericHTMLElement::FromNode(parentContent);
     if (hc) {
       const nsAttrValue* attr = hc->GetParsedAttr(nsGkAtoms::value);
       if (attr && attr->Type() == nsAttrValue::eInteger) {

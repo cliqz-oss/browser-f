@@ -16,6 +16,8 @@ StackingContextHelper::StackingContextHelper()
   : mBuilder(nullptr)
   , mScale(1.0f, 1.0f)
   , mAffectsClipPositioning(false)
+  , mIsPreserve3D(false)
+  , mRasterizeLocally(false)
 {
   // mOrigin remains at 0,0
 }
@@ -31,18 +33,35 @@ StackingContextHelper::StackingContextHelper(const StackingContextHelper& aParen
                                              gfx::Matrix4x4* aPerspectivePtr,
                                              const gfx::CompositionOp& aMixBlendMode,
                                              bool aBackfaceVisible,
-                                             bool aIsPreserve3D)
+                                             bool aIsPreserve3D,
+                                             const Maybe<gfx::Matrix4x4>& aTransformForScrollData,
+                                             const wr::WrClipId* aClipNodeId,
+                                             bool aRasterizeLocally)
   : mBuilder(&aBuilder)
   , mScale(1.0f, 1.0f)
+  , mTransformForScrollData(aTransformForScrollData)
+  , mIsPreserve3D(aIsPreserve3D)
+  , mRasterizeLocally(aRasterizeLocally || aParentSC.mRasterizeLocally)
 {
-  // Compute scale for fallback rendering.
+  // Compute scale for fallback rendering. We don't try to guess a scale for 3d
+  // transformed items
   gfx::Matrix transform2d;
-  if (aBoundTransform && aBoundTransform->CanDraw2D(&transform2d)) {
+  if (aBoundTransform && aBoundTransform->CanDraw2D(&transform2d)
+      && !aPerspectivePtr
+      && !aParentSC.mIsPreserve3D) {
     mInheritedTransform = transform2d * aParentSC.mInheritedTransform;
     mScale = mInheritedTransform.ScaleFactors(true);
+  } else {
+    mInheritedTransform = aParentSC.mInheritedTransform;
+    mScale = aParentSC.mScale;
   }
 
+  auto rasterSpace = mRasterizeLocally
+    ? wr::GlyphRasterSpace::Local(std::max(mScale.width, mScale.height))
+    : wr::GlyphRasterSpace::Screen();
+
   mBuilder->PushStackingContext(wr::ToLayoutRect(aBounds),
+                                aClipNodeId,
                                 aAnimation,
                                 aOpacityPtr,
                                 aTransformPtr,
@@ -50,7 +69,8 @@ StackingContextHelper::StackingContextHelper(const StackingContextHelper& aParen
                                 aPerspectivePtr,
                                 wr::ToMixBlendMode(aMixBlendMode),
                                 aFilters,
-                                aBackfaceVisible);
+                                aBackfaceVisible,
+                                rasterSpace);
 
   mAffectsClipPositioning =
       (aTransformPtr && !aTransformPtr->IsIdentity()) ||
@@ -64,12 +84,10 @@ StackingContextHelper::~StackingContextHelper()
   }
 }
 
-wr::LayoutRect
-StackingContextHelper::ToRelativeLayoutRect(const LayoutDeviceRect& aRect) const
+const Maybe<gfx::Matrix4x4>&
+StackingContextHelper::GetTransformForScrollData() const
 {
-  auto rect = aRect;
-  rect.Round();
-  return wr::ToLayoutRect(rect);
+  return mTransformForScrollData;
 }
 
 } // namespace layers

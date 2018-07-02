@@ -4,6 +4,9 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
+<!-- import-globals-from controller.js -->
+<!-- import-globals-from treeView.js -->
+
 <bindings id="placesTreeBindings"
           xmlns="http://www.mozilla.org/xbl"
           xmlns:xbl="http://www.mozilla.org/xbl"
@@ -80,8 +83,8 @@
           // We do not yet support searching into grouped queries or into
           // tag containers, so we must fall to the default case.
           if (PlacesUtils.nodeIsHistoryContainer(queryNode) ||
-              options.resultType == options.RESULTS_AS_TAG_QUERY ||
-              options.resultType == options.RESULTS_AS_TAG_CONTENTS ||
+              PlacesUtils.nodeIsTagQuery(queryNode) ||
+              options.resultType == options.RESULTS_AS_TAGS_ROOT ||
               options.resultType == options.RESULTS_AS_ROOTS_QUERY)
             options.resultType = options.RESULTS_AS_URI;
 
@@ -95,17 +98,16 @@
 
           options.includeHidden = !!includeHidden;
 
-          this.load([query], options);
+          this.load(query, options);
         ]]></body>
       </method>
 
       <method name="load">
-        <parameter name="queries"/>
+        <parameter name="query"/>
         <parameter name="options"/>
         <body><![CDATA[
           let result = PlacesUtils.history
-                                  .executeQueries(queries, queries.length,
-                                                  options);
+                                  .executeQuery(query, options);
           let callback;
           if (this.flatList) {
             let onOpenFlatContainer = this.onOpenFlatContainer;
@@ -209,7 +211,7 @@
           }
 
           var container = this.result.root;
-          NS_ASSERT(container, "No result, cannot select place URI!");
+          console.assert(container, "No result, cannot select place URI!");
           if (!container)
             return;
 
@@ -285,16 +287,9 @@
         <setter><![CDATA[
           this.setAttribute("place", val);
 
-          var queriesRef = { };
-          var queryCountRef = { };
-          var optionsRef = { };
-          PlacesUtils.history.queryStringToQueries(val, queriesRef, queryCountRef, optionsRef);
-          if (queryCountRef.value == 0)
-            queriesRef.value = [PlacesUtils.history.getNewQuery()];
-          if (!optionsRef.value)
-            optionsRef.value = PlacesUtils.history.getNewQueryOptions();
-
-          this.load(queriesRef.value, optionsRef.value);
+          let query = {}, options = {};
+          PlacesUtils.history.queryStringToQuery(val, query, options);
+          this.load(query.value, options.value);
 
           return val;
         ]]></setter>
@@ -479,7 +474,7 @@
           var resultview = this.view;
           var container = result.root;
           var dropNearNode = null;
-          NS_ASSERT(container, "null container");
+          console.assert(container, "null container");
           // When there's no selection, assume the container is the container
           // the view is populated from (i.e. the result's itemId).
           if (index != -1) {
@@ -533,13 +528,8 @@
           if (this.controller.disallowInsertion(container))
             return null;
 
-          // TODO (Bug 1160193): properly support dropping on a tag root.
-          let tagName = null;
-          if (PlacesUtils.nodeIsTagQuery(container)) {
-            tagName = container.title;
-            if (!tagName)
-              return null;
-          }
+          let tagName = PlacesUtils.nodeIsTagQuery(container) ?
+                          PlacesUtils.asQuery(container).query.tags[0] : null;
 
           return new PlacesInsertionPoint({
             parentId: PlacesUtils.getConcreteItemId(container),
@@ -632,7 +622,7 @@
             // caller. We support the "AllBookmarks" case to allow callers to
             // specify just the top-level bookmark folders.
             let shouldOpen = aOpenContainers && (PlacesUtils.nodeIsFolder(node) ||
-              (PlacesUtils.nodeIsQuery(node) && node.itemId == PlacesUIUtils.leftPaneQueries.AllBookmarks));
+              (PlacesUtils.nodeIsQuery(node) && node.bookmarkGuid == PlacesUIUtils.virtualAllBookmarksGuid));
 
             PlacesUtils.asContainer(node);
             if (!node.containerOpen && !shouldOpen)

@@ -7,7 +7,7 @@
 
 nsHtml5AtomEntry::nsHtml5AtomEntry(KeyTypePointer aStr)
   : nsStringHashKey(aStr)
-  , mAtom(new nsAtom(nsAtom::AtomKind::HTML5Atom, *aStr, 0))
+  , mAtom(new nsDynamicAtom(*aStr))
 {
 }
 
@@ -31,9 +31,7 @@ nsHtml5AtomTable::nsHtml5AtomTable()
 #endif
 }
 
-nsHtml5AtomTable::~nsHtml5AtomTable()
-{
-}
+nsHtml5AtomTable::~nsHtml5AtomTable() {}
 
 nsAtom*
 nsHtml5AtomTable::GetAtom(const nsAString& aKey)

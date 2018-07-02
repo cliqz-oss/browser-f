@@ -88,18 +88,6 @@ class WebPlatformTest(TestingMixin, MercurialScript, BlobUploadMixin, CodeCovera
             "default": False,
             "help": "Forcibly enable single thread traversal in Stylo with STYLO_THREADS=1"}
          ],
-        [["--enable-stylo"], {
-            "action": "store_true",
-            "dest": "enable_stylo",
-            "default": False,
-            "help": "Run tests with Stylo enabled"}
-         ],
-        [["--disable-stylo"], {
-            "action": "store_true",
-            "dest": "disable_stylo",
-            "default": False,
-            "help": "Run tests with Stylo disabled"}
-         ],
     ] + copy.deepcopy(testing_config_options) + \
         copy.deepcopy(blobupload_config_options) + \
         copy.deepcopy(code_coverage_config_options)
@@ -230,7 +218,7 @@ class WebPlatformTest(TestingMixin, MercurialScript, BlobUploadMixin, CodeCovera
             paths = [os.path.join(dirs["abs_wpttest_dir"], os.path.relpath(p, prefix))
                      for p in paths if p.startswith(prefix)]
             cmd.extend(paths)
-        else:
+        elif not self.verify_enabled:
             for opt in ["total_chunks", "this_chunk"]:
                 val = c.get(opt)
                 if val:
@@ -322,63 +310,57 @@ class WebPlatformTest(TestingMixin, MercurialScript, BlobUploadMixin, CodeCovera
             env['MOZ_HEADLESS_WIDTH'] = self.config['headless_width']
             env['MOZ_HEADLESS_HEIGHT'] = self.config['headless_height']
 
-        if self.config['disable_stylo']:
-            if self.config['single_stylo_traversal']:
-                self.fatal("--disable-stylo conflicts with --single-stylo-traversal")
-            if self.config['enable_stylo']:
-                self.fatal("--disable-stylo conflicts with --enable-stylo")
-
         if self.config['single_stylo_traversal']:
             env['STYLO_THREADS'] = '1'
         else:
             env['STYLO_THREADS'] = '4'
 
-        if self.config['enable_stylo']:
-            env['STYLO_FORCE_ENABLED'] = '1'
-        if self.config['disable_stylo']:
-            env['STYLO_FORCE_DISABLED'] = '1'
-
         env = self.query_env(partial_env=env, log_level=INFO)
 
         start_time = datetime.now()
-        max_verify_time = timedelta(minutes=60)
-        max_verify_tests = 10
-        verified_tests = 0
+        max_per_test_time = timedelta(minutes=60)
+        max_per_test_tests = 10
+        executed_tests = 0
 
-        if self.config.get("verify") is True:
-            verify_suites = self.query_verify_category_suites(None, None)
-            if "wdspec" in verify_suites:
+        if self.per_test_coverage or self.verify_enabled:
+            suites = self.query_per_test_category_suites(None, None)
+            if "wdspec" in suites:
                 # geckodriver is required for wdspec, but not always available
                 geckodriver_path = self._query_geckodriver()
                 if not geckodriver_path or not os.path.isfile(geckodriver_path):
-                    verify_suites.remove("wdspec")
-                    self.info("Test verification skipping 'wdspec' tests - no geckodriver")
+                    suites.remove("wdspec")
+                    self.info("Skipping 'wdspec' tests - no geckodriver")
         else:
             test_types = self.config.get("test_type", [])
-            verify_suites = [None]
-        for verify_suite in verify_suites:
-            if verify_suite:
-                test_types = [verify_suite]
-            for verify_args in self.query_verify_args(verify_suite):
-                if (datetime.now() - start_time) > max_verify_time:
-                    # Verification has run out of time. That is okay! Stop running
-                    # tests so that a task timeout is not triggered, and so that
+            suites = [None]
+        for suite in suites:
+            if suite:
+                test_types = [suite]
+
+            summary = None
+            for per_test_args in self.query_args(suite):
+                if (datetime.now() - start_time) > max_per_test_time:
+                    # Running tests has run out of time. That is okay! Stop running
+                    # them so that a task timeout is not triggered, and so that
                     # (partial) results are made available in a timely manner.
-                    self.info("TinderboxPrint: Verification too long: Not all tests "
-                              "were verified.<br/>")
+                    self.info("TinderboxPrint: Running tests took too long: Not all tests "
+                              "were executed.<br/>")
                     return
-                if verified_tests >= max_verify_tests:
+                if executed_tests >= max_per_test_tests:
                     # When changesets are merged between trees or many tests are
                     # otherwise updated at once, there probably is not enough time
-                    # to verify all tests, and attempting to do so may cause other
+                    # to run all tests, and attempting to do so may cause other
                     # problems, such as generating too much log output.
                     self.info("TinderboxPrint: Too many modified tests: Not all tests "
-                              "were verified.<br/>")
+                              "were executed.<br/>")
                     return
-                verified_tests = verified_tests + 1
+                executed_tests = executed_tests + 1
 
                 cmd = self._query_cmd(test_types)
-                cmd.extend(verify_args)
+                cmd.extend(per_test_args)
+
+                if self.per_test_coverage:
+                    gcov_dir, jsvm_dir = self.set_coverage_env(env)
 
                 return_code = self.run_command(cmd,
                                                cwd=dirs['abs_work_dir'],
@@ -386,11 +368,14 @@ class WebPlatformTest(TestingMixin, MercurialScript, BlobUploadMixin, CodeCovera
                                                output_parser=parser,
                                                env=env)
 
-                tbpl_status, log_level = parser.evaluate_parser(return_code)
+                if self.per_test_coverage:
+                    self.add_per_test_coverage_report(gcov_dir, jsvm_dir, suite, per_test_args[-1])
+
+                tbpl_status, log_level, summary = parser.evaluate_parser(return_code, summary)
                 self.buildbot_status(tbpl_status, level=log_level)
 
-                if len(verify_args) > 0:
-                    self.log_verify_status(verify_args[-1], tbpl_status, log_level)
+                if len(per_test_args) > 0:
+                    self.log_per_test_status(per_test_args[-1], tbpl_status, log_level)
 
 
 # main {{{1

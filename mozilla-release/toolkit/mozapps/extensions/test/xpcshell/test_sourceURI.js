@@ -15,6 +15,7 @@ var addon = {
   id: "addon@tests.mozilla.org",
   version: "1.0",
   name: "Test",
+  bootstrap: true,
   targetApplications: [{
     id: "xpcshell@tests.mozilla.org",
     minVersion: "1",
@@ -34,7 +35,7 @@ function backgroundUpdate(aCallback) {
   AddonManagerPrivate.backgroundUpdateCheck();
 }
 
-function run_test() {
+async function run_test() {
   do_test_pending();
 
   const GETADDONS_RESPONSE = {
@@ -80,20 +81,18 @@ function run_test() {
   writeInstallRDFForExtension(addon, profileDir);
   startupManager();
 
-  AddonManager.getAddonByID("addon@tests.mozilla.org", function(a) {
-    Assert.notEqual(a, null);
-    Assert.equal(a.sourceURI, null);
+  let a = await AddonManager.getAddonByID("addon@tests.mozilla.org");
+  Assert.notEqual(a, null);
+  Assert.equal(a.sourceURI, null);
 
-    backgroundUpdate(function() {
-      restartManager();
+  backgroundUpdate(async function() {
+    restartManager();
 
-      AddonManager.getAddonByID("addon@tests.mozilla.org", function(a2) {
-        Assert.notEqual(a2, null);
-        Assert.notEqual(a2.sourceURI, null);
-        Assert.equal(a2.sourceURI.spec, "http://www.example.com/testaddon.xpi");
+    let a2 = await AddonManager.getAddonByID("addon@tests.mozilla.org");
+    Assert.notEqual(a2, null);
+    Assert.notEqual(a2.sourceURI, null);
+    Assert.equal(a2.sourceURI.spec, "http://www.example.com/testaddon.xpi");
 
-        do_test_finished();
-      });
-    });
+    do_test_finished();
   });
 }

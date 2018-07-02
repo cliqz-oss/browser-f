@@ -419,16 +419,18 @@ var DownloadHistoryList = function(publicList, place) {
 
   // Start the asynchronous queries to retrieve history and session downloads.
   publicList.addView(this).catch(Cu.reportError);
-  let queries = {}, options = {};
-  PlacesUtils.history.queryStringToQueries(place, queries, {}, options);
-  if (!queries.value.length) {
-    queries.value = [PlacesUtils.history.getNewQuery()];
-  }
+  let query = {}, options = {};
+  PlacesUtils.history.queryStringToQuery(place, query, options);
 
-  let result = PlacesUtils.history.executeQueries(queries.value,
-                                                  queries.value.length,
-                                                  options.value);
+  // NB: The addObserver call sets our nsINavHistoryResultObserver.result.
+  let result = PlacesUtils.history.executeQuery(query.value, options.value);
   result.addObserver(this);
+
+  // Our history result observer is long lived for fast shared views, so free
+  // the reference on shutdown to prevent leaks.
+  Services.obs.addObserver(() => {
+    this.result = null;
+  }, "quit-application-granted");
 };
 
 this.DownloadHistoryList.prototype = {

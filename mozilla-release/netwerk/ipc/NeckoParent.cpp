@@ -89,10 +89,6 @@ NeckoParent::NeckoParent()
   }
 }
 
-NeckoParent::~NeckoParent()
-{
-}
-
 static PBOverrideStatus
 PBOverrideStatusFromLoadContext(const SerializedLoadContext& aSerialized)
 {
@@ -355,11 +351,12 @@ NeckoParent::DeallocPStunAddrsRequestParent(PStunAddrsRequestParent* aActor)
 PAltDataOutputStreamParent*
 NeckoParent::AllocPAltDataOutputStreamParent(
         const nsCString& type,
+        const int64_t& predictedSize,
         PHttpChannelParent* channel)
 {
   HttpChannelParent* chan = static_cast<HttpChannelParent*>(channel);
   nsCOMPtr<nsIOutputStream> stream;
-  nsresult rv = chan->OpenAlternativeOutputStream(type, getter_AddRefs(stream));
+  nsresult rv = chan->OpenAlternativeOutputStream(type, predictedSize, getter_AddRefs(stream));
   AltDataOutputStreamParent* parent = new AltDataOutputStreamParent(stream);
   parent->AddRef();
   // If the return value was not NS_OK, the error code will be sent
@@ -979,9 +976,8 @@ NeckoParent::RecvGetExtensionStream(const URIParams& aURI,
 
   if (terminateSender) {
     return IPC_FAIL_NO_REASON(this);
-  } else {
-    return IPC_OK();
   }
+  return IPC_OK();
 }
 
 mozilla::ipc::IPCResult

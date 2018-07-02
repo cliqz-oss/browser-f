@@ -86,7 +86,7 @@ SVGStyleElement::UnbindFromTree(bool aDeep, bool aNullParent)
   nsCOMPtr<nsIDocument> oldDoc = GetUncomposedDoc();
   ShadowRoot* oldShadow = GetContainingShadow();
   SVGStyleElementBase::UnbindFromTree(aDeep, aNullParent);
-  UpdateStyleSheetInternal(oldDoc, oldShadow);
+  Unused << UpdateStyleSheetInternal(oldDoc, oldShadow);
 }
 
 nsresult
@@ -100,10 +100,7 @@ SVGStyleElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
     if (aName == nsGkAtoms::title ||
         aName == nsGkAtoms::media ||
         aName == nsGkAtoms::type) {
-      UpdateStyleSheetInternal(nullptr, nullptr, true);
-    } else if (aName == nsGkAtoms::scoped &&
-               OwnerDoc()->IsScopedStyleEnabled()) {
-      UpdateStyleSheetScopedness(!!aValue);
+      Unused << UpdateStyleSheetInternal(nullptr, nullptr, ForceUpdate::Yes);
     }
   }
 
@@ -162,7 +159,7 @@ void
 SVGStyleElement::ContentChanged(nsIContent* aContent)
 {
   if (nsContentUtils::IsInSameAnonymousTree(this, aContent)) {
-    UpdateStyleSheetInternal(nullptr, nullptr);
+    Unused << UpdateStyleSheetInternal(nullptr, nullptr);
   }
 }
 
@@ -183,49 +180,37 @@ SVGStyleElement::SetXmlspace(const nsAString & aXmlspace, ErrorResult& rv)
 void
 SVGStyleElement::GetMedia(nsAString & aMedia)
 {
-  GetAttr(kNameSpaceID_None, nsGkAtoms::media, aMedia);
+  GetAttr(nsGkAtoms::media, aMedia);
 }
 
 void
 SVGStyleElement::SetMedia(const nsAString& aMedia, ErrorResult& rv)
 {
-  rv = SetAttr(kNameSpaceID_None, nsGkAtoms::media, aMedia, true);
-}
-
-bool
-SVGStyleElement::Scoped() const
-{
-  return GetBoolAttr(nsGkAtoms::scoped);
-}
-
-void
-SVGStyleElement::SetScoped(bool aScoped, ErrorResult& rv)
-{
-  rv = SetBoolAttr(nsGkAtoms::scoped, aScoped);
+  SetAttr(nsGkAtoms::media, aMedia, rv);
 }
 
 void
 SVGStyleElement::GetType(nsAString & aType)
 {
-  GetAttr(kNameSpaceID_None, nsGkAtoms::type, aType);
+  GetAttr(nsGkAtoms::type, aType);
 }
 
 void
 SVGStyleElement::SetType(const nsAString& aType, ErrorResult& rv)
 {
-  rv = SetAttr(kNameSpaceID_None, nsGkAtoms::type, aType, true);
+  SetAttr(nsGkAtoms::type, aType, rv);
 }
 
 void
 SVGStyleElement::GetTitle(nsAString & aTitle)
 {
-  GetAttr(kNameSpaceID_None, nsGkAtoms::title, aTitle);
+  GetAttr(nsGkAtoms::title, aTitle);
 }
 
 void
 SVGStyleElement::SetTitle(const nsAString& aTitle, ErrorResult& rv)
 {
-  rv = SetAttr(kNameSpaceID_None, nsGkAtoms::title, aTitle, true);
+  SetAttr(nsGkAtoms::title, aTitle, rv);
 }
 
 //----------------------------------------------------------------------
@@ -243,7 +228,6 @@ void
 SVGStyleElement::GetStyleSheetInfo(nsAString& aTitle,
                                    nsAString& aType,
                                    nsAString& aMedia,
-                                   bool* aIsScoped,
                                    bool* aIsAlternate)
 {
   *aIsAlternate = false;
@@ -262,9 +246,6 @@ SVGStyleElement::GetStyleSheetInfo(nsAString& aTitle,
   if (aType.IsEmpty()) {
     aType.AssignLiteral("text/css");
   }
-
-  *aIsScoped = HasAttr(kNameSpaceID_None, nsGkAtoms::scoped) &&
-               OwnerDoc()->IsScopedStyleEnabled();
 }
 
 CORSMode

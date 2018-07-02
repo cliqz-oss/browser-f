@@ -109,7 +109,7 @@ const LibraryButton = {
     const {nextSibling} = libraryViewInsertionPoint;
     const item = win.document.createElement("toolbarbutton");
     item.className = "subviewbutton subviewbutton-iconic";
-    item.addEventListener("command", () => win.openUILinkIn(this.PAGE_TO_OPEN, "tab"));
+    item.addEventListener("command", () => win.openWebLinkIn(this.PAGE_TO_OPEN, "tab"));
     item.id = this.ITEM_ID;
     const iconURL = this.ICON_URL;
     item.setAttribute("image", iconURL);
@@ -121,9 +121,10 @@ const LibraryButton = {
 
 const APP_STARTUP = 1;
 const APP_SHUTDOWN = 2;
-let startupReason;
+let addonData, startupReason;
 
 function startup(data, reason) { // eslint-disable-line no-unused-vars
+  addonData = data;
   startupReason = reason;
   if (reason === APP_STARTUP) {
     appStartupObserver.register();
@@ -177,7 +178,7 @@ function handleStartup() {
 }
 
 function start(webExtension) {
-  return webExtension.startup(startupReason).then((api) => {
+  return webExtension.startup(startupReason, addonData).then((api) => {
     api.browser.runtime.onMessage.addListener(handleMessage);
     LibraryButton.init(webExtension);
     initPhotonPageAction(api, webExtension);

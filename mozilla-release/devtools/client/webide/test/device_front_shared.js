@@ -1,6 +1,8 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
+/* eslint no-unused-vars: ["error", {"args": "none", "vars": "local"}] */
+
 "use strict";
 
 var customName;
@@ -109,7 +111,7 @@ function addNewFieldInteger() {
   is(customValue.value, "", "Custom integer value reset");
 }
 
-var editFieldInteger = Task.async(function* () {
+var editFieldInteger = async function() {
   // Edit existing custom integer preference
   newField.value = 3;
   newField.click();
@@ -120,7 +122,7 @@ var editFieldInteger = Task.async(function* () {
   resetBtn.click();
 
   try {
-    yield iframe.contentWindow.configView._defaultField;
+    await iframe.contentWindow.configView._defaultField;
   } catch (err) {
     let fieldRow = doc.querySelector("#row-new-integer-field");
     if (!fieldRow) {
@@ -128,32 +130,32 @@ var editFieldInteger = Task.async(function* () {
     }
     ok(!found, "Custom field removed");
   }
-});
+};
 
-var resetExistingField = Task.async(function* (id) {
+var resetExistingField = async function(id) {
   let existing = doc.getElementById(id);
   existing.click();
   is(existing.checked, true, "Existing boolean value is correct");
   resetBtn = doc.getElementById("btn-" + id);
   resetBtn.click();
 
-  yield iframe.contentWindow.configView._defaultField;
+  await iframe.contentWindow.configView._defaultField;
 
   ok(resetBtn.classList.contains("hide"), true, "Reset button hidden");
   is(existing.checked, true, "Existing field reset");
-});
+};
 
-var resetNewField = Task.async(function* (id) {
+var resetNewField = async function(id) {
   let custom = doc.getElementById(id);
   custom.click();
   is(custom.value, "test", "New string value is correct");
   resetBtn = doc.getElementById("btn-" + id);
   resetBtn.click();
 
-  yield iframe.contentWindow.configView._defaultField;
+  await iframe.contentWindow.configView._defaultField;
 
   ok(resetBtn.classList.contains("hide"), true, "Reset button hidden");
-});
+};
 
 function addNewFieldBoolean() {
   customValueType.value = "boolean";
@@ -171,7 +173,7 @@ function addNewFieldBoolean() {
   ok(found, "Found new boolean field line");
 
   // Mouse event trigger
-  var mouseClick = new MouseEvent("click", {
+  let mouseClick = new MouseEvent("click", {
     canBubble: true,
     cancelable: true,
     view: doc.parent,

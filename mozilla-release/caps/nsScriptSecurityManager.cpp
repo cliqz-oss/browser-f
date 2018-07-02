@@ -1212,12 +1212,6 @@ nsScriptSecurityManager::CanCreateWrapper(JSContext *cx,
 {
 // XXX Special case for Exception ?
 
-    uint32_t flags;
-    if (aClassInfo && NS_SUCCEEDED(aClassInfo->GetFlags(&flags)) &&
-        (flags & nsIClassInfo::DOM_OBJECT)) {
-        return NS_OK;
-    }
-
     // We give remote-XUL whitelisted domains a free pass here. See bug 932906.
     JS::Rooted<JS::Realm*> contextRealm(cx, JS::GetCurrentRealmOrNull(cx));
     MOZ_RELEASE_ASSERT(contextRealm);
@@ -1227,20 +1221,6 @@ nsScriptSecurityManager::CanCreateWrapper(JSContext *cx,
 
     if (nsContentUtils::IsCallerChrome()) {
         return NS_OK;
-    }
-
-    // We want to expose nsIDOMXULCommandDispatcher and nsITreeSelection
-    // implementations in XBL scopes.
-    if (xpc::IsContentXBLScope(contextRealm)) {
-      nsCOMPtr<nsIDOMXULCommandDispatcher> dispatcher = do_QueryInterface(aObj);
-      if (dispatcher) {
-        return NS_OK;
-      }
-
-      nsCOMPtr<nsITreeSelection> treeSelection = do_QueryInterface(aObj);
-      if (treeSelection) {
-        return NS_OK;
-      }
     }
 
     //-- Access denied, report an error

@@ -10,6 +10,7 @@ use clip_scroll_tree::ClipScrollTree;
 use internal_types::FastHashSet;
 use resource_cache::{FontInstanceMap, TiledImageMap};
 use render_backend::DocumentView;
+use renderer::{PipelineInfo, SceneBuilderHooks};
 use scene::Scene;
 use std::sync::mpsc::{channel, Receiver, Sender};
 
@@ -22,6 +23,8 @@ pub enum SceneBuilderRequest {
         frame_ops: Vec<FrameMsg>,
         render: bool,
     },
+    WakeUp,
+    Flush(MsgSender<()>),
     Stop
 }
 
@@ -33,10 +36,21 @@ pub enum SceneBuilderResult {
         resource_updates: ResourceUpdates,
         frame_ops: Vec<FrameMsg>,
         render: bool,
+        result_tx: Option<Sender<SceneSwapResult>>,
     },
+    FlushComplete(MsgSender<()>),
+    Stopped,
 }
 
-/// Contains the the render backend data needed to build a scene.
+// Message from render backend to scene builder to indicate the
+// scene swap was completed. We need a separate channel for this
+// so that they don't get mixed with SceneBuilderRequest messages.
+pub enum SceneSwapResult {
+    Complete(Sender<()>),
+    Aborted,
+}
+
+/// Contains the render backend data needed to build a scene.
 pub struct SceneRequest {
     pub scene: Scene,
     pub view: DocumentView,
@@ -58,12 +72,14 @@ pub struct SceneBuilder {
     tx: Sender<SceneBuilderResult>,
     api_tx: MsgSender<ApiMsg>,
     config: FrameBuilderConfig,
+    hooks: Option<Box<SceneBuilderHooks + Send>>,
 }
 
 impl SceneBuilder {
     pub fn new(
         config: FrameBuilderConfig,
-        api_tx: MsgSender<ApiMsg>
+        api_tx: MsgSender<ApiMsg>,
+        hooks: Option<Box<SceneBuilderHooks + Send>>,
     ) -> (Self, Sender<SceneBuilderRequest>, Receiver<SceneBuilderResult>) {
         let (in_tx, in_rx) = channel();
         let (out_tx, out_rx) = channel();
@@ -73,6 +89,7 @@ impl SceneBuilder {
                 tx: out_tx,
                 api_tx,
                 config,
+                hooks,
             },
             in_tx,
             out_rx,
@@ -80,22 +97,39 @@ impl SceneBuilder {
     }
 
     pub fn run(&mut self) {
+        if let Some(ref hooks) = self.hooks {
+            hooks.register();
+        }
+
         loop {
             match self.rx.recv() {
                 Ok(msg) => {
                     if !self.process_message(msg) {
-                        return;
+                        break;
                     }
                 }
                 Err(_) => {
-                    return;
+                    break;
                 }
             }
+
+            if let Some(ref hooks) = self.hooks {
+                hooks.poke();
+            }
+        }
+
+        if let Some(ref hooks) = self.hooks {
+            hooks.deregister();
         }
     }
 
     fn process_message(&mut self, msg: SceneBuilderRequest) -> bool {
         match msg {
+            SceneBuilderRequest::WakeUp => {}
+            SceneBuilderRequest::Flush(tx) => {
+                self.tx.send(SceneBuilderResult::FlushComplete(tx)).unwrap();
+                let _ = self.api_tx.send(ApiMsg::WakeUp);
+            }
             SceneBuilderRequest::Transaction {
                 document_id,
                 scene,
@@ -109,17 +143,56 @@ impl SceneBuilder {
 
                 // TODO: pre-rasterization.
 
+                // We only need the pipeline info and the result channel if we
+                // have a hook callback *and* if this transaction actually built
+                // a new scene that is going to get swapped in. In other cases
+                // pipeline_info can be None and we can avoid some overhead from
+                // invoking the hooks and blocking on the channel.
+                let (pipeline_info, result_tx, result_rx) = match (&self.hooks, &built_scene) {
+                    (&Some(ref hooks), &Some(ref built)) => {
+                        let info = PipelineInfo {
+                            epochs: built.scene.pipeline_epochs.clone(),
+                            removed_pipelines: built.removed_pipelines.clone(),
+                        };
+                        let (tx, rx) = channel();
+
+                        hooks.pre_scene_swap();
+
+                        (Some(info), Some(tx), Some(rx))
+                    }
+                    _ => (None, None, None),
+                };
+
                 self.tx.send(SceneBuilderResult::Transaction {
                     document_id,
                     built_scene,
                     resource_updates,
                     frame_ops,
                     render,
+                    result_tx,
                 }).unwrap();
 
                 let _ = self.api_tx.send(ApiMsg::WakeUp);
+
+                if let Some(pipeline_info) = pipeline_info {
+                    // Block until the swap is done, then invoke the hook.
+                    let swap_result = result_rx.unwrap().recv();
+                    self.hooks.as_ref().unwrap().post_scene_swap(pipeline_info);
+                    // Once the hook is done, allow the RB thread to resume
+                    match swap_result {
+                        Ok(SceneSwapResult::Complete(resume_tx)) => {
+                            resume_tx.send(()).ok();
+                        },
+                        _ => (),
+                    };
+                }
             }
-            SceneBuilderRequest::Stop => { return false; }
+            SceneBuilderRequest::Stop => {
+                self.tx.send(SceneBuilderResult::Stopped).unwrap();
+                // We don't need to send a WakeUp to api_tx because we only
+                // get the Stop when the RenderBackend loop is exiting.
+                return false;
+            }
         }
 
         true

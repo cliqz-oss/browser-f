@@ -112,7 +112,7 @@ add_task(async function test_new_tab_opens() {
   panel.hidePopup();
   await popupHidden;
 
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
   await extension.unload();
 });
 
@@ -163,7 +163,7 @@ add_task(async function test_new_tab_ignore_settings() {
      "The New Tab notification is not set after ignoring the doorhanger");
 
   // Close the first tab and open another new tab.
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
   let newTabOpened = waitForNewTab();
   BrowserOpenTab();
   await newTabOpened;
@@ -173,7 +173,7 @@ add_task(async function test_new_tab_ignore_settings() {
      "The notification panel doesn't open after ignoring the doorhanger");
   is(gURLBar.focused, true, "The URL bar is focused with no doorhanger");
 
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
   await extension.unload();
 });
 
@@ -184,6 +184,7 @@ add_task(async function test_new_tab_keep_settings() {
   let extensionId = "newtabkeep@mochi.test";
   let manifest = {
     version: "1.0",
+    name: "New Tab Add-on",
     applications: {gecko: {id: extensionId}},
     chrome_url_overrides: {newtab: "keep.html"},
   };
@@ -202,6 +203,7 @@ add_task(async function test_new_tab_keep_settings() {
 
   await extension.startup();
 
+
   // Simulate opening the New Tab as a user would.
   let popupShown = promisePopupShown(panel);
   BrowserOpenTab();
@@ -215,11 +217,17 @@ add_task(async function test_new_tab_keep_settings() {
      "The New Tab notification is not set for this extension");
   is(panel.anchorNode.closest("toolbarbutton").id, "PanelUI-menu-button",
      "The doorhanger is anchored to the menu icon");
+  is(panel.querySelector("description").textContent,
+     "An extension,  New Tab Add-on, changed the page you see when you open a new tab.Learn more",
+     "The description includes the add-on name");
 
   // Click the Keep Changes button.
-  let popupHidden = promisePopupHidden(panel);
+  let confirmationSaved = TestUtils.waitForCondition(() => {
+    return ExtensionSettingsStore.getSetting(
+      "newTabNotification", extensionId, extensionId).value;
+  });
   clickKeepChanges(notification);
-  await popupHidden;
+  await confirmationSaved;
 
   // Ensure panel is closed and setting is updated.
   ok(panel.getAttribute("panelopen") != "true",
@@ -228,7 +236,7 @@ add_task(async function test_new_tab_keep_settings() {
      "The New Tab notification is set after keeping the changes");
 
   // Close the first tab and open another new tab.
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
   BrowserOpenTab();
   await extension.awaitMessage("newtab");
 
@@ -236,7 +244,7 @@ add_task(async function test_new_tab_keep_settings() {
   ok(panel.getAttribute("panelopen") != "true",
      "The notification panel is not opened after keeping the changes");
 
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
 
   let upgradedExtension = ExtensionTestUtils.loadExtension({
     manifest: Object.assign({}, manifest, {version: "2.0"}),
@@ -255,9 +263,13 @@ add_task(async function test_new_tab_keep_settings() {
   is(getNotificationSetting(extensionId).value, true,
      "The New Tab notification is set after keeping the changes");
 
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
   await upgradedExtension.unload();
   await extension.unload();
+
+  let confirmation = ExtensionSettingsStore.getSetting(
+    "newTabNotification", extensionId, extensionId);
+  is(confirmation, null, "The confirmation has been cleaned up");
 });
 
 add_task(async function test_new_tab_restore_settings() {
@@ -317,7 +329,7 @@ add_task(async function test_new_tab_restore_settings() {
   await TestUtils.waitForTick();
 
   // Reopen a browser tab and verify that there's no doorhanger.
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
   let newTabOpened = waitForNewTab();
   BrowserOpenTab();
   await newTabOpened;
@@ -339,7 +351,7 @@ add_task(async function test_new_tab_restore_settings() {
     AddonManager.addAddonListener(listener);
   });
   addon.userDisabled = false;
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
   await addonEnabled;
   await extension.unload();
 });
@@ -442,7 +454,7 @@ add_task(async function test_new_tab_restore_settings_multiple() {
   await TestUtils.waitForTick();
 
   // Reopen a browser tab and verify that there's no doorhanger.
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
   let newTabOpened = waitForNewTab();
   BrowserOpenTab();
   await newTabOpened;
@@ -450,7 +462,7 @@ add_task(async function test_new_tab_restore_settings_multiple() {
   ok(panel.getAttribute("panelopen") != "true",
      "The notification panel is not opened after keeping the changes");
 
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
 
   // FIXME: We need to enable the add-on so it gets cleared from the
   // ExtensionSettingsStore for now. See bug 1408226.
@@ -509,6 +521,6 @@ add_task(async function dontTemporarilyShowAboutExtensionPath() {
     is(content.document.body.textContent, "New tab!", "New tab page is loaded.");
   });
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
   await extension.unload();
 });

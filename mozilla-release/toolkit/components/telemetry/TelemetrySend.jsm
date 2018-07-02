@@ -25,8 +25,6 @@ ChromeUtils.import("resource://gre/modules/Services.jsm", this);
 ChromeUtils.import("resource://gre/modules/TelemetryUtils.jsm", this);
 ChromeUtils.import("resource://gre/modules/Timer.jsm", this);
 
-ChromeUtils.defineModuleGetter(this, "AsyncShutdown",
-                               "resource://gre/modules/AsyncShutdown.jsm");
 ChromeUtils.defineModuleGetter(this, "TelemetryStorage",
                                "resource://gre/modules/TelemetryStorage.jsm");
 ChromeUtils.defineModuleGetter(this, "TelemetryReportingPolicy",
@@ -89,12 +87,15 @@ const OVERDUE_PING_FILE_AGE = 7 * 24 * 60 * MS_IN_A_MINUTE; // 1 week
 
 // Strings to map from XHR.errorCode to TELEMETRY_SEND_FAILURE_TYPE.
 // Echoes XMLHttpRequestMainThread's ErrorType enum.
+// Make sure that any additions done to XHR_ERROR_TYPE enum are also mirrored in
+// TELEMETRY_SEND_FAILURE_TYPE's labels.
 const XHR_ERROR_TYPE = [
   "eOK",
   "eRequest",
   "eUnreachable",
   "eChannelOpen",
   "eRedirect",
+  "eTerminated",
 ];
 
 /**
@@ -650,7 +651,7 @@ var TelemetrySendImpl = {
     Services.obs.addObserver(this, TOPIC_QUIT_APPLICATION_GRANTED);
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsISupportsWeakReference]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsISupportsWeakReference]),
 
   async setup(testing) {
     this._log.trace("setup");
