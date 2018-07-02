@@ -1231,6 +1231,11 @@ endif
 # Cliqz additional distribution files
 CLIQZ_EXT_URL = "http://repository.cliqz.com/dist/$(CQZ_RELEASE_CHANNEL)/$(CQZ_VERSION)/$(MOZ_BUILD_DATE)/cliqz@cliqz.com.xpi"
 HTTPSE_EXT_URL = "http://repository.cliqz.com/dist/$(CQZ_RELEASE_CHANNEL)/$(CQZ_VERSION)/$(MOZ_BUILD_DATE)/https-everywhere@cliqz.com.xpi"
+CLIQZ_ULTRAPRIVATEMODE_EXT_URL = "https://cdn.cliqz.com/browser-f/fun-demo/ultraprivatemode.cliqz.com.xpi"
+TOR_WIN_URL = "https://cdn.cliqz.com/browser-f/fun-demo/tor_windows32_7.5.5.tar"
+TOR_LINUX64_URL = "https://cdn.cliqz.com/browser-f/fun-demo/tor_linux64_7.5.5.tar"
+TOR_LINUX32_URL = "https://cdn.cliqz.com/browser-f/fun-demo/tor_linux32_7.5.5.tar"
+TOR_MAC_URL = "https://cdn.cliqz.com/browser-f/fun-demo/tor_mac64_7.5.5.tar"
 
 DIST_RESPATH = $(DIST)/bin
 EXTENSIONS_PATH = $(DIST_RESPATH)/browser/features
@@ -1249,14 +1254,38 @@ ifdef HTTPSE_EXT_URL
 	wget --output-document $(HTTPSE_XPI_PATH) $(HTTPSE_EXT_URL)
 endif
 
+CLIQZ_ULTRAPRIVATEMODE_XPI_PATH = $(EXTENSIONS_PATH)/ultraprivatemode@cliqz.com.xpi
+$(CLIQZ_ULTRAPRIVATEMODE_XPI_PATH): $(EXTENSIONS_PATH)
+	echo CLIQZ_ULTRAPRIVATEMODE_XPI_PATH in `pwd`
+	wget --output-document $(CLIQZ_ULTRAPRIVATEMODE_XPI_PATH) $(CLIQZ_ULTRAPRIVATEMODE_EXT_URL)
+
 CLIQZ_CFG = $(DIST_RESPATH)/cliqz.cfg
 $(CLIQZ_CFG):
 	echo CLIQZ_CFG in `pwd`
 	echo $(CLIQZ_CFG)
 	cp -R $(topsrcdir)/../cliqz.cfg $(DIST_RESPATH)
 
+tor:
+ifeq ($(OS_TARGET),WINNT)
+	wget --output-document $(DIST_RESPATH)/tor.tar $(TOR_WIN_URL)
+else
+ifeq ($(OS_TARGET),Linux)
+ifdef _AMD64_
+	wget --output-document $(DIST_RESPATH)/tor.tar $(TOR_LINUX64_URL)
+endif
+ifndef _AMD64_
+	wget --output-document $(DIST_RESPATH)/tor.tar $(TOR_LINUX32_URL)
+endif
+else
+ifeq ($(OS_TARGET),Darwin)
+	wget --output-document $(DIST_RESPATH)/tor.tar $(TOR_MAC_URL)
+endif
+endif
+endif
+	tar -xf $(DIST_RESPATH)/tor.tar --directory $(DIST_RESPATH)
+
 # Package Cliqz stuff
-cliqz_distr: $(CLIQZ_XPI_PATH) $(HTTPSE_XPI_PATH) $(CLIQZ_CFG)
+cliqz_distr: $(CLIQZ_XPI_PATH) $(HTTPSE_XPI_PATH) $(CLIQZ_ULTRAPRIVATEMODE_XPI_PATH) $(CLIQZ_CFG) tor
 	echo cliqz_distr in `pwd`
 
 chrome::

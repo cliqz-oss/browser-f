@@ -80,6 +80,7 @@ private:
     bool                                      mDisablePrefetch;
     bool                                      mBlockDotOnion;
     bool                                      mFirstTime;
+    bool                                      mDisableDNS;
     bool                                      mNotifyResolution;
     bool                                      mOfflineLocalhost;
     bool                                      mForceResolveOn;
