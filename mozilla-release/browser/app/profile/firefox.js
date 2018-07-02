@@ -164,7 +164,7 @@ pref("app.update.silent", false);
 pref("app.update.staging.enabled", false);
 
 // Update service URL:
-pref("app.update.url", "https://updatecheck.cliqz.com/update/3/%PRODUCT%/%VERSION%/%BUILD_ID%/%BUILD_TARGET%/%LOCALE%/%CHANNEL%/%OS_VERSION%/%DISTRIBUTION%/%DISTRIBUTION_VERSION%/update.xml");
+pref("app.update.url", "https://updatecheck.cliqz.com/update/6/%PRODUCT%/%VERSION%/%BUILD_ID%/%BUILD_TARGET%/%LOCALE%/%CHANNEL%/%OS_VERSION%/%SYSTEM_CAPABILITIES%/%DISTRIBUTION%/%DISTRIBUTION_VERSION%/update.xml");
 
 // app.update.url.manual is in branding section
 // app.update.url.details is in branding section
