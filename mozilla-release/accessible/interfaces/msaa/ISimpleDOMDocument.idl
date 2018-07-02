@@ -58,7 +58,7 @@ cpp_quote("")
 import "objidl.idl";
 import "oaidl.idl";
 
-[object, uuid(AC93DDB0-2E8D-4DC4-A825-A9807472D777)]
+[object, uuid(73589222-1187-4535-BE60-2D2BC4868F31)]
 interface ISimpleDOMDocument : IUnknown
 {
   [propget] HRESULT URL(

@@ -147,7 +147,7 @@ IsPathDefaultForClass(const RefPtr<IApplicationAssociationRegistration>& pAAR,
     return false;
   }
 
-  LPCWSTR progID = isProtocol ? L"CliqzURL" : L"CliqzHTML";
+  LPCWSTR progID = isProtocol ? L"GhosteryURL" : L"GhosteryHTML";
   bool isDefault = !wcsnicmp(registeredApp, progID, wcslen(progID));
 
   nsAutoString regAppName(registeredApp);

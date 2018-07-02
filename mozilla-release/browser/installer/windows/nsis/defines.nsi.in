@@ -21,17 +21,17 @@
 !endif
 
 # These defines should match application.ini settings
-!define AppName               "Cliqz"
+!define AppName               "Ghostery"
 !define AppVersion            "@APP_VERSION@"
 !define GREVersion            @MOZILLA_VERSION@
 !define AB_CD                 "@AB_CD@"
 
 !define FileMainEXE           "@MOZ_APP_NAME@.exe"
-!define WindowClass           "CLIQZMessageWindow"
-!define MainWindowClass       "CliqzWindowClass"
-!define DialogWindowClass     "CliqzDialogClass"
-!define DDEApplication        "CLIQZ"
-!define AppRegName            "CLIQZ"
+!define WindowClass           "GhosteryMessageWindow"
+!define MainWindowClass       "GhosteryWindowClass"
+!define DialogWindowClass     "GhosteryDialogClass"
+!define DDEApplication        "Ghostery"
+!define AppRegName            "Ghostery"
 
 !ifndef DEV_EDITION
 !define BrandShortName        "@MOZ_APP_DISPLAYNAME@"
@@ -40,7 +40,7 @@
 !define BrandFullName         "${BrandFullNameInternal}"
 !endif
 
-!define CERTIFICATE_NAME      "Cliqz GmbH"
+!define CERTIFICATE_NAME      "Ghostery, Inc."
 !define CERTIFICATE_ISSUER    "DigiCert SHA2 Assured ID Code Signing CA"
 
 # LSP_CATEGORIES is the permitted LSP categories for the application. Each LSP
@@ -61,18 +61,18 @@
 
 !if "@MOZ_UPDATE_CHANNEL@" == "default"
 #ifdef DEBUG
-!define AccessibleHandlerCLSID "{E052D988-37A6-4F28-85F4-8B6ED3A4333F}"
+!define AccessibleHandlerCLSID "{0F6146AF-391C-43F2-9F42-00981D94C639}"
 #else
-!define AccessibleHandlerCLSID "{0E1B433B-A383-4513-9542-6DD082A09F48}"
+!define AccessibleHandlerCLSID "{3C51E191-27D1-44FD-99F7-1441517CCD2B}"
 #endif
 !else if "@MOZ_UPDATE_CHANNEL@" == "nightly"
-!define AccessibleHandlerCLSID "{9E544F3D-D90A-45A0-A87B-40B5DB30AA40}"
+!define AccessibleHandlerCLSID "{DE60B576-5A7E-483D-9995-65FD167CA7A6}"
 !else if "@MOZ_UPDATE_CHANNEL@" == "beta"
-!define AccessibleHandlerCLSID "{8C493661-D0FE-4868-A728-944AEA83134A}"
+!define AccessibleHandlerCLSID "{6F5B5345-51EB-4E75-8C11-5725754CC9CB}"
 !else if "@MOZ_UPDATE_CHANNEL@" == "release"
-!define AccessibleHandlerCLSID "{F40A82CD-24D7-413D-AADC-843816FB4331}"
+!define AccessibleHandlerCLSID "{BF5BD390-99DC-4D49-9CF0-7619A7665331}"
 !else
-!define AccessibleHandlerCLSID "{1C579561-9A8D-4EFB-9F18-4122CDCC7134}"
+!define AccessibleHandlerCLSID "{0EC0C06F-FAE6-4336-b54E-4670AE982249}"
 !endif
 
 # Due to official and beta using the same branding this is needed to

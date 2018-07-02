@@ -104,4 +104,4 @@
 <!ENTITY  forgetMode.learnMore "Learn more">
 
 <!-- Cliqz addition -->
-<!ENTITY  cliqzFirefoxPrivacy.label "Parts of the Cliqz Browser are building upon the <label class='text-link' href='https://www.mozilla.org/en-US/'>Mozilla open source project</label>. The <label class='text-link' href='https://www.mozilla.org/en-US/privacy/firefox'>Firefox Privacy Notice</label> applies, unless otherwise stated in the Cliqz <label class='text-link' href='https://cliqz.com/en/privacy-browser'>Privacy Statement</label>.">
+<!ENTITY  cliqzFirefoxPrivacy.label "Parts of the Ghostery Browser are building upon the <label class='text-link' href='https://www.mozilla.org/en-US/'>Mozilla open source project</label>. The <label class='text-link' href='https://www.mozilla.org/en-US/privacy/firefox'>Firefox Privacy Notice</label> applies, unless otherwise stated in the Ghostery <label class='text-link' href='https://cliqz.com/en/privacy-browser'>Privacy Statement</label>.">

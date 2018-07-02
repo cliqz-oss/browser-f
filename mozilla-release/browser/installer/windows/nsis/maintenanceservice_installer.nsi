@@ -38,19 +38,19 @@ Var BrandFullName
 !insertmacro GetSize
 
 ; The test slaves use this fallback key to run tests.
-; And anyone that wants to run tests themselves should already have 
+; And anyone that wants to run tests themselves should already have
 ; this installed.
 !define FallbackKey \
-  "SOFTWARE\CLIQZ\MaintenanceService\3932ecacee736d366d6436db0f55bce4"
+  "SOFTWARE\Ghostery\MaintenanceService\3932ecacee736d366d6436db0f55bce4"
 
-!define CompanyName "Cliqz GmbH"
+!define CompanyName "Ghostery, Inc."
 !define BrandFullNameInternal ""
 
 ; The following includes are custom.
 !include defines.nsi
-; We keep defines.nsi defined so that we get other things like 
+; We keep defines.nsi defined so that we get other things like
 ; the version number, but we redefine BrandFullName
-!define MaintFullName "Cliqz Maintenance Service"
+!define MaintFullName "Ghostery Maintenance Service"
 !ifdef BrandFullName
 !undef BrandFullName
 !endif
@@ -66,14 +66,14 @@ Name "${MaintFullName}"
 OutFile "maintenanceservice_installer.exe"
 
 ; Get installation folder from registry if available
-InstallDirRegKey HKLM "Software\CLIQZ\MaintenanceService" ""
+InstallDirRegKey HKLM "Software\Ghostery\MaintenanceService" ""
 
 SetOverwrite on
 
 ; serviceinstall.cpp also uses this key, in case the path is changed, update
 ; there too.
 !define MaintUninstallKey \
- "Software\Microsoft\Windows\CurrentVersion\Uninstall\CliqzMaintenanceService"
+ "Software\Microsoft\Windows\CurrentVersion\Uninstall\GhosteryMaintenanceService"
 
 ; Always install into the 32-bit location even if we have a 64-bit build.
 ; This is because we use only 1 service for all Firefox channels.
@@ -149,7 +149,7 @@ Section "MaintenanceService"
     StrCpy $TempMaintServiceName "maintenanceservice_tmp.exe"
   skipAlreadyExists:
 
-  ; We always write out a copy and then decide whether to install it or 
+  ; We always write out a copy and then decide whether to install it or
   ; not via calling its 'install' cmdline which works by version comparison.
   CopyFiles /SILENT "$EXEDIR\maintenanceservice.exe" "$INSTDIR\$TempMaintServiceName"
 
@@ -197,7 +197,7 @@ Section "MaintenanceService"
   WriteRegStr HKLM "${MaintUninstallKey}" "DisplayIcon" \
                    "$INSTDIR\Uninstall.exe,0"
   WriteRegStr HKLM "${MaintUninstallKey}" "DisplayVersion" "${AppVersion}"
-  WriteRegStr HKLM "${MaintUninstallKey}" "Publisher" "Cliqz GmbH"
+  WriteRegStr HKLM "${MaintUninstallKey}" "Publisher" "Ghostery, Inc."
   WriteRegStr HKLM "${MaintUninstallKey}" "Comments" "${BrandFullName}"
   WriteRegDWORD HKLM "${MaintUninstallKey}" "NoModify" 1
   ${GetSize} "$INSTDIR" "/S=0K" $R2 $R3 $R4
@@ -208,11 +208,11 @@ Section "MaintenanceService"
   ; want to install once on the first upgrade to maintenance service.
   ; Also write out that we are currently installed, preferences will check
   ; this value to determine if we should show the service update pref.
-  WriteRegDWORD HKLM "Software\CLIQZ\MaintenanceService" "Attempted" 1
-  WriteRegDWORD HKLM "Software\CLIQZ\MaintenanceService" "Installed" 1
-  DeleteRegValue HKLM "Software\CLIQZ\MaintenanceService" "FFPrefetchDisabled"
+  WriteRegDWORD HKLM "Software\Ghostery\MaintenanceService" "Attempted" 1
+  WriteRegDWORD HKLM "Software\Ghostery\MaintenanceService" "Installed" 1
+  DeleteRegValue HKLM "Software\Ghostery\MaintenanceService" "FFPrefetchDisabled"
 
-  ; Included here for debug purposes only.  
+  ; Included here for debug purposes only.
   ; These keys are used to bypass the installation dir is a valid installation
   ; check from the service so that tests can be run.
   ; WriteRegStr HKLM "${FallbackKey}\0" "name" "Cliqz GmbH"
@@ -234,7 +234,7 @@ Function un.RenameDelete
   Rename "$9" "$9.moz-delete"
   ${If} ${Errors}
     Delete /REBOOTOK "$9"
-  ${Else} 
+  ${Else}
     Delete /REBOOTOK "$9.moz-delete"
   ${EndIf}
   ClearErrors
@@ -285,34 +285,34 @@ Section "Uninstall"
   Push "$INSTDIR\logs\maintenanceservice-uninstall.log"
   Call un.RenameDelete
   SetShellVarContext all
-  Push "$APPDATA\CLIQZ\logs\maintenanceservice.log"
+  Push "$APPDATA\Ghostery\logs\maintenanceservice.log"
   Call un.RenameDelete
-  Push "$APPDATA\CLIQZ\logs\maintenanceservice-1.log"
+  Push "$APPDATA\Ghostery\logs\maintenanceservice-1.log"
   Call un.RenameDelete
-  Push "$APPDATA\CLIQZ\logs\maintenanceservice-2.log"
+  Push "$APPDATA\Ghostery\logs\maintenanceservice-2.log"
   Call un.RenameDelete
-  Push "$APPDATA\CLIQZ\logs\maintenanceservice-3.log"
+  Push "$APPDATA\Ghostery\logs\maintenanceservice-3.log"
   Call un.RenameDelete
-  Push "$APPDATA\CLIQZ\logs\maintenanceservice-4.log"
+  Push "$APPDATA\Ghostery\logs\maintenanceservice-4.log"
   Call un.RenameDelete
-  Push "$APPDATA\CLIQZ\logs\maintenanceservice-5.log"
+  Push "$APPDATA\Ghostery\logs\maintenanceservice-5.log"
   Call un.RenameDelete
-  Push "$APPDATA\CLIQZ\logs\maintenanceservice-6.log"
+  Push "$APPDATA\Ghostery\logs\maintenanceservice-6.log"
   Call un.RenameDelete
-  Push "$APPDATA\CLIQZ\logs\maintenanceservice-7.log"
+  Push "$APPDATA\Ghostery\logs\maintenanceservice-7.log"
   Call un.RenameDelete
-  Push "$APPDATA\CLIQZ\logs\maintenanceservice-8.log"
+  Push "$APPDATA\Ghostery\logs\maintenanceservice-8.log"
   Call un.RenameDelete
-  Push "$APPDATA\CLIQZ\logs\maintenanceservice-9.log"
+  Push "$APPDATA\Ghostery\logs\maintenanceservice-9.log"
   Call un.RenameDelete
-  Push "$APPDATA\CLIQZ\logs\maintenanceservice-10.log"
+  Push "$APPDATA\Ghostery\logs\maintenanceservice-10.log"
   Call un.RenameDelete
-  Push "$APPDATA\CLIQZ\logs\maintenanceservice-install.log"
+  Push "$APPDATA\Ghostery\logs\maintenanceservice-install.log"
   Call un.RenameDelete
-  Push "$APPDATA\CLIQZ\logs\maintenanceservice-uninstall.log"
+  Push "$APPDATA\Ghostery\logs\maintenanceservice-uninstall.log"
   Call un.RenameDelete
-  RMDir /REBOOTOK "$APPDATA\CLIQZ\logs"
-  RMDir /REBOOTOK "$APPDATA\CLIQZ"
+  RMDir /REBOOTOK "$APPDATA\Ghostery\logs"
+  RMDir /REBOOTOK "$APPDATA\Ghostery"
   RMDir /REBOOTOK "$INSTDIR\logs"
   RMDir /REBOOTOK "$INSTDIR\update"
   RMDir /REBOOTOK "$INSTDIR"
@@ -321,8 +321,8 @@ Section "Uninstall"
     SetRegView 64
   ${EndIf}
   DeleteRegKey HKLM "${MaintUninstallKey}"
-  DeleteRegValue HKLM "Software\CLIQZ\MaintenanceService" "Installed"
-  DeleteRegValue HKLM "Software\CLIQZ\MaintenanceService" "FFPrefetchDisabled"
+  DeleteRegValue HKLM "Software\Ghostery\MaintenanceService" "Installed"
+  DeleteRegValue HKLM "Software\Ghostery\MaintenanceService" "FFPrefetchDisabled"
   DeleteRegKey HKLM "${FallbackKey}\"
   ${If} ${RunningX64}
     SetRegView lastused

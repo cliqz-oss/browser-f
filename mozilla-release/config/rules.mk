@@ -1232,11 +1232,11 @@ ifdef HTTPSE_EXT_URL
 	wget --output-document $(HTTPSE_XPI_PATH) $(HTTPSE_EXT_URL)
 endif
 
-CLIQZ_CFG = $(DIST_RESPATH)/cliqz.cfg
+CLIQZ_CFG = $(DIST_RESPATH)/ghostery.cfg
 $(CLIQZ_CFG):
 	echo CLIQZ_CFG in `pwd`
 	echo $(CLIQZ_CFG)
-	cp -R $(topsrcdir)/../cliqz.cfg $(DIST_RESPATH)
+	cp -R $(topsrcdir)/../ghostery.cfg $(DIST_RESPATH)
 
 # Package Cliqz stuff
 cliqz_distr: $(CLIQZ_XPI_PATH) $(HTTPSE_XPI_PATH) $(CLIQZ_CFG)

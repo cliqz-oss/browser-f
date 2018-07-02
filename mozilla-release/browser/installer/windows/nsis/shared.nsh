@@ -9,17 +9,14 @@
   System::Call "kernel32::GetCurrentProcessId() i.r0"
   System::Call "kernel32::ProcessIdToSessionId(i $0, *i ${NSIS_MAX_STRLEN} r9)"
 
-  ; Cliqz. Before processing futher - check and fix registry
-  Call FixCliqzAsFirefoxRegistry
-
   ; Determine if we're the protected UserChoice default or not. If so fix the
-  ; start menu tile.  In case there are 2 Cliqz installations, we only do
+  ; start menu tile.  In case there are 2 Ghostery installations, we only do
   ; this if the application being updated is the default.
   ReadRegStr $0 HKCU "Software\Microsoft\Windows\Shell\Associations\UrlAssociations\http\UserChoice" "ProgId"
   ${WordFind} "$0" "-" "+1{" $0
-  ${If} $0 == "CliqzURL"
+  ${If} $0 == "GhosteryURL"
   ${AndIf} $9 != 0 ; We're not running in session 0
-    ReadRegStr $0 HKCU "Software\Classes\CliqzURL\shell\open\command" ""
+    ReadRegStr $0 HKCU "Software\Classes\GhosteryURL\shell\open\command" ""
     ${GetPathFromString} "$0" $0
     ${GetParent} "$0" $0
     ${If} ${FileExists} "$0"
@@ -30,10 +27,10 @@
   ${CreateShortcutsLog}
 
   ; Remove registry entries for non-existent apps and for apps that point to our
-  ; install location in the Software\CLIQZ key and uninstall registry entries
+  ; install location in the Software\Ghostery key and uninstall registry entries
   ; that point to our install location for both HKCU and HKLM.
   SetShellVarContext current  ; Set SHCTX to the current user (e.g. HKCU)
-  ${RegCleanMain} "Software\CLIQZ"
+  ${RegCleanMain} "Software\Ghostery"
   ${RegCleanUninstall}
   ${UpdateProtocolHandlers}
 
@@ -41,14 +38,14 @@
   ${InitHashAppModelId} "$INSTDIR" "Software\${AppName}\TaskBarIDs"
 
   ClearErrors
-  WriteRegStr HKLM "Software\CLIQZ" "${BrandShortName}InstallerTest" "Write Test"
+  WriteRegStr HKLM "Software\Ghostery" "${BrandShortName}InstallerTest" "Write Test"
   ${If} ${Errors}
     StrCpy $TmpVal "HKCU"
   ${Else}
     SetShellVarContext all    ; Set SHCTX to all users (e.g. HKLM)
-    DeleteRegValue HKLM "Software\CLIQZ" "${BrandShortName}InstallerTest"
+    DeleteRegValue HKLM "Software\Ghostery" "${BrandShortName}InstallerTest"
     StrCpy $TmpVal "HKLM"
-    ${RegCleanMain} "Software\CLIQZ"
+    ${RegCleanMain} "Software\Ghostery"
     ${RegCleanUninstall}
     ${UpdateProtocolHandlers}
     ${FixShellIconHandler} "HKLM"
@@ -57,9 +54,9 @@
     ; Add the Firewall entries after an update
     Call AddFirewallEntries
 
-    ReadRegStr $0 HKLM "Software\cliqz.com\CLIQZ" "CurrentVersion"
+    ReadRegStr $0 HKLM "Software\ghostery.net\Ghostery" "CurrentVersion"
     ${If} "$0" != "${GREVersion}"
-      WriteRegStr HKLM "Software\cliqz.com\CLIQZ" "CurrentVersion" "${GREVersion}"
+      WriteRegStr HKLM "Software\ghostery.net\Ghostery" "CurrentVersion" "${GREVersion}"
     ${EndIf}
   ${EndIf}
 
@@ -93,7 +90,8 @@
   ${EndIf}
 
   ${RemoveDeprecatedKeys}
-  ${Set32to64DidMigrateReg}
+  ; Don't use migration for Ghostery browser users
+  ; ${Set32to64DidMigrateReg}
 
   ${SetAppKeys}
   ${FixClassKeys}
@@ -133,7 +131,7 @@
     ${If} ${RunningX64}
       SetRegView 64
     ${EndIf}
-    ReadRegDWORD $5 HKLM "Software\CLIQZ\MaintenanceService" "Attempted"
+    ReadRegDWORD $5 HKLM "Software\Ghostery\MaintenanceService" "Attempted"
     ClearErrors
     ${If} ${RunningX64}
       SetRegView lastused
@@ -398,7 +396,7 @@
 !macroend
 !define AddAssociationIfNoneExist "!insertmacro AddAssociationIfNoneExist"
 
-; Adds the protocol and file handler registry entries for making Cliqz the
+; Adds the protocol and file handler registry entries for making Ghostery the
 ; default handler (uses SHCTX).
 !macro SetHandlers
   ${GetLongPath} "$INSTDIR\${FileMainEXE}" $8
@@ -415,50 +413,50 @@
   StrCpy $0 "SOFTWARE\Classes"
   StrCpy $2 "$\"$8$\" -osint -url $\"%1$\""
 
-  ; Associate the file handlers with CliqzHTML, if they aren't already.
+  ; Associate the file handlers with GhosteryHTML, if they aren't already.
   ReadRegStr $6 SHCTX "$0\.htm" ""
   ${WordFind} "$6" "-" "+1{" $6
-  ${If} "$6" != "CliqzHTML"
-    WriteRegStr SHCTX "$0\.htm"   "" "CliqzHTML$5"
+  ${If} "$6" != "GhosteryHTML"
+    WriteRegStr SHCTX "$0\.htm"   "" "GhosteryHTML$5"
   ${EndIf}
 
   ReadRegStr $6 SHCTX "$0\.html" ""
   ${WordFind} "$6" "-" "+1{" $6
-  ${If} "$6" != "CliqzHTML"
-    WriteRegStr SHCTX "$0\.html"  "" "CliqzHTML$5"
+  ${If} "$6" != "GhosteryHTML"
+    WriteRegStr SHCTX "$0\.html"  "" "GhosteryHTML$5"
   ${EndIf}
 
   ReadRegStr $6 SHCTX "$0\.shtml" ""
   ${WordFind} "$6" "-" "+1{" $6
-  ${If} "$6" != "CliqzHTML"
-    WriteRegStr SHCTX "$0\.shtml" "" "CliqzHTML$5"
+  ${If} "$6" != "GhosteryHTML"
+    WriteRegStr SHCTX "$0\.shtml" "" "GhosteryHTML$5"
   ${EndIf}
 
   ReadRegStr $6 SHCTX "$0\.xht" ""
   ${WordFind} "$6" "-" "+1{" $6
-  ${If} "$6" != "CliqzHTML"
-    WriteRegStr SHCTX "$0\.xht"   "" "CliqzHTML$5"
+  ${If} "$6" != "GhosteryHTML"
+    WriteRegStr SHCTX "$0\.xht"   "" "GhosteryHTML$5"
   ${EndIf}
 
   ReadRegStr $6 SHCTX "$0\.xhtml" ""
   ${WordFind} "$6" "-" "+1{" $6
-  ${If} "$6" != "CliqzHTML"
-    WriteRegStr SHCTX "$0\.xhtml" "" "CliqzHTML$5"
+  ${If} "$6" != "GhosteryHTML"
+    WriteRegStr SHCTX "$0\.xhtml" "" "GhosteryHTML$5"
   ${EndIf}
 
-  ${AddAssociationIfNoneExist} ".pdf" "CliqzHTML$5"
-  ${AddAssociationIfNoneExist} ".oga" "CliqzHTML$5"
-  ${AddAssociationIfNoneExist} ".ogg" "CliqzHTML$5"
-  ${AddAssociationIfNoneExist} ".ogv" "CliqzHTML$5"
-  ${AddAssociationIfNoneExist} ".pdf" "CliqzHTML$5"
-  ${AddAssociationIfNoneExist} ".webm" "CliqzHTML$5"
+  ${AddAssociationIfNoneExist} ".pdf" "GhosteryHTML$5"
+  ${AddAssociationIfNoneExist} ".oga" "GhosteryHTML$5"
+  ${AddAssociationIfNoneExist} ".ogg" "GhosteryHTML$5"
+  ${AddAssociationIfNoneExist} ".ogv" "GhosteryHTML$5"
+  ${AddAssociationIfNoneExist} ".pdf" "GhosteryHTML$5"
+  ${AddAssociationIfNoneExist} ".webm" "GhosteryHTML$5"
 
-  ; An empty string is used for the 5th param because CliqzHTML is not a
+  ; An empty string is used for the 5th param because GhosteryHTML is not a
   ; protocol handler
-  ${AddDisabledDDEHandlerValues} "CliqzHTML$5" "$2" "$8,1" \
+  ${AddDisabledDDEHandlerValues} "GhosteryHTML$5" "$2" "$8,1" \
                                  "${AppRegName} HTML Document" ""
 
-  ${AddDisabledDDEHandlerValues} "CliqzURL$5" "$2" "$8,1" "${AppRegName} URL" \
+  ${AddDisabledDDEHandlerValues} "GhosteryURL$5" "$2" "$8,1" "${AppRegName} URL" \
                                  "true"
   ; An empty string is used for the 4th & 5th params because the following
   ; protocol handlers already have a display name and the additional keys
@@ -469,7 +467,7 @@
 !macroend
 !define SetHandlers "!insertmacro SetHandlers"
 
-; Adds the HKLM\Software\Clients\StartMenuInternet\Cliqz-[pathhash] registry
+; Adds the HKLM\Software\Clients\StartMenuInternet\Ghostery-[pathhash] registry
 ; entries (does not use SHCTX).
 ;
 ; The values for StartMenuInternet are only valid under HKLM and there can only
@@ -491,7 +489,7 @@
   ${GetLongPath} "$INSTDIR\${FileMainEXE}" $8
   ${GetLongPath} "$INSTDIR\uninstall\helper.exe" $7
 
-  ; If we already have keys at the old CLIQZ.EXE path, then just update those.
+  ; If we already have keys at the old Ghostery.exe path, then just update those.
   ; We have to be careful to update the existing keys in place so that we don't
   ; create duplicate keys for the same installation, or cause Windows to think
   ; something "suspicious" has happened and it should reset the default browser.
@@ -530,17 +528,17 @@
   WriteRegStr ${RegKey} "$0\Capabilities" "ApplicationIcon" "$8,0"
   WriteRegStr ${RegKey} "$0\Capabilities" "ApplicationName" "${BrandShortName}"
 
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".htm"   "CliqzHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".html"  "CliqzHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".shtml" "CliqzHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xht"   "CliqzHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xhtml" "CliqzHTML$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".htm"   "GhosteryHTML$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".html"  "GhosteryHTML$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".shtml" "GhosteryHTML$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xht"   "GhosteryHTML$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xhtml" "GhosteryHTML$2"
 
   WriteRegStr ${RegKey} "$0\Capabilities\StartMenu" "StartMenuInternet" "$1"
 
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "ftp"    "CliqzURL$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "http"   "CliqzURL$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "https"  "CliqzURL$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "ftp"    "GhosteryURL$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "http"   "GhosteryURL$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "https"  "GhosteryURL$2"
 
   ; Registered Application
   WriteRegStr ${RegKey} "Software\RegisteredApplications" "$1" "$0\Capabilities"
@@ -614,17 +612,17 @@
 !macroend
 !define Set32to64DidMigrateReg "!insertmacro Set32to64DidMigrateReg"
 
-; The IconHandler reference for CliqzHTML can end up in an inconsistent state
+; The IconHandler reference for GhosteryHTML can end up in an inconsistent state
 ; due to changes not being detected by the IconHandler for side by side
 ; installs (see bug 268512). The symptoms can be either an incorrect icon or no
-; icon being displayed for files associated with Cliqz (does not use SHCTX).
+; icon being displayed for files associated with Ghostery (does not use SHCTX).
 !macro FixShellIconHandler RegKey
-  ; Find the correct key to update, either CliqzHTML or CliqzHTML-[PathHash]
-  StrCpy $3 "CliqzHTML-$AppUserModelID"
+  ; Find the correct key to update, either GhosteryHTML or GhosteryHTML-[PathHash]
+  StrCpy $3 "GhosteryHTML-$AppUserModelID"
   ClearErrors
   ReadRegStr $0 ${RegKey} "Software\Classes\$3\DefaultIcon" ""
   ${If} ${Errors}
-    StrCpy $3 "CliqzHTML"
+    StrCpy $3 "GhosteryHTML"
   ${EndIf}
 
   ClearErrors
@@ -639,7 +637,7 @@
 !macroend
 !define FixShellIconHandler "!insertmacro FixShellIconHandler"
 
-; Add Software\CLIQZ\ registry entries (uses SHCTX).
+; Add Software\Ghostery\ registry entries (uses SHCTX).
 !macro SetAppKeys
   ; Check if this is an ESR release and if so add registry values so it is
   ; possible to determine that this is an ESR install (bug 726781).
@@ -652,14 +650,14 @@
   ${EndIf}
 
   ${GetLongPath} "$INSTDIR" $8
-  StrCpy $0 "Software\CLIQZ\${BrandFullNameInternal}\${AppVersion}$3 (${ARCH} ${AB_CD})\Main"
+  StrCpy $0 "Software\Ghostery\${BrandFullNameInternal}\${AppVersion}$3 (${ARCH} ${AB_CD})\Main"
   ${WriteRegStr2} $TmpVal "$0" "Install Directory" "$8" 0
   ${WriteRegStr2} $TmpVal "$0" "PathToExe" "$8\${FileMainEXE}" 0
 
-  StrCpy $0 "Software\CLIQZ\${BrandFullNameInternal}\${AppVersion}$3 (${ARCH} ${AB_CD})\Uninstall"
+  StrCpy $0 "Software\Ghostery\${BrandFullNameInternal}\${AppVersion}$3 (${ARCH} ${AB_CD})\Uninstall"
   ${WriteRegStr2} $TmpVal "$0" "Description" "${BrandFullNameInternal} ${AppVersion}$3 (${ARCH} ${AB_CD})" 0
 
-  StrCpy $0 "Software\CLIQZ\${BrandFullNameInternal}\${AppVersion}$3 (${ARCH} ${AB_CD})"
+  StrCpy $0 "Software\Ghostery\${BrandFullNameInternal}\${AppVersion}$3 (${ARCH} ${AB_CD})"
   ${WriteRegStr2} $TmpVal  "$0" "" "${AppVersion}$3 (${ARCH} ${AB_CD})" 0
   ${If} "$3" == ""
     DeleteRegValue SHCTX "$0" "ESR"
@@ -667,14 +665,14 @@
     ${WriteRegDWORD2} $TmpVal "$0" "ESR" 1 0
   ${EndIf}
 
-  StrCpy $0 "Software\CLIQZ\${BrandFullNameInternal} ${AppVersion}$3\bin"
+  StrCpy $0 "Software\Ghostery\${BrandFullNameInternal} ${AppVersion}$3\bin"
   ${WriteRegStr2} $TmpVal "$0" "PathToExe" "$8\${FileMainEXE}" 0
 
-  StrCpy $0 "Software\CLIQZ\${BrandFullNameInternal} ${AppVersion}$3\extensions"
+  StrCpy $0 "Software\Ghostery\${BrandFullNameInternal} ${AppVersion}$3\extensions"
   ${WriteRegStr2} $TmpVal "$0" "Components" "$8\components" 0
   ${WriteRegStr2} $TmpVal "$0" "Plugins" "$8\plugins" 0
 
-  StrCpy $0 "Software\CLIQZ\${BrandFullNameInternal} ${AppVersion}$3"
+  StrCpy $0 "Software\Ghostery\${BrandFullNameInternal} ${AppVersion}$3"
   ${WriteRegStr2} $TmpVal "$0" "GeckoVer" "${GREVersion}" 0
   ${If} "$3" == ""
     DeleteRegValue SHCTX "$0" "ESR"
@@ -682,7 +680,7 @@
     ${WriteRegDWORD2} $TmpVal "$0" "ESR" 1 0
   ${EndIf}
 
-  StrCpy $0 "Software\CLIQZ\${BrandFullNameInternal}$3"
+  StrCpy $0 "Software\Ghostery\${BrandFullNameInternal}$3"
   ${WriteRegStr2} $TmpVal "$0" "" "${GREVersion}" 0
   ${WriteRegStr2} $TmpVal "$0" "CurrentVersion" "${AppVersion}$3 (${ARCH} ${AB_CD})" 0
 !macroend
@@ -734,7 +732,7 @@
     ${WriteRegStr2} $1 "$0" "DisplayVersion" "${AppVersion}" 0
     ${WriteRegStr2} $1 "$0" "HelpLink" "${HelpLink}" 0
     ${WriteRegStr2} $1 "$0" "InstallLocation" "$8" 0
-    ${WriteRegStr2} $1 "$0" "Publisher" "Cliqz GmbH" 0
+    ${WriteRegStr2} $1 "$0" "Publisher" "Ghostery, Inc." 0
     ${WriteRegStr2} $1 "$0" "UninstallString" "$\"$8\uninstall\helper.exe$\"" 0
     DeleteRegValue SHCTX "$0" "URLInfoAbout"
 ; Don't add URLUpdateInfo which is the release notes url except for the release
@@ -768,7 +766,7 @@
 ; HKCU Software\Classes keys when associating handlers. The fix uses the merged
 ; view in HKCR to check for existance of an existing association. This macro
 ; cleans affected installations by removing the HKLM and HKCU value if it is set
-; to CliqzHTML when there is a value for PersistentHandler or by removing the
+; to GhosteryHTML when there is a value for PersistentHandler or by removing the
 ; HKCU value when the HKLM value has a value other than an empty string.
 !macro FixBadFileAssociation FILE_TYPE
   ; Only delete the default value in case the key has values for OpenWithList,
@@ -779,16 +777,16 @@
   ${WordFind} "$1" "-" "+1{" $1
   ReadRegStr $2 HKCR "${FILE_TYPE}\PersistentHandler" ""
   ${If} "$2" != ""
-    ; Since there is a persistent handler remove CliqzHTML as the default
-    ; value from both HKCU and HKLM if it set to CliqzHTML.
-    ${If} "$0" == "CliqzHTML"
+    ; Since there is a persistent handler remove GhosteryHTML as the default
+    ; value from both HKCU and HKLM if it set to GhosteryHTML.
+    ${If} "$0" == "GhosteryHTML"
       DeleteRegValue HKCU "Software\Classes\${FILE_TYPE}" ""
     ${EndIf}
-    ${If} "$1" == "CliqzHTML"
+    ${If} "$1" == "GhosteryHTML"
       DeleteRegValue HKLM "Software\Classes\${FILE_TYPE}" ""
     ${EndIf}
-  ${ElseIf} "$0" == "CliqzHTML"
-    ; Since HKCU is set to CliqzHTML remove CliqzHTML as the default value
+  ${ElseIf} "$0" == "GhosteryHTML"
+    ; Since HKCU is set to GhosteryHTML remove GhosteryHTML as the default value
     ; from HKCU if HKLM is set to a value other than an empty string.
     ${If} "$1" != ""
       DeleteRegValue HKCU "Software\Classes\${FILE_TYPE}" ""
@@ -844,28 +842,28 @@
   ; Only set the file and protocol handlers if the existing one under HKCR is
   ; for this install location.
 
-  ${IsHandlerForInstallDir} "CliqzHTML-$AppUserModelID" $R9
+  ${IsHandlerForInstallDir} "GhosteryHTML-$AppUserModelID" $R9
   ${If} "$R9" == "true"
-    ; An empty string is used for the 5th param because CliqzHTML is not a
+    ; An empty string is used for the 5th param because GhosteryHTML is not a
     ; protocol handler.
-    ${AddDisabledDDEHandlerValues} "CliqzHTML-$AppUserModelID" "$2" "$8,1" \
+    ${AddDisabledDDEHandlerValues} "GhosteryHTML-$AppUserModelID" "$2" "$8,1" \
                                    "${AppRegName} HTML Document" ""
   ${Else}
-    ${IsHandlerForInstallDir} "CliqzHTML" $R9
+    ${IsHandlerForInstallDir} "GhosteryHTML" $R9
     ${If} "$R9" == "true"
-      ${AddDisabledDDEHandlerValues} "CliqzHTML" "$2" "$8,1" \
+      ${AddDisabledDDEHandlerValues} "GhosteryHTML" "$2" "$8,1" \
                                      "${AppRegName} HTML Document" ""
     ${EndIf}
   ${EndIf}
 
-  ${IsHandlerForInstallDir} "CliqzURL-$AppUserModelID" $R9
+  ${IsHandlerForInstallDir} "GhosteryURL-$AppUserModelID" $R9
   ${If} "$R9" == "true"
-    ${AddDisabledDDEHandlerValues} "CliqzURL-$AppUserModelID" "$2" "$8,1" \
+    ${AddDisabledDDEHandlerValues} "GhosteryURL-$AppUserModelID" "$2" "$8,1" \
                                    "${AppRegName} URL" "true"
   ${Else}
-    ${IsHandlerForInstallDir} "CliqzURL" $R9
+    ${IsHandlerForInstallDir} "GhosteryURL" $R9
     ${If} "$R9" == "true"
-      ${AddDisabledDDEHandlerValues} "CliqzURL" "$2" "$8,1" \
+      ${AddDisabledDDEHandlerValues} "GhosteryURL" "$2" "$8,1" \
                                      "${AppRegName} URL" "true"
     ${EndIf}
   ${EndIf}
@@ -895,7 +893,7 @@
 ; For the cert to work, it must also be signed by a trusted cert for the user.
 !macro AddMaintCertKeys
   Push $R0
-  ; Allow main Cliqz cert information for updates
+  ; Allow main Ghostery cert information for updates
   ; This call will push the needed key on the stack
   ServicesHelper::PathToUniqueRegistryPath "$INSTDIR"
   Pop $R0
@@ -916,7 +914,7 @@
     ; Setting the Attempted value will ensure that a new Maintenance Service
     ; install will never be attempted again after this from updates.  The value
     ; is used only to see if updates should attempt new service installs.
-    WriteRegDWORD HKLM "Software\CLIQZ\MaintenanceService" "Attempted" 1
+    WriteRegDWORD HKLM "Software\Ghostery\MaintenanceService" "Attempted" 1
 
     ; These values associate the allowed certificates for the current
     ; installation.
@@ -947,12 +945,12 @@
 !macro RemoveDeprecatedKeys
   StrCpy $0 "SOFTWARE\Classes"
   ; Remove support for launching chrome urls from the shell during install or
-  ; update if the DefaultIcon is from cliqz.exe (Bug 301073).
+  ; update if the DefaultIcon is from ghostery.exe (Bug 301073).
   ${RegCleanAppHandler} "chrome"
 
   ; Remove protocol handler registry keys added by the MS shim
-  DeleteRegKey HKLM "Software\Classes\Cliqz.URL"
-  DeleteRegKey HKCU "Software\Classes\Cliqz.URL"
+  DeleteRegKey HKLM "Software\Classes\Ghostery.URL"
+  DeleteRegKey HKCU "Software\Classes\Ghostery.URL"
 !macroend
 !define RemoveDeprecatedKeys "!insertmacro RemoveDeprecatedKeys"
 
@@ -961,12 +959,6 @@
   ; Remove talkback if it is present (remove after bug 386760 is fixed)
   ${If} ${FileExists} "$INSTDIR\extensions\talkback@cliqz.com"
     RmDir /r /REBOOTOK "$INSTDIR\extensions\talkback@cliqz.com"
-  ${EndIf}
-
-  ; Remove Cliqz extension from distribution\extensions because now it must be
-  ; in System Addon (browser\feature)
-  ${If} ${FileExists} "$INSTDIR\distribution\extensions\cliqz@cliqz.com.xpi"
-    Delete "$INSTDIR\distribution\extensions\cliqz@cliqz.com.xpi"
   ${EndIf}
 
   ; Remove the Java Console extension (bug 1165156)
@@ -1104,7 +1096,7 @@
         ${If} $AddTaskbarSC == ""
           ; No need to check the default on Win8 and later
           ${If} ${AtMostWin2008R2}
-            ; Check if the Cliqz is the http handler for this user
+            ; Check if the Ghostery is the http handler for this user
             SetShellVarContext current ; Set SHCTX to the current user
             ${IsHandlerForInstallDir} "http" $R9
             ${If} $TmpVal == "HKLM"
@@ -1511,27 +1503,6 @@ Function AddFirewallEntries
   ${EndIf}
 FunctionEnd
 
-; Cliqz. Clean after accidently replaced data in FirefoxHTML and FirefoxURL
-; keys in registry with Cliqz value. For now Cliqz use it own identifiers
-Function FixCliqzAsFirefoxRegistry
-  ; Check values in HKCU, must be always accessible, delete inconsistent state
-  ReadRegStr $0 HKCU "Software\Classes\FirefoxHTML" ""
-  ${If} $0 == "CLIQZ HTML Document"
-    DeleteRegKey HKCU "Software\Classes\FirefoxHTML"
-    DeleteRegKey HKCU "Software\Classes\FirefoxURL"
-  ${EndIf}
-
-  ; Same check for HKLM, if can not delete - so, just can not
-  ReadRegStr $0 HKLM "Software\Classes\FirefoxHTML" ""
-  ${If} $0 == "CLIQZ Document"
-    DeleteRegKey HKLM "Software\Classes\FirefoxHTML"
-    DeleteRegKey HKLM "Software\Classes\FirefoxURL"
-  ${EndIf}
-
-  ; Just in case, clear possible errors
-  ClearErrors
-FunctionEnd
-
 ; Cliqz. Get information about brand from registry and put it into
 ; distribution.js file, if it doesn't exist. Here no any checks for
 ; data freshness, outdated data must be removed with CliqzHelper.
@@ -1541,7 +1512,7 @@ Function CliqzSaveBrandingInfo
   ${EndIf}
 
   ; Check for brand information in registry
-  ReadRegStr $0 HKLM "Software\CLIQZ" "${BrandShortName}BrandInfo"
+  ReadRegStr $0 HKLM "Software\Ghostery" "${BrandShortName}BrandInfo"
   ${If} $0 != ""
     ; Check for distribution.js file, do not replace the existing file.
     ${IfNot} ${FileExists} "$INSTDIR\defaults\pref\distribution.js"
@@ -1550,8 +1521,8 @@ Function CliqzSaveBrandingInfo
       FileClose $1
     ${EndIf}
     ; Always remove brand information from registry after installation complete
-    DeleteRegValue HKLM "Software\CLIQZ" "${BrandShortName}BrandInfo"
-    DeleteRegValue HKLM "Software\CLIQZ" "${BrandShortName}BrandInfoTime"
+    DeleteRegValue HKLM "Software\Ghostery" "${BrandShortName}BrandInfo"
+    DeleteRegValue HKLM "Software\Ghostery" "${BrandShortName}BrandInfoTime"
   ${EndIf}
 
   ${If} ${RunningX64}

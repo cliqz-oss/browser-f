@@ -9,8 +9,8 @@
 <!ENTITY refreshProfile.dialog.items.label2  "Restore your browser settings to their defaults.">
 <!ENTITY refreshProfile.dialog.items.label3  "The following items will be reset:">
 <!ENTITY refreshProfile.dialog.items.label4  "• Website permissions">
-<!ENTITY refreshProfile.dialog.items.label5  "• Modified preferences (incl. Cliqz Tab)">
-<!ENTITY refreshProfile.dialog.items.label6  "• Cliqz Tab Favorites">
+<!ENTITY refreshProfile.dialog.items.label5  "• Modified preferences (incl. Ghostery Tab)">
+<!ENTITY refreshProfile.dialog.items.label6  "• Ghostery Tab Favorites">
 <!ENTITY refreshProfile.dialog.items.label7  "• Added Search Engines">
 <!ENTITY refreshProfile.dialog.items.label8  "• Toolbar customizations">
 <!ENTITY refreshProfile.dialog.items.label9  "• Security certificate and device settings">

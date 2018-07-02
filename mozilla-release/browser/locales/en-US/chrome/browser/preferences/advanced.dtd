@@ -8,14 +8,14 @@
 
 <!ENTITY dataChoicesTab.label            "Data Choices">
 
-<!ENTITY healthReportIntro.label         "We care about your privacy. When Cliqz sends information to the Cliqz team, our  <label class='text-link' href='https://cliqz.com/en/privacy'>privacy policy</label> describes how we handle that information.">
+<!ENTITY healthReportIntro.label         "We care about your privacy. When Ghostery sends information to the Ghostery team, our  <label class='text-link' href='https://cliqz.com/en/privacy'>privacy policy</label> describes how we handle that information.">
 
 <!-- LOCALIZATION NOTE (healthReportingDisabled.label): This message is displayed above
 disabled data sharing options in developer builds or builds with no Telemetry support
 available. -->
 <!ENTITY healthReportingDisabled.label   "Data reporting is disabled for this build configuration">
 
-<!ENTITY enableHealthReport2.label       "Allow &brandShortName; to send technical and interaction data to Cliqz">
+<!ENTITY enableHealthReport2.label       "Allow &brandShortName; to send technical and interaction data to Ghostery">
 <!ENTITY enableHealthReport2.accesskey   "r">
 <!ENTITY healthReportLearnMore.label     "Learn more">
 
@@ -23,7 +23,7 @@ available. -->
 <!ENTITY dataCollectionDesc.label        "We strive to provide you with choices and collect only what we need to provide and improve &brandShortName; for everyone. We always ask permission before receiving personal information.">
 <!ENTITY dataCollectionPrivacyNotice.label    "Privacy Notice">
 
-<!ENTITY collectBrowserErrors.label          "Allow &brandShortName; to send browser error reports (including error messages) to Cliqz">
+<!ENTITY collectBrowserErrors.label          "Allow &brandShortName; to send browser error reports (including error messages) to Ghostery">
 <!ENTITY collectBrowserErrors.accesskey      "b">
 <!ENTITY collectBrowserErrorsLearnMore.label "Learn more">
 

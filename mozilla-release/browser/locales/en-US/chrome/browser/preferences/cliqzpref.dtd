@@ -23,7 +23,7 @@
 <!ENTITY  forgetMode.learnMore "Learn more">
 
 <!-- Cliqz addition -->
-<!ENTITY  cliqzFirefoxPrivacy.label "Parts of the Cliqz Browser are building upon the <label class='text-link' href='https://www.mozilla.org/en-US/'>Mozilla open source project</label>. The <label class='text-link' href='https://www.mozilla.org/en-US/privacy/firefox'>Firefox Privacy Notice</label> applies, unless otherwise stated in the Cliqz <label class='text-link' href='https://cliqz.com/en/privacy-browser'>Privacy Statement</label>.">
+<!ENTITY  cliqzFirefoxPrivacy.label "Parts of the Ghostery Browser are building upon the <label class='text-link' href='https://www.mozilla.org/en-US/'>Mozilla open source project</label>. The <label class='text-link' href='https://www.mozilla.org/en-US/privacy/firefox'>Firefox Privacy Notice</label> applies, unless otherwise stated in the Ghostery <label class='text-link' href='https://cliqz.com/en/privacy-browser'>Privacy Statement</label>.">
 
 <!ENTITY defaultSearchEngine.label             "Complementary search engine">
 <!ENTITY chooseYourDefaultSearchEngine2.label  "Choose your backup search engine. If you are not happy with &brandShortName;’ suggestions for your query, you will be redirected to the results of this search engine when you hit „enter“.">
@@ -31,8 +31,8 @@
 <!ENTITY showURLBarSuggestions2.accesskey      "l">
 <!ENTITY oneClickSearchEngines.label           "Direct searches">
 <!ENTITY chooseWhichOneToDisplay2.label        "Put the key in front of your query to directly use a search engine, e.g. to find a specific location directly, type in #gm + your query and hit enter">
-<!ENTITY findMoreSearchEnginesDesc.label       "Cliqz supports most search engines of the official Mozilla Firefox repository.">
-<!ENTITY rememberLogins2.hint          "To enable this feature please make sure Cliqz will remember your <label class='text-link' id='jumpToHistory'>History</label>.">
+<!ENTITY findMoreSearchEnginesDesc.label       "Ghostery supports most search engines of the official Mozilla Firefox repository.">
+<!ENTITY rememberLogins2.hint          "To enable this feature please make sure Ghostery will remember your <label class='text-link' id='jumpToHistory'>History</label>.">
 
 <!ENTITY  httpsEverywhere.label          "HTTPS Everywhere">
 <!ENTITY  httpsEverywhereEnable.label    "Enable HTTPS Everywhere">
@@ -41,8 +41,8 @@
 <!ENTITY  httpsEverywhereMore.label      "Learn more">
 
 <!ENTITY  passwordManager.title          "Password Managers">
-<!ENTITY  passwordManager.desc1          "Cliqz integrates with selected and verified third-party password manager applications.">
-<!ENTITY  passwordManager.desc2          "Note that Cliqz did not create these applications and has no control over what data they might access.">
+<!ENTITY  passwordManager.desc1          "Ghostery integrates with selected and verified third-party password manager applications.">
+<!ENTITY  passwordManager.desc2          "Note that Ghostery did not create these applications and has no control over what data they might access.">
 
 <!ENTITY  ghostery.title                 "Extended Privacy Control">
 <!ENTITY  ghostery.desc1                 "Ghostery detects hidden services that collect personal data and lets you decide which">
@@ -53,16 +53,16 @@
 <!-- LOCALIZATION NOTE (abouthome.defaultSnippet1.v1):
      text in <a/> will be linked to the Cliqz features page on cliqz.com
 -->
-<!ENTITY abouthome.defaultSnippet1.v1 "Thanks for choosing Cliqz! To get the most out of your browser, learn more about the <a>latest features</a>.">
+<!ENTITY abouthome.defaultSnippet1.v1 "Thanks for choosing Ghostery! To get the most out of your browser, learn more about the <a>latest features</a>.">
 <!-- LOCALIZATION NOTE (abouthome.defaultSnippet2.v1):
      text in <a/> will be linked to the featured add-ons on addons.mozilla.org
 -->
-<!ENTITY abouthome.defaultSnippet2.v1 "It’s easy to customize your Cliqz exactly the way you want it. <a>Choose from thousands of add-ons</a>.">
+<!ENTITY abouthome.defaultSnippet2.v1 "It’s easy to customize your Ghostery exactly the way you want it. <a>Choose from thousands of add-ons</a>.">
 
-<!ENTITY healthReportIntro.label         "We care about your privacy. When Cliqz sends information to the Cliqz team, our  <label class='text-link' href='https://cliqz.com/en/privacy'>privacy policy</label> describes how we handle that information.">
+<!ENTITY healthReportIntro.label         "We care about your privacy. When Ghostery sends information to the Ghostery team, our  <label class='text-link' href='https://cliqz.com/en/privacy'>privacy policy</label> describes how we handle that information.">
 
-<!ENTITY enableHealthReport2.label       "Allow &brandShortName; to send technical and interaction data to Cliqz">
-<!ENTITY collectBrowserErrors.label          "Allow &brandShortName; to send browser error reports (including error messages) to Cliqz">
+<!ENTITY enableHealthReport2.label       "Allow &brandShortName; to send technical and interaction data to Ghostery, Inc.">
+<!ENTITY collectBrowserErrors.label          "Allow &brandShortName; to send browser error reports (including error messages) to Ghostery, Inc.">
 
 <!ENTITY startupPage2.label        "When &brandShortName; starts">
 <!ENTITY startupPage2.accesskey    "s">

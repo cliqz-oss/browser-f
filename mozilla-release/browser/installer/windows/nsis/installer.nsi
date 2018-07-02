@@ -257,7 +257,7 @@ Section "-InstallStartCleanup"
   ${InitHashAppModelId} "$INSTDIR" "Software\${AppName}\TaskBarIDs"
 
   ; Remove the updates directory
-  ${CleanUpdateDirectories} "CLIQZ" "CLIQZ\updates"
+  ${CleanUpdateDirectories} "Ghostery" "Ghostery\updates"
 
   ${RemoveDeprecatedFiles}
   ${RemovePrecompleteEntries} "false"
@@ -265,7 +265,7 @@ Section "-InstallStartCleanup"
   ${If} ${FileExists} "$INSTDIR\defaults\pref\channel-prefs.js"
     Delete "$INSTDIR\defaults\pref\channel-prefs.js"
   ${EndIf}
-  ; Cliqz Browser: we don't replace already existing distribution.js file in pref
+  ; Ghostery Browser: we don't replace already existing distribution.js file in pref
   ${If} ${FileExists} "$INSTDIR\defaults\pref"
     RmDir "$INSTDIR\defaults\pref"
   ${EndIf}
@@ -302,9 +302,8 @@ Section "-Application" APP_IDX
   ; Try to get brand information from installer or it parent processes. Just
   ; in case, because this will be done by stub installer. But in some rare cases
   ; user can launch full installer bypassing stub installer.
-  CliqzHelper::saveTaggedParams "Software\CLIQZ" 259200
+  CliqzHelper::saveTaggedParams "Software\Ghostery" 259200
   Call CliqzSaveBrandingInfo
-  Call FixCliqzAsFirefoxRegistry
 
   ; Register DLLs
   ; XXXrstrong - AccessibleMarshal.dll can be used by multiple applications but
@@ -356,30 +355,31 @@ Section "-Application" APP_IDX
 
   ${LogHeader} "Adding Registry Entries"
   SetShellVarContext current  ; Set SHCTX to HKCU
-  ${RegCleanMain} "Software\CLIQZ"
+  ${RegCleanMain} "Software\Ghostery"
   ${RegCleanUninstall}
   ${UpdateProtocolHandlers}
 
   ClearErrors
-  WriteRegStr HKLM "Software\CLIQZ" "${BrandShortName}InstallerTest" "Write Test"
+  WriteRegStr HKLM "Software\Ghostery" "${BrandShortName}InstallerTest" "Write Test"
   ${If} ${Errors}
     StrCpy $TmpVal "HKCU" ; used primarily for logging
   ${Else}
     SetShellVarContext all  ; Set SHCTX to HKLM
-    DeleteRegValue HKLM "Software\CLIQZ" "${BrandShortName}InstallerTest"
+    DeleteRegValue HKLM "Software\Ghostery" "${BrandShortName}InstallerTest"
     StrCpy $TmpVal "HKLM" ; used primarily for logging
-    ${RegCleanMain} "Software\CLIQZ"
+    ${RegCleanMain} "Software\Ghostery"
     ${RegCleanUninstall}
     ${UpdateProtocolHandlers}
 
-    ReadRegStr $0 HKLM "Software\cliqz.com\CLIQZ" "CurrentVersion"
+    ReadRegStr $0 HKLM "Software\ghostery.net\Ghostery" "CurrentVersion"
     ${If} "$0" != "${GREVersion}"
-      WriteRegStr HKLM "Software\cliqz.com\CLIQZ" "CurrentVersion" "${GREVersion}"
+      WriteRegStr HKLM "Software\ghostery.net\Ghostery" "CurrentVersion" "${GREVersion}"
     ${EndIf}
   ${EndIf}
 
   ${RemoveDeprecatedKeys}
-  ${Set32to64DidMigrateReg}
+  ; Don't use migration for Ghostery browser users
+  ; ${Set32to64DidMigrateReg}
 
   ; The previous installer adds several regsitry values to both HKLM and HKCU.
   ; We now try to add to HKLM and if that fails to HKCU
@@ -397,17 +397,17 @@ Section "-Application" APP_IDX
   ; it doesn't cause problems always add them.
   ${SetUninstallKeys}
 
-  ; On install always add the CliqzHTML and CliqzURL keys.
-  ; An empty string is used for the 5th param because CliqzHTML is not a
+  ; On install always add the GhosteryHTML and GhosteryURL keys.
+  ; An empty string is used for the 5th param because GhosteryHTML is not a
   ; protocol handler.
   ${GetLongPath} "$INSTDIR\${FileMainEXE}" $8
   StrCpy $2 "$\"$8$\" -osint -url $\"%1$\""
 
-  ; In Win8, the delegate execute handler picks up the value in CliqzURL and
-  ; CliqzHTML to launch the desktop browser when it needs to.
-  ${AddDisabledDDEHandlerValues} "CliqzHTML-$AppUserModelID" "$2" "$8,1" \
+  ; In Win8, the delegate execute handler picks up the value in GhosteryURL and
+  ; GhosteryHTML to launch the desktop browser when it needs to.
+  ${AddDisabledDDEHandlerValues} "GhosteryHTML-$AppUserModelID" "$2" "$8,1" \
                                  "${AppRegName} Document" ""
-  ${AddDisabledDDEHandlerValues} "CliqzURL-$AppUserModelID" "$2" "$8,1" \
+  ${AddDisabledDDEHandlerValues} "GhosteryURL-$AppUserModelID" "$2" "$8,1" \
                                  "${AppRegName} URL" "true"
 
   ; For pre win8, the following keys should only be set if we can write to HKLM.
@@ -680,7 +680,7 @@ Section "-InstallEndCleanup"
       ; If we have something other than empty string now, write the value.
       ${If} "$0" != ""
         ClearErrors
-        WriteRegStr HKCU "Software\CLIQZ" "OldDefaultBrowserCommand" "$0"
+        WriteRegStr HKCU "Software\Ghostery" "OldDefaultBrowserCommand" "$0"
       ${EndIf}
 
       ${LogHeader} "Setting as the default browser"
@@ -696,7 +696,7 @@ Section "-InstallEndCleanup"
     ${ElseIfNot} ${Errors}
       ${LogHeader} "Writing default-browser opt-out"
       ClearErrors
-      WriteRegStr HKCU "Software\CLIQZ" "DefaultBrowserOptOut" "True"
+      WriteRegStr HKCU "Software\Ghostery" "DefaultBrowserOptOut" "True"
       ${If} ${Errors}
         ${LogMsg} "Error writing default-browser opt-out"
       ${EndIf}
@@ -1017,7 +1017,7 @@ FunctionEnd
 !ifdef MOZ_MAINTENANCE_SERVICE
 Function preComponents
   ; If the service already exists, don't show this page
-  ServicesHelper::IsInstalled "CLIQZMaintenance"
+  ServicesHelper::IsInstalled "GhosteryMaintenance"
   Pop $R9
   ${If} $R9 == 1
     ; The service already exists so don't show this page.
@@ -1034,13 +1034,13 @@ Function preComponents
 
   ; Only show the maintenance service page if we have write access to HKLM
   ClearErrors
-  WriteRegStr HKLM "Software\CLIQZ" \
+  WriteRegStr HKLM "Software\Ghostery" \
               "${BrandShortName}InstallerTest" "Write Test"
   ${If} ${Errors}
     ClearErrors
     Abort
   ${Else}
-    DeleteRegValue HKLM "Software\CLIQZ" "${BrandShortName}InstallerTest"
+    DeleteRegValue HKLM "Software\Ghostery" "${BrandShortName}InstallerTest"
   ${EndIf}
 
   StrCpy $PageName "Components"
@@ -1219,17 +1219,17 @@ Function preSummary
 
   ; Check if it is possible to write to HKLM
   ClearErrors
-  WriteRegStr HKLM "Software\CLIQZ" "${BrandShortName}InstallerTest" "Write Test"
+  WriteRegStr HKLM "Software\Ghostery" "${BrandShortName}InstallerTest" "Write Test"
   ${Unless} ${Errors}
-    DeleteRegValue HKLM "Software\CLIQZ" "${BrandShortName}InstallerTest"
-    ; Check if Cliqz is the http handler for this user.
+    DeleteRegValue HKLM "Software\Ghostery" "${BrandShortName}InstallerTest"
+    ; Check if Ghostery is the http handler for this user.
     SetShellVarContext current ; Set SHCTX to the current user
     ${IsHandlerForInstallDir} "http" $R9
     ${If} $TmpVal == "HKLM"
       SetShellVarContext all ; Set SHCTX to all users
     ${EndIf}
-    ; If Cliqz isn't the http handler for this user show the option to set
-    ; Cliqz as the default browser.
+    ; If Ghostery isn't the http handler for this user show the option to set
+    ; Ghostery as the default browser.
     ${If} "$R9" != "true"
     ${AndIf} ${AtMostWin2008R2}
       WriteINIStr "$PLUGINSDIR\summary.ini" "Settings" NumFields "4"

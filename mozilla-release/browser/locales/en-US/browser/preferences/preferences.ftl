@@ -504,7 +504,7 @@ search-remove-engine =
     .accesskey = R
 
 search-find-more-link = Find more search engines
-search-find-more-desc = Cliqz supports most search engines of the official Mozilla Firefox repository.
+search-find-more-desc = Ghostery supports most search engines of the official Mozilla Firefox repository.
 
 # This warning is displayed when the chosen keyword is already in use
 # ('Duplicate' is an adjective)

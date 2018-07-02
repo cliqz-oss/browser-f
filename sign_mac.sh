@@ -13,19 +13,19 @@ do
   rm -f -rf $PKG_DIR
   mkdir $PKG_DIR
   hdiutil attach -nobrowse $DMG
-  cp -r /Volumes/cliqz/*.app $PKG_DIR
+  cp -r /Volumes/ghostery/*.app $PKG_DIR
   xattr -rc $PKG_DIR/
-  hdiutil detach /Volumes/cliqz
+  hdiutil detach /Volumes/ghostery
   for app in $PKG_DIR/*.app
   do
     codesign -s $CQZ_CERT_NAME --force --deep $app
 
     # copy back to dist folder a signed app (for generating an update package(s) later)
     if [[ $DMG == *"de.mac.dmg"* ]]; then
-      cp -r $app obj/dist/l10n-stage/cliqz
+      cp -r $app obj/dist/l10n-stage/ghostery
     fi
     if [[ $DMG == *"en-US.mac.dmg"* ]]; then
-      cp -r $app obj/dist/cliqz
+      cp -r $app obj/dist/ghostery
     fi
   done
 
@@ -35,6 +35,6 @@ do
       rm $SIGNED_DMG
   fi
 
-  appdmg -v cliqz-dmg.json $SIGNED_DMG
+  appdmg -v ghostery-dmg.json $SIGNED_DMG
   cp $SIGNED_DMG $DMG
 done

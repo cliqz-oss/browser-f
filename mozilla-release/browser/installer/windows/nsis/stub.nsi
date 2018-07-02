@@ -353,17 +353,17 @@ Function .onInit
   ; path for this install, even if it's not the same architecture.
   SetRegView 32
   SetShellVarContext all ; Set SHCTX to HKLM
-  ${GetSingleInstallPath} "Software\Cliqz\${BrandFullNameInternal}" $R9
+  ${GetSingleInstallPath} "Software\Ghostery\${BrandFullNameInternal}" $R9
 
   ${If} "$R9" == "false"
   ${AndIf} ${RunningX64}
     SetRegView 64
-    ${GetSingleInstallPath} "Software\Cliqz\${BrandFullNameInternal}" $R9
+    ${GetSingleInstallPath} "Software\Ghostery\${BrandFullNameInternal}" $R9
   ${EndIf}
 
   ${If} "$R9" == "false"
     SetShellVarContext current ; Set SHCTX to HKCU
-    ${GetSingleInstallPath} "Software\Cliqz\${BrandFullNameInternal}" $R9
+    ${GetSingleInstallPath} "Software\Ghostery\${BrandFullNameInternal}" $R9
 
     ${If} ${RunningX64}
       ; In HKCU there is no WOW64 redirection, which means we may have gotten
@@ -411,7 +411,7 @@ Function .onInit
   StrCpy $InitialInstallDir "$INSTDIR"
 
   ClearErrors
-  WriteRegStr HKLM "Software\Cliqz" "${BrandShortName}InstallerTest" \
+  WriteRegStr HKLM "Software\Ghostery" "${BrandShortName}InstallerTest" \
                    "Write Test"
 
   ; Only display set as default when there is write access to HKLM and on Win7
@@ -420,7 +420,7 @@ Function .onInit
   ${OrIf} ${AtLeastWin8}
     StrCpy $CanSetAsDefault "false"
   ${Else}
-    DeleteRegValue HKLM "Software\Cliqz" "${BrandShortName}InstallerTest"
+    DeleteRegValue HKLM "Software\Ghostery" "${BrandShortName}InstallerTest"
     StrCpy $CanSetAsDefault "true"
   ${EndIf}
   StrCpy $CheckboxSetAsDefault "0"
@@ -544,7 +544,7 @@ Function .onInit
   ${EndIf}
 
   ; Save information about brand to registry for later use from full installer
-  CliqzHelper::saveTaggedParams "Software\CLIQZ" 259200
+  CliqzHelper::saveTaggedParams "Software\Ghostery" 259200
 FunctionEnd
 
 ; .onGUIInit isn't needed except for RTL locales
@@ -934,7 +934,7 @@ Function createInstall
     StrCpy $ExistingBuildID "0"
   ${EndIf}
 
-  ${If} ${FileExists} "$LOCALAPPDATA\Cliqz"
+  ${If} ${FileExists} "$LOCALAPPDATA\Ghostery"
     StrCpy $ExistingProfile "1"
   ${Else}
     StrCpy $ExistingProfile "0"
@@ -1422,12 +1422,12 @@ Function SendPing
     ${EndIf}
 
     ClearErrors
-    WriteRegStr HKLM "Software\Cliqz" "${BrandShortName}InstallerTest" \
+    WriteRegStr HKLM "Software\Ghostery" "${BrandShortName}InstallerTest" \
                      "Write Test"
     ${If} ${Errors}
       StrCpy $R8 "0"
     ${Else}
-      DeleteRegValue HKLM "Software\Cliqz" "${BrandShortName}InstallerTest"
+      DeleteRegValue HKLM "Software\Ghostery" "${BrandShortName}InstallerTest"
       StrCpy $R8 "1"
     ${EndIf}
 
@@ -1443,17 +1443,17 @@ Function SendPing
       ${GetParent} "$R2" $R3
       ${GetLongPath} "$R3" $R3
       ${If} $R3 == $INSTDIR
-        StrCpy $R2 "1" ; This Cliqz install is set as default.
+        StrCpy $R2 "1" ; This Ghostery install is set as default.
       ${Else}
-        StrCpy $R2 "$R2" "" -9 # length of cliqz.exe
+        StrCpy $R2 "$R2" "" -12 # length of ghostery.exe
         ${If} "$R2" == "${FileMainEXE}"
-          StrCpy $R2 "2" ; Another Cliqz install is set as default.
+          StrCpy $R2 "2" ; Another Ghostery install is set as default.
         ${Else}
           StrCpy $R2 "0"
         ${EndIf}
       ${EndIf}
     ${Else}
-      StrCpy $R2 "0" ; Cliqz is not set as default.
+      StrCpy $R2 "0" ; Ghostery is not set as default.
     ${EndIf}
 
     ${If} "$R2" == "0"
@@ -1464,17 +1464,17 @@ Function SendPing
         ${GetParent} "$R2" $R3
         ${GetLongPath} "$R3" $R3
         ${If} $R3 == $INSTDIR
-          StrCpy $R2 "1" ; This Cliqz install is set as default.
+          StrCpy $R2 "1" ; This Ghostery install is set as default.
         ${Else}
-          StrCpy $R2 "$R2" "" -9 # length of cliqz.exe
+          StrCpy $R2 "$R2" "" -12 # length of ghostery.exe
           ${If} "$R2" == "${FileMainEXE}"
-            StrCpy $R2 "2" ; Another Cliqz install is set as default.
+            StrCpy $R2 "2" ; Another Ghostery install is set as default.
           ${Else}
             StrCpy $R2 "0"
           ${EndIf}
         ${EndIf}
       ${Else}
-        StrCpy $R2 "0" ; Cliqz is not set as default.
+        StrCpy $R2 "0" ; Ghostery is not set as default.
       ${EndIf}
     ${EndIf}
 
@@ -1807,8 +1807,8 @@ Function CopyPostSigningData
     ClearErrors
     StrCpy $PostSigningData "0"
   ${Else}
-    CreateDirectory "$LOCALAPPDATA\Cliqz"
-    CopyFiles /SILENT "$EXEDIR\postSigningData" "$LOCALAPPDATA\Cliqz"
+    CreateDirectory "$LOCALAPPDATA\Ghostery"
+    CopyFiles /SILENT "$EXEDIR\postSigningData" "$LOCALAPPDATA\Ghostery"
   ${Endif}
 FunctionEnd
 
@@ -1866,26 +1866,26 @@ Function ShouldPromptForProfileCleanup
 
   ; Check each Profile section in profiles.ini until we find the default profile.
   StrCpy $R0 ""
-  ${If} ${FileExists} "$APPDATA\Cliqz\profiles.ini"
+  ${If} ${FileExists} "$APPDATA\Ghostery\profiles.ini"
     StrCpy $0 0
     ${Do}
       ClearErrors
       ; Check if the section exists by reading a value that must be present.
-      ReadINIStr $1 "$APPDATA\Cliqz\profiles.ini" "Profile$0" "Path"
+      ReadINIStr $1 "$APPDATA\Ghostery\profiles.ini" "Profile$0" "Path"
       ${If} ${Errors}
         ; We've run out of profile sections.
         ${Break}
       ${EndIf}
 
       ClearErrors
-      ReadINIStr $1 "$APPDATA\Cliqz\profiles.ini" "Profile$0" "Default"
+      ReadINIStr $1 "$APPDATA\Ghostery\profiles.ini" "Profile$0" "Default"
       ${IfNot} ${Errors}
       ${AndIf} $1 == "1"
         ; We've found the default profile
-        ReadINIStr $1 "$APPDATA\Cliqz\profiles.ini" "Profile$0" "Path"
-        ReadINIStr $2 "$APPDATA\Cliqz\profiles.ini" "Profile$0" "IsRelative"
+        ReadINIStr $1 "$APPDATA\Ghostery\profiles.ini" "Profile$0" "Path"
+        ReadINIStr $2 "$APPDATA\Ghostery\profiles.ini" "Profile$0" "IsRelative"
         ${If} $2 == "1"
-          StrCpy $R0 "$APPDATA\Cliqz\$1"
+          StrCpy $R0 "$APPDATA\Ghostery\$1"
         ${Else}
           StrCpy $R0 "$1"
         ${EndIf}
@@ -1904,7 +1904,7 @@ Function ShouldPromptForProfileCleanup
 
   ; We have at least one profile present. If we don't have any installations,
   ; then we need to show the re-install prompt. We'll say there's an
-  ; installation present if HKCR\CliqzURL* exists and points to a real path.
+  ; installation present if HKCR\GhosteryURL* exists and points to a real path.
   StrCpy $0 0
   StrCpy $R9 ""
   ${Do}
@@ -1915,7 +1915,7 @@ Function ShouldPromptForProfileCleanup
       ${Break}
     ${EndIf}
     ${WordFind} "$1" "-" "+1{" $2
-    ${If} $2 == "CliqzURL"
+    ${If} $2 == "GhosteryURL"
       ClearErrors
       ReadRegStr $2 HKCR "$1\DefaultIcon" ""
       ${IfNot} ${Errors}
@@ -1935,10 +1935,10 @@ Function ShouldPromptForProfileCleanup
 
   ; Okay, there's at least one install, let's see if it's for this channel.
   SetShellVarContext all
-  ${GetSingleInstallPath} "Software\Cliqz\${BrandFullNameInternal}" $0
+  ${GetSingleInstallPath} "Software\Ghostery\${BrandFullNameInternal}" $0
   ${If} $0 == "false"
     SetShellVarContext current
-    ${GetSingleInstallPath} "Software\Cliqz\${BrandFullNameInternal}" $0
+    ${GetSingleInstallPath} "Software\Ghostery\${BrandFullNameInternal}" $0
     ${If} $0 == "false"
       ; Existing installs are not for this channel. Don't show any prompt.
       GoTo end
@@ -1957,7 +1957,7 @@ Function ShouldPromptForProfileCleanup
     ; We don't know what version we're about to install because we haven't
     ; downloaded it yet. Find out what the latest version released on this
     ; channel is and assume we'll be installing that one.
-    ; Cliqz. Use only internal version, we don't want for now to support one
+    ; Ghostery. Use only internal version, we don't want for now to support one
     ; more network resource
     ; Call GetLatestReleasedVersion
     ; ${If} ${Errors}

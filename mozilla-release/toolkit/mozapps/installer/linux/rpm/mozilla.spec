@@ -13,7 +13,7 @@ Release:        %{?moz_rpm_release:%{moz_rpm_release}}%{?buildid:.%{buildid}}
 Summary:        %{pr_name}
 Group:          Applications/Internet
 License:        MPL 2
-Vendor:         Cliqz GmbH
+Vendor:         Ghostery, Inc.
 URL:            http://www.mozilla.org/projects/firefox/
 Source0:        %{name}.desktop
 BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
@@ -59,7 +59,7 @@ desktop-file-install \
     %{SOURCE0}
 
 # copy pref file
-cat %{_sourcedir}/no-updates.js > $RPM_BUILD_ROOT/%{_libdir}/%{name}/cliqz.cfg
+cat %{_sourcedir}/no-updates.js > $RPM_BUILD_ROOT/%{_libdir}/%{name}/ghostery.cfg
 
 #In order to make branding work in a generic way, We find
 #all the icons that are likely to be used for desktop files

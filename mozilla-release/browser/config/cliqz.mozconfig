@@ -5,13 +5,14 @@
 
 ac_add_options --enable-signmar
 
-ac_add_options --with-branding=browser/branding/cliqz
+ac_add_options --with-branding=browser/branding/ghostery
+ac_add_options --with-app-name=ghostery  # name for binaries
+export MOZ_APP_PROFILE=Ghostery
+
 ac_add_options --enable-official-branding
-ac_add_options --with-app-name=cliqz  # name for binaries
 ac_add_options --enable-crashreporter
 ac_add_options --enable-js-shell
 
-export MOZ_APP_PROFILE=CLIQZ
 export MOZ_AUTOMATION_UPLOAD=1
 
 ac_add_options "MOZ_ALLOW_LEGACY_EXTENSIONS=1"

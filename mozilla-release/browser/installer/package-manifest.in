@@ -117,7 +117,7 @@
 ; [Base Browser Files]
 #ifndef XP_UNIX
 @BINPATH@/@MOZ_APP_NAME@.exe
-@BINPATH@/cliqz.VisualElementsManifest.xml
+@BINPATH@/ghostery.VisualElementsManifest.xml
 @BINPATH@/browser/VisualElements/VisualElements_150.png
 @BINPATH@/browser/VisualElements/VisualElements_70.png
 #else
@@ -643,4 +643,4 @@ bin/libfreebl_32int64_3.so
 #endif
 
 ; Extra distrubution files
-@RESPATH@/cliqz.cfg
+@RESPATH@/ghostery.cfg

@@ -14,9 +14,9 @@ IF "%CQZ_BUILD_64BIT_WINDOWS%"=="1" (
   SET platform_prefix=win32
 )
 
-set installer=dist\install\sea\cliqz-%ff_exe%.%platform_prefix%.installer.exe
-set tmp_installer=dist\install\sea\cliqz-%ff_exe%.%platform_prefix%.installer_tmp.exe
-set clean_installer=dist\install\sea\cliqz-%ff_exe%.%platform_prefix%.installer_clean.exe
+set installer=dist\install\sea\ghostery-%ff_exe%.%platform_prefix%.installer.exe
+set tmp_installer=dist\install\sea\ghostery-%ff_exe%.%platform_prefix%.installer_tmp.exe
+set clean_installer=dist\install\sea\ghostery-%ff_exe%.%platform_prefix%.installer_clean.exe
 
 rem copy clean installer for future use
 copy %installer% %clean_installer%

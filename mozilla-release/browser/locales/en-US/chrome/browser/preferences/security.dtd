@@ -18,7 +18,7 @@
 <!ENTITY  formsAndPasswords.label       "Forms &amp; Passwords">
 
 <!ENTITY  rememberLogins2.label         "Remember logins and passwords for websites">
-<!ENTITY  rememberLogins2.hint          "To enable this feature please make sure Cliqz will remember your <label class='text-link' id='jumpToHistory'>History</label>.">
+<!ENTITY  rememberLogins2.hint          "To enable this feature please make sure Ghostery will remember your <label class='text-link' id='jumpToHistory'>History</label>.">
 <!ENTITY  rememberLogins2.accesskey     "R">
 <!ENTITY  passwordExceptions.label      "Exceptions…">
 <!ENTITY  passwordExceptions.accesskey  "x">
@@ -38,8 +38,8 @@
 <!ENTITY  httpsEverywhereMore.label      "Learn more">
 
 <!ENTITY  passwordManager.title          "Password Managers">
-<!ENTITY  passwordManager.desc1          "Cliqz integrates with selected and verified third-party password manager applications.">
-<!ENTITY  passwordManager.desc2          "Note that Cliqz did not create these applications and has no control over what data they might access.">
+<!ENTITY  passwordManager.desc1          "Ghostery integrates with selected and verified third-party password manager applications.">
+<!ENTITY  passwordManager.desc2          "Note that Ghostery did not create these applications and has no control over what data they might access.">
 
 <!ENTITY  ghostery.title                 "Extended Privacy Control">
 <!ENTITY  ghostery.desc1                 "Ghostery detects hidden services that collect personal data and lets you decide which">

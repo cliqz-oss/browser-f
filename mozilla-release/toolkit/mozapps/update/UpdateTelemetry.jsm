@@ -364,7 +364,7 @@ var AUSTLMY = {
       let wrk = Cc["@mozilla.org/windows-registry-key;1"].
                 createInstance(Ci.nsIWindowsRegKey);
       wrk.open(wrk.ROOT_KEY_LOCAL_MACHINE,
-               "SOFTWARE\\CLIQZ\\MaintenanceService",
+               "SOFTWARE\\Ghostery\\MaintenanceService",
                wrk.ACCESS_READ | wrk.WOW64_64);
       // Was the service at some point installed, but is now uninstalled?
       attempted = wrk.readIntValue("Attempted");

@@ -1005,11 +1005,11 @@ BrowserGlue.prototype = {
       if (updateChannel) {
         let uninstalledValue =
           WindowsRegistry.readRegKey(Ci.nsIWindowsRegKey.ROOT_KEY_CURRENT_USER,
-                                     "Software\\Cliqz",
+                                     "Software\\Ghostery",
                                      `Uninstalled-${updateChannel}`);
         let removalSuccessful =
           WindowsRegistry.removeRegKey(Ci.nsIWindowsRegKey.ROOT_KEY_CURRENT_USER,
-                                       "Software\\Cliqz",
+                                       "Software\\Ghostery",
                                        `Uninstalled-${updateChannel}`);
         if (removalSuccessful && uninstalledValue == "True") {
           this._resetProfileNotification("uninstall");

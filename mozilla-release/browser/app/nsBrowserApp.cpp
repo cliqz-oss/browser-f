@@ -128,7 +128,7 @@ static MOZ_FORMAT_PRINTF(1, 2) void Output(const char *fmt, ... )
       (decltype(MessageBoxW)*) GetProcAddress(user32, "MessageBoxW");
     if (messageBoxW) {
       // TODO: Use `sAppData->name`
-      messageBoxW(nullptr, wide_msg, L"Cliqz",
+      messageBoxW(nullptr, wide_msg, L"Ghostery",
                   MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
     }
     FreeLibrary(user32);

@@ -1493,14 +1493,14 @@ function getMaintSvcDir() {
   // This will return an empty string on our Win XP build systems.
   let maintSvcDir = getSpecialFolderDir(CSIDL_PROGRAM_FILESX86);
   if (maintSvcDir) {
-    maintSvcDir.append("Cliqz Maintenance Service");
+    maintSvcDir.append("Ghostery Maintenance Service");
     debugDump("using CSIDL_PROGRAM_FILESX86 - maintenance service install " +
               "directory path: " + maintSvcDir.path);
   }
   if (!maintSvcDir || !maintSvcDir.exists()) {
     maintSvcDir = getSpecialFolderDir(CSIDL_PROGRAM_FILES);
     if (maintSvcDir) {
-      maintSvcDir.append("Cliqz Maintenance Service");
+      maintSvcDir.append("Ghostery Maintenance Service");
       debugDump("using CSIDL_PROGRAM_FILES - maintenance service install " +
                 "directory path: " + maintSvcDir.path);
     }
@@ -2252,7 +2252,7 @@ function shouldRunServiceTest() {
 
   let isBinSigned = isBinarySigned(updaterBinPath);
 
-  const REG_PATH = "SOFTWARE\\CLIQZ\\MaintenanceService\\" +
+  const REG_PATH = "SOFTWARE\\Ghostery\\MaintenanceService\\" +
                    "3932ecacee736d366d6436db0f55bce4";
   let key = Cc["@mozilla.org/windows-registry-key;1"].
             createInstance(Ci.nsIWindowsRegKey);
@@ -2276,7 +2276,7 @@ function shouldRunServiceTest() {
   }
 
   // Check to make sure the service is installed
-  let args = ["wait-for-service-stop", "CliqzMaintenance", "10"];
+  let args = ["wait-for-service-stop", "GhosteryMaintenance", "10"];
   let exitValue = runTestHelperSync(args);
   Assert.notEqual(exitValue, 0xEE, "the maintenance service should be " +
                   "installed (if not, build system configuration bug?)");

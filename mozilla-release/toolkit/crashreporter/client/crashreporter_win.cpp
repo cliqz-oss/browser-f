@@ -80,7 +80,7 @@ static HANDLE               gThreadHandle;
 static SendThreadData       gSendData = { 0, };
 static vector<string>       gRestartArgs;
 static map<wstring,wstring> gQueryParameters;
-static wstring              gCrashReporterKey(L"Software\\Cliqz\\Crash Reporter");
+static wstring              gCrashReporterKey(L"Software\\Ghostery\\Crash Reporter");
 static wstring              gURLParameter;
 static int                  gCheckboxPadding = 6;
 static bool                 gRTLlayout = false;

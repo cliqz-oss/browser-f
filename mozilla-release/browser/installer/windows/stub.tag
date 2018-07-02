@@ -1,4 +1,4 @@
 ;!@Install@!UTF-8!
-Title="Cliqz"
+Title="Ghostery"
 RunProgram="setup-stub.exe"
 ;!@InstallEnd@!

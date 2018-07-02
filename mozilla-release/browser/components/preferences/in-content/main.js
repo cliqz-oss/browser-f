@@ -1489,7 +1489,7 @@ var gMainPane = {
           var wrk = Cc["@mozilla.org/windows-registry-key;1"]
             .createInstance(Ci.nsIWindowsRegKey);
           wrk.open(wrk.ROOT_KEY_LOCAL_MACHINE,
-            "SOFTWARE\\Cliqz\\MaintenanceService",
+            "SOFTWARE\\Ghostery\\MaintenanceService",
             wrk.ACCESS_READ | wrk.WOW64_64);
           installed = wrk.readIntValue("Installed");
           wrk.close();

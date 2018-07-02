@@ -55,8 +55,8 @@ sub daysFromBuildID
 #Get next .ver file entry
 sub getNextEntry
 {
-	while (<VERFILE>) 
-	{ 
+	while (<VERFILE>)
+	{
 		my $mline = $_;
 		($mline) = split(/#/,$mline);
 		my ($entry, $value)=split(/=/,$mline,2);
@@ -144,7 +144,7 @@ my $override_filename;
 my $override_productname;
 my $override_productversion;
 my $override_mpversion;
-if (open(VERFILE, "<$srcdir/module.ver")) 
+if (open(VERFILE, "<$srcdir/module.ver"))
 {
 
 	my ($a,$b) = getNextEntry();
@@ -235,7 +235,7 @@ for ($j = 1; $j < 4; $j++)
 my $winappversion = "$appver[0],$appver[1],$appver[2],$appver[3]";
 
 my $copyright = "License: MPL 2";
-my $company = "Cliqz GmbH";
+my $company = "Ghostery, Inc.";
 my $trademarks = "";
 my $productname = $displayname;
 
@@ -264,7 +264,7 @@ print RCFILE qq{
 
 #include<winver.h>
 
-// Note: if you contain versioning information in an included 
+// Note: if you contain versioning information in an included
 // RC script, it will be discarded
 // Use module.ver to explicitly set these values
 
@@ -274,11 +274,11 @@ print RCFILE qq{
 
 my $versionlevel=0;
 my $insideversion=0;
-if (open(RCINCLUDE, "<$rcinclude")) 
+if (open(RCINCLUDE, "<$rcinclude"))
 {
 	print RCFILE "// From included resource $rcinclude\n";
 #	my $mstring="";
-	while (<RCINCLUDE>) 
+	while (<RCINCLUDE>)
 	{
 		$_ =~ s/\@MOZ_APP_DISPLAYNAME\@/$displayname/g;
 		print RCFILE $_;
@@ -297,20 +297,20 @@ if (open(RCINCLUDE, "<$rcinclude"))
 #			my ($firststring,$secondstring) = split(/\s+/,$nocomment);
 #			if (!defined($firststring)) {$firststring="";}
 #			if (!defined($secondstring)) {$secondstring="";}
-#			if ($secondstring eq "VERSIONINFO") 
+#			if ($secondstring eq "VERSIONINFO")
 #			{
-#if (!$quiet || $quiet ne "1") { 
+#if (!$quiet || $quiet ne "1") {
 #				print "$bufferstr" . "WARNING: Included RC file ($rcinclude, $module, $binary)\n";
 #				print "$bufferstr" . "WARNING: contains versioning information that will be discarded\n";
 #				print "$bufferstr" . "WARNING: Remove it and use relevant overrides (in module.ver)\n";
 #}
 #				$versionlevel = 0;
-#				$insideversion = 1; 
+#				$insideversion = 1;
 #			}
 #			if ($firststring eq "BEGIN") { $versionlevel++; }
-#			if ($secondstring eq "END") 
-#			{ 
-#				$versionlevel--; 
+#			if ($secondstring eq "END")
+#			{
+#				$versionlevel--;
 #				if ($insideversion==1 && $versionlevel==0) {$versionlevel=0;}
 #			}
 #			my $includecheck = $firststring . $secondstring;
@@ -320,12 +320,12 @@ if (open(RCINCLUDE, "<$rcinclude"))
 #			{
 #				if ($insideversion == 0 && $versionlevel == 0)
 #				{
-#					print RCFILE "$nocomment\n";	
+#					print RCFILE "$nocomment\n";
 #				}
 #			}
 #		}
 #	}
-	
+
 }
 
 my $fileflags = join(' | ', @fileflags);

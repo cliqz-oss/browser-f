@@ -1,0 +1,10 @@
+{
+  "title": "Ghostery",
+  "background": "mozilla-release/browser/branding/ghostery/background.png",
+  "icon": "mozilla-release/browser/branding/ghostery/disk.icns",
+  "icon-size": 80,
+  "contents": [
+    { "x": 418, "y": 180, "type": "link", "path": "/Applications" },
+    { "x": 110, "y": 180, "type": "file", "path": "obj/pkg/Ghostery.app" }
+  ]
+}

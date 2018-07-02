@@ -18,7 +18,7 @@
 <!ENTITY rights.intro-point1b "Mozilla Public License">
 <!ENTITY rights.intro-point1c ". This means you may use, copy and distribute &brandShortName; to others.  You are also welcome to modify the source code of &brandShortName; as you want to meet your needs. The Mozilla Public License also gives you the right to distribute your modified versions.">
 
-<!ENTITY rights.intro-point2-a "You are not granted any trademark rights or licenses to the trademarks of Cliqz GmbH or any party, including without limitation the Cliqz name or logo.">
+<!ENTITY rights.intro-point2-a "You are not granted any trademark rights or licenses to the trademarks of Ghostery GmbH or any party, including without limitation the Ghostery name or logo.">
 <!ENTITY rights.intro-point2-b "here">
 <!ENTITY rights.intro-point2-c ".">
 
@@ -31,7 +31,7 @@
 <!ENTITY rights.intro-point3c ".">
 
 <!-- point 3 text for Cliqz branded builds -->
-<!ENTITY rights.cliqz.intro-point3a "The protection of your data has priority for us. As a company based in Germany we are bound by strict data security regulations and also by our own high standards and policies. Our primary principle: Cliqz does not store any data on our servers that could be used to identify you or your equipment. Want to know all the details? Read about our ">
+<!ENTITY rights.cliqz.intro-point3a "The protection of your data has priority for us. As a company based in Germany we are bound by strict data security regulations and also by our own high standards and policies. Our primary principle: Ghostery does not store any data on our servers that could be used to identify you or your equipment. Want to know all the details? Read about our ">
 <!ENTITY rights.cliqz.intro-point3b "privacy standards">
 <!ENTITY rights.cliqz.intro-point3c ", check our ">
 <!ENTITY rights.cliqz.intro-point3d "privacy policy">
@@ -61,7 +61,7 @@
      the UI, without this page being forgotten every time those strings are
      updated.  -->
 <!-- intro paragraph for branded builds -->
-<!ENTITY rights2.webservices-cliqz "Parts of the Cliqz Browser are building upon the Mozilla open source project. Cliqz uses web-based information services provided by Mozilla Firefox.">
+<!ENTITY rights2.webservices-cliqz "Parts of the Ghostery Browser are building upon the Mozilla open source project. Ghostery uses web-based information services provided by Mozilla Firefox.">
 <!ENTITY rights2.webservices-a "Mozilla Firefox uses web-based information services (&quot;Services&quot;) to provide some of the features provided for your use with this binary version of Firefox under the terms described below. If you do not want to use one or more of the Services or the terms below are unacceptable, you may disable the feature or Service(s). Instructions on how to disable a particular feature or Service may be found ">
 <!ENTITY rights2.webservices-b "here">
 <!ENTITY rights3.webservices-c ". Other features and Services can be disabled in the application preferences.">

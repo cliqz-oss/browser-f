@@ -33,7 +33,7 @@ ManifestDPIAware true
 !define NO_LOG
 
 !define MaintUninstallKey \
- "Software\Microsoft\Windows\CurrentVersion\Uninstall\CLIQZMaintenanceService"
+ "Software\Microsoft\Windows\CurrentVersion\Uninstall\GhosteryMaintenanceService"
 
 Var TmpVal
 Var MaintCertKey
@@ -184,7 +184,7 @@ Function un.UninstallServiceIfNotUsed
   ; Figure out the number of subkeys
   StrCpy $0 0
   ${Do}
-    EnumRegKey $1 HKLM "Software\CLIQZ\MaintenanceService" $0
+    EnumRegKey $1 HKLM "Software\Ghostery\MaintenanceService" $0
     ${If} "$1" == ""
       ${ExitDo}
     ${EndIf}
@@ -253,7 +253,7 @@ Section "Uninstall"
   ${un.InitHashAppModelId} "$INSTDIR" "Software\${AppName}\TaskBarIDs"
 
   SetShellVarContext current  ; Set SHCTX to HKCU
-  ${un.RegCleanMain} "Software\CLIQZ"
+  ${un.RegCleanMain} "Software\Ghostery"
   ${un.RegCleanUninstall}
   ${un.DeleteShortcuts}
 
@@ -264,48 +264,48 @@ Section "Uninstall"
   ${EndIf}
 
   ; Remove the updates directory
-  ${un.CleanUpdateDirectories} "CLIQZ" "CLIQZ\updates"
+  ${un.CleanUpdateDirectories} "Ghostery" "Ghostery\updates"
 
   ; Remove any app model id's stored in the registry for this install path
   DeleteRegValue HKCU "Software\${AppName}\TaskBarIDs" "$INSTDIR"
   DeleteRegValue HKLM "Software\${AppName}\TaskBarIDs" "$INSTDIR"
 
   ClearErrors
-  WriteRegStr HKLM "Software\CLIQZ" "${BrandShortName}InstallerTest" "Write Test"
+  WriteRegStr HKLM "Software\Ghostery" "${BrandShortName}InstallerTest" "Write Test"
   ${If} ${Errors}
     StrCpy $TmpVal "HKCU" ; used primarily for logging
   ${Else}
     SetShellVarContext all  ; Set SHCTX to HKLM
-    DeleteRegValue HKLM "Software\CLIQZ" "${BrandShortName}InstallerTest"
+    DeleteRegValue HKLM "Software\Ghostery" "${BrandShortName}InstallerTest"
     StrCpy $TmpVal "HKLM" ; used primarily for logging
-    ${un.RegCleanMain} "Software\CLIQZ"
+    ${un.RegCleanMain} "Software\Ghostery"
     ${un.RegCleanUninstall}
     ${un.DeleteShortcuts}
     ${un.SetAppLSPCategories}
   ${EndIf}
 
-  ${un.RegCleanAppHandler} "CliqzURL-$AppUserModelID"
-  ${un.RegCleanAppHandler} "CliqzHTML-$AppUserModelID"
+  ${un.RegCleanAppHandler} "GhosteryURL-$AppUserModelID"
+  ${un.RegCleanAppHandler} "GhosteryHTML-$AppUserModelID"
   ${un.RegCleanProtocolHandler} "ftp"
   ${un.RegCleanProtocolHandler} "http"
   ${un.RegCleanProtocolHandler} "https"
 
-  ${un.RegCleanFileHandler}  ".htm"   "CliqzHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".html"  "CliqzHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".shtml" "CliqzHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".xht"   "CliqzHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".xhtml" "CliqzHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".oga"  "CliqzHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".ogg"  "CliqzHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".ogv"  "CliqzHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".pdf"  "CliqzHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".webm"  "CliqzHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".htm"   "GhosteryHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".html"  "GhosteryHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".shtml" "GhosteryHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".xht"   "GhosteryHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".xhtml" "GhosteryHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".oga"  "GhosteryHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".ogg"  "GhosteryHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".ogv"  "GhosteryHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".pdf"  "GhosteryHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".webm"  "GhosteryHTML-$AppUserModelID"
 
   SetShellVarContext all  ; Set SHCTX to HKLM
-  ${un.GetSecondInstallPath} "Software\CLIQZ" $R9
+  ${un.GetSecondInstallPath} "Software\Ghostery" $R9
   ${If} $R9 == "false"
     SetShellVarContext current  ; Set SHCTX to HKCU
-    ${un.GetSecondInstallPath} "Software\CLIQZ" $R9
+    ${un.GetSecondInstallPath} "Software\Ghostery" $R9
   ${EndIf}
 
   DeleteRegKey HKLM "Software\Clients\StartMenuInternet\${AppRegName}-$AppUserModelID"
@@ -316,21 +316,21 @@ Section "Uninstall"
 
   ; Remove old protocol handler and StartMenuInternet keys without install path
   ; hashes, but only if they're for this installation.
-  ReadRegStr $0 HKLM "Software\Classes\CliqzHTML\DefaultIcon" ""
+  ReadRegStr $0 HKLM "Software\Classes\GhosteryHTML\DefaultIcon" ""
   StrCpy $0 $0 -2
   ${If} $0 == "$INSTDIR\${FileMainEXE}"
-    DeleteRegKey HKLM "Software\Classes\CliqzHTML"
-    DeleteRegKey HKLM "Software\Classes\CliqzURL"
+    DeleteRegKey HKLM "Software\Classes\GhosteryHTML"
+    DeleteRegKey HKLM "Software\Classes\GhosteryURL"
     ${StrFilter} "${FileMainEXE}" "+" "" "" $R9
     DeleteRegKey HKLM "Software\Clients\StartMenuInternet\$R9"
     DeleteRegValue HKLM "Software\RegisteredApplications" "$R9"
     DeleteRegValue HKLM "Software\RegisteredApplications" "${AppRegName}"
   ${EndIf}
-  ReadRegStr $0 HKCU "Software\Classes\CliqzHTML\DefaultIcon" ""
+  ReadRegStr $0 HKCU "Software\Classes\GhosteryHTML\DefaultIcon" ""
   StrCpy $0 $0 -2
   ${If} $0 == "$INSTDIR\${FileMainEXE}"
-    DeleteRegKey HKCU "Software\Classes\CliqzHTML"
-    DeleteRegKey HKCU "Software\Classes\CliqzURL"
+    DeleteRegKey HKCU "Software\Classes\GhosteryHTML"
+    DeleteRegKey HKCU "Software\Classes\GhosteryURL"
     ${StrFilter} "${FileMainEXE}" "+" "" "" $R9
     DeleteRegKey HKCU "Software\Clients\StartMenuInternet\$R9"
     DeleteRegValue HKCU "Software\RegisteredApplications" "$R9"
@@ -347,7 +347,7 @@ Section "Uninstall"
     StrCpy $0 "Software\Microsoft\MediaPlayer\ShimInclusionList\plugin-container.exe"
     DeleteRegKey HKLM "$0"
     DeleteRegKey HKCU "$0"
-    StrCpy $0 "Software\Classes\MIME\Database\Content Type\application/x-xpinstall;app=CLIQZ"
+    StrCpy $0 "Software\Classes\MIME\Database\Content Type\application/x-xpinstall;app=Ghostery"
     DeleteRegKey HKLM "$0"
     DeleteRegKey HKCU "$0"
   ${Else}
@@ -381,7 +381,7 @@ Section "Uninstall"
   ${un.CleanVirtualStore}
 
   ; Only unregister the dll if the registration points to this installation
-  ReadRegStr $R1 HKCR "CLSID\{AC93DDB0-2E8D-4DC4-A825-A9807472D777}\InProcServer32" ""
+  ReadRegStr $R1 HKCR "CLSID\{73589222-1187-4535-BE60-2D2BC4868F31}\InProcServer32" ""
   ${If} "$INSTDIR\AccessibleMarshal.dll" == "$R1"
     ${UnregisterDLL} "$INSTDIR\AccessibleMarshal.dll"
   ${EndIf}
@@ -397,7 +397,7 @@ Section "Uninstall"
   ${If} ${FileExists} "$INSTDIR\defaults\pref\channel-prefs.js"
     Delete /REBOOTOK "$INSTDIR\defaults\pref\channel-prefs.js"
   ${EndIf}
-  ; Cliqz Browser: remove distribution.js file on uninstall stage
+  ; Ghostery Browser: remove distribution.js file on uninstall stage
   ${If} ${FileExists} "$INSTDIR\defaults\pref\distribution.js"
     Delete /REBOOTOK "$INSTDIR\defaults\pref\distribution.js"
   ${EndIf}
@@ -425,8 +425,8 @@ Section "Uninstall"
   ; Remove the installation directory if it is empty
   RmDir "$INSTDIR"
 
-  ; If cliqz.exe was successfully deleted yet we still need to restart to
-  ; remove other files create a dummy cliqz.exe.moz-delete to prevent the
+  ; If ghostery.exe was successfully deleted yet we still need to restart to
+  ; remove other files create a dummy ghostery.exe.moz-delete to prevent the
   ; installer from allowing an install without restart when it is required
   ; to complete an uninstall.
   ${If} ${RebootFlag}
@@ -449,12 +449,12 @@ Section "Uninstall"
   ; clients registry key by the OS under some conditions.
   System::Call "shell32::SHChangeNotify(i ${SHCNE_ASSOCCHANGED}, i 0, i 0, i 0)"
 
-  ; Users who uninstall then reinstall expecting Cliqz to use a clean profile
-  ; may be surprised during first-run. This key is checked during startup of Cliqz and
+  ; Users who uninstall then reinstall expecting Ghostery to use a clean profile
+  ; may be surprised during first-run. This key is checked during startup of Ghostery and
   ; subsequently deleted after checking. If the value is found during startup
-  ; the browser will offer to Reset Cliqz. We use the UpdateChannel to match
-  ; uninstalls of Cliqz-release with reinstalls of Cliqz-release, for example.
-  WriteRegStr HKCU "Software\CLIQZ" "Uninstalled-${UpdateChannel}" "True"
+  ; the browser will offer to Reset Ghostery. We use the UpdateChannel to match
+  ; uninstalls of Ghostery-release with reinstalls of Ghostery-release, for example.
+  WriteRegStr HKCU "Software\Ghostery" "Uninstalled-${UpdateChannel}" "True"
 
 !ifdef MOZ_MAINTENANCE_SERVICE
   ; Get the path the allowed cert is at and remove it
