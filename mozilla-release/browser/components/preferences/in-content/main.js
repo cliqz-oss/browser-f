@@ -494,15 +494,13 @@ var gMainPane = {
     let arch = bundle.GetStringFromName(archResource);
 
     // Add Firefox and nav-extension versions
-    let cliqzAddon = AddonManager.getAddonByID("cliqz@cliqz.com", cliqzAddon => {
+    let cliqzAddon = AddonManager.getAddonByID("cliqz@cliqz.com").then(cliqzAddon => {
       let componentsVersion = Services.appinfo.platformVersion;
       if (cliqzAddon) {
         componentsVersion += `+${cliqzAddon.version}`;
       }
       version += ` (${componentsVersion})`;
       version += ` (${arch})`;
-
-      document.getElementById("version").textContent = version;
     });
     document.l10n.setAttributes(
       document.getElementById("updateAppInfo"),
