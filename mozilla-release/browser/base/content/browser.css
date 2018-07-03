@@ -1294,6 +1294,9 @@ toolbarpaletteitem[dragover] {
   display: initial !important;
 }
 
+#customization-lwtheme-button {
+  display: initial !important;
+}
 
 toolbarpaletteitem[place="palette"] {
   -moz-binding: url("chrome://global/content/bindings/toolbar.xml#toolbarpaletteitem-palette-wrapping-label");
