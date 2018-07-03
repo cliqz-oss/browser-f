@@ -2660,7 +2660,13 @@ var CustomizableUIInternal = {
     Services.prefs.clearUserPref(kPrefUIDensity);
     Services.prefs.clearUserPref(kPrefAutoTouchMode);
     Services.prefs.clearUserPref(kPrefAutoHideDownloadsButton);
-    LightweightThemeManager.currentTheme = null;
+    // LightweightThemeManager.currentTheme = null;
+    // Cliqz: Set compact light theme as default theme
+    const lightTheme = LightweightThemeManager.getUsedTheme('firefox-compact-light@mozilla.org');
+    if (lightTheme) {
+      LightweightThemeManager.currentTheme = lightTheme;
+    }
+
     gNewElementCount = 0;
     log.debug("State reset");
 
@@ -2922,8 +2928,9 @@ var CustomizableUIInternal = {
       return false;
     }
 
+    // Cliqz: firefox-compact-light@mozilla.org is default
     if (LightweightThemeManager.currentTheme &&
-        LightweightThemeManager.currentTheme.id != "default-theme@mozilla.org") {
+        LightweightThemeManager.currentTheme.id != "firefox-compact-light@mozilla.org") {
       log.debug(LightweightThemeManager.currentTheme + " theme is non-default");
       return false;
     }
