@@ -333,7 +333,7 @@ jobs["mac"] = {
 }
 
 jobs["linux"] = {
-    node('ubuntu && docker') {
+    node('ubuntu && docker && !gpu') {
         ws('build') {
             stage('Linux Docker Checkout') {
                 checkout scm
