@@ -1029,3 +1029,4 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 
 <!-- Cliqz -->
 <!ENTITY connect.panelUI.label "Connect">
+<!ENTITY torbrowsing.panelUI.label "New Tor Window">
