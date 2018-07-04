@@ -33,7 +33,7 @@ for (let script of [
 #ifdef MOZ_DATA_REPORTING
   "chrome://browser/content/browser-data-submission-info-bar.js",
 #endif
-#ifndef MOZILLA_OFFICIAL
+#ifdef 0
   "chrome://browser/content/browser-development-helpers.js",
 #endif
 ]) {
